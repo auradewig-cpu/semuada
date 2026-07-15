@@ -106,7 +106,13 @@ export async function POST(request: NextRequest) {
     ...selectedImageUrls.map((url) => ({ url, mimeType: "image/jpeg" })),
   ];
 
-  const validationContext = { sceneDurations, aiTool, characterName: character?.name ?? null };
+  const validationContext = {
+    sceneDurations,
+    aiTool,
+    characterName: character?.name ?? null,
+    productName: product.productName,
+    category: product.category,
+  };
 
   try {
     const first = await generateWithFallback(providerOrder, keys, prompt, images);

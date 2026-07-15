@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
 
     const characterProxyUrl = character ? toCharacterPhotoProxyUrl(character.photoUrl) : null;
     const variants = result.variants.map((scene) => {
-      validateScene(scene, sceneDuration, aiTool, character?.name ?? null);
+      validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
       scene.scene_number = 1;
       scene.reference_images = {
         character: characterProxyUrl,

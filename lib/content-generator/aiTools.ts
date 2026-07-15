@@ -33,7 +33,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 400,
     supportsRef: true,
     formatTemplate:
-      "Subject description. Action/motion. Camera movement. Environment. Lighting. Style/mood. English. Sisipkan tag [DIALOGUE: <nama bahasa>] setelah deskripsi visual, jangan tulis dialog langsung.",
+      'Subject description. Action/motion. Camera movement. Environment. Lighting. Style/mood. English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
   },
   runway_gen4: {
     id: "runway_gen4",
@@ -41,7 +41,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 300,
     supportsRef: true,
     formatTemplate:
-      "Action-first. Camera keyword. Environment. Style. [X]s. English. Sisipkan tag [DIALOGUE: <nama bahasa>] singkat di akhir.",
+      'Action-first. Camera keyword. Environment. Style. [X]s. English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
   },
   luma_dream: {
     id: "luma_dream",
@@ -49,7 +49,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 300,
     supportsRef: true,
     formatTemplate:
-      "One cinematic sentence + style tags. English. Sisipkan tag [DIALOGUE: <nama bahasa>] singkat di akhir.",
+      'One cinematic sentence + style tags. English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
   },
   pika_labs: {
     id: "pika_labs",
@@ -57,7 +57,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 250,
     supportsRef: true,
     formatTemplate:
-      "Short: '[Subject] [action] [environment]. [Camera]. [Mood]. [X]s.' English. Sisipkan tag [DIALOGUE: <nama bahasa>] singkat di akhir.",
+      'Short: \'[Subject] [action] [environment]. [Camera]. [Mood]. [X]s.\' English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
   },
   sora: {
     id: "sora",
@@ -65,7 +65,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 600,
     supportsRef: false,
     formatTemplate:
-      "Rich detailed description: character + action + environment + camera + lighting + mood. Longer is better. English. Sisipkan tag [DIALOGUE: <nama bahasa>] setelah deskripsi visual.",
+      'Rich detailed description: character + action + environment + camera + lighting + mood. Longer is better. English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
   },
 };
 

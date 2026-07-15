@@ -1,8 +1,9 @@
 import { getContentStyle } from "./contentStyles";
 import { HOOK_ARCHETYPES } from "./hookPatterns";
-import { getAiToolSpec, usesLiteralDialogueConvention } from "./aiTools";
+import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
+import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule } from "./promptFragments";
 import type { AiToolId, AspectRatio, ContentStyleId, HookArchetype, PlatformTarget, SceneOutput } from "./types";
 
 export interface HookVariantsInput {
@@ -40,13 +41,9 @@ export function compileHookVariantsPrompt(input: HookVariantsInput): string {
   const availableArchetypes = Object.values(HOOK_ARCHETYPES).filter((a) => a.id !== input.currentArchetype);
   const archetypeList = availableArchetypes.map((a) => `- ${a.id}: ${a.instruction}`).join("\n");
 
-  const characterBlock = input.characterName
-    ? `KARAKTER (WAJIB KONSISTEN): "${input.characterName}". ${input.characterDescription ?? ""} Setiap varian WAJIB menyebut nama karakter ini.`
-    : "Tidak ada karakter/talent (faceless).";
-
-  const dialogueRule = usesLiteralDialogueConvention(input.aiTool)
-    ? `Dialog WAJIB kutipan literal: [Subjek] says, "<script_narration verbatim>" (no subtitles).`
-    : `Sisipkan tag [DIALOGUE: Bahasa Indonesia] setelah deskripsi visual.`;
+  const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
+  const dialogueRule = buildDialogueRule(input.aiTool);
+  const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
 
   return `
 Kamu membuat ${variantCount} VARIASI HOOK untuk scene 1 dari sebuah video affiliate produk, masing-masing memakai teknik hook BERBEDA.
@@ -70,6 +67,7 @@ ATURAN WAJIB:
 - scene_number=1, duration_seconds=${input.sceneDuration} TIDAK BOLEH berubah di semua varian.
 - Hook front-loaded: kalimat pertama script_narration = inti hook langsung, bukan basa-basi. WAJIB angka/detail spesifik, bukan generik.
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris.
+- ${productAnchorRule}
 - ${dialogueRule}
 - ${SPOKEN_NUMBER_RULE}
 

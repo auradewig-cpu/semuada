@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "AI mengembalikan format scene yang tidak bisa dibaca." }, { status: 502 });
     }
 
-    const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null);
+    const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
 
     scene.scene_number = sceneIndex + 1;
     scene.reference_images = {

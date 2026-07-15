@@ -1,9 +1,10 @@
 import { getContentStyle } from "./contentStyles";
 import { buildHookInstruction } from "./hookPatterns";
-import { getAiToolSpec, usesLiteralDialogueConvention } from "./aiTools";
+import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { getCtaType, resolveCtaForGoal } from "./ctaTypes";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
+import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule } from "./promptFragments";
 import type { AiToolId, AspectRatio, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, PlatformTarget } from "./types";
 
 interface MasterPromptInput {
@@ -32,15 +33,9 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
   const effectiveCta = resolveCtaForGoal(input.ctaType, input.contentGoal);
   const ctaSpec = getCtaType(effectiveCta);
 
-  const characterBlock = input.characterName
-    ? `KARAKTER (WAJIB KONSISTEN DI SETIAP SCENE): "${input.characterName}". ${
-        input.characterDescription ?? "Gunakan foto referensi karakter yang dilampirkan sebagai acuan wajah, gaya rambut, dan pakaian -- jangan ubah ciri-ciri ini antar scene."
-      } SETIAP "ai_ready_prompt" WAJIB dimulai dengan deskripsi anchor karakter ini persis kata per kata, baru diikuti deskripsi aksi scene -- tanpa anchor identik, karakter akan terlihat berbeda antar scene.`
-    : "Tidak ada karakter/talent yang tampil (faceless) -- fokus sepenuhnya pada produk dan tangan/voiceover.";
-
-  const dialogueRule = usesLiteralDialogueConvention(input.aiTool)
-    ? `Dialog WAJIB disisipkan sebagai kutipan literal persis begini: [Subjek] says, "<script_narration WORD-FOR-WORD, SAMA PERSIS dengan field script_narration, JANGAN diterjemahkan/diparafrase>" (no subtitles). Ini konvensi resmi ${toolSpec.label} -- model menyimpulkan bahasa ucapan dari ISI kalimat dalam kutip, bukan label bahasa.`
-    : `Sisipkan tag [DIALOGUE: Bahasa Indonesia] setelah deskripsi visual scene (HANYA nama bahasa di dalam tag, bukan kalimat penuh) -- tanpa tag ini AI video tool cenderung menghasilkan dialog berbahasa Inggris.`;
+  const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
+  const dialogueRule = buildDialogueRule(input.aiTool);
+  const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
 
   const ctaGoalNote =
     input.contentGoal === "growth"
@@ -91,14 +86,15 @@ ATURAN WAJIB (SANGAT PENTING):
 1. Buat TEPAT ${sceneCount} scene, satu scene untuk setiap foto produk yang dilampirkan berurutan (scene 1 = foto pertama, scene 2 = foto kedua, dst).
 2. Durasi tiap scene SUDAH DITENTUKAN dan TIDAK BOLEH diubah: ${input.sceneDurations.map((d, i) => `scene ${i + 1} = ${d}s`).join(", ")}.
 3. BAHASA PER FIELD (WAJIB DIPATUHI PERSIS): "script_narration" WAJIB Bahasa Indonesia. "visual_description", "camera_direction", dan "ai_ready_prompt" WAJIB Bahasa Inggris (English) -- field-field ini dibaca oleh AI video tool, bukan manusia Indonesia.
-4. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit.
-5. JANGAN gunakan kata "sempurna", "flawless", "studio quality", "dijamin", "terbukti ampuh 100%" -- hindari klaim berlebihan dan bahasa yang terdengar buatan AI.
-6. Instruksi kamera harus terasa seperti rekaman HP asli: sedikit tidak simetris, pencahayaan ruangan natural (bukan studio), ada momen kecil yang tidak sempurna supaya tidak terlihat "AI banget".
-7. ${dialogueRule}
-8. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
-9. ${SPOKEN_NUMBER_RULE}
-10. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda).
-11. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
+4. ${productAnchorRule}
+5. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit.
+6. JANGAN gunakan kata "sempurna", "flawless", "studio quality", "dijamin", "terbukti ampuh 100%" -- hindari klaim berlebihan dan bahasa yang terdengar buatan AI.
+7. Instruksi kamera harus terasa seperti rekaman HP asli: sedikit tidak simetris, pencahayaan ruangan natural (bukan studio), ada momen kecil yang tidak sempurna supaya tidak terlihat "AI banget".
+8. ${dialogueRule}
+9. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
+10. ${SPOKEN_NUMBER_RULE}
+11. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda).
+12. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
 
 ${NEGATIVE_PROMPT_BLOCK}
 

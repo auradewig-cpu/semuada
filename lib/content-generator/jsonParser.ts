@@ -28,15 +28,33 @@ export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+const STOPWORDS = new Set(["dengan", "untuk", "yang", "dari", "original", "terbaru", "resmi", "official", "store", "premium"]);
+
+// Drift detector: if ai_ready_prompt/visual_description don't share ANY
+// significant word with the product name/category, the AI likely wandered
+// off into an unrelated scene (the root cause of the "smartwatch -> cookies"
+// bug) -- flag it so the repair loop forces a rewrite back on-topic.
+function mentionsProduct(text: string, productName: string, category: string): boolean {
+  const keywords = `${productName} ${category}`
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+  if (keywords.length === 0) return true;
+  const lowerText = text.toLowerCase();
+  return keywords.some((k) => lowerText.includes(k));
+}
+
 export interface ValidationContext {
   sceneDurations: number[];
   aiTool: AiToolId;
   characterName: string | null;
+  productName: string;
+  category: string;
 }
 
 export function validateOutput(result: GenerationResult, context: ValidationContext): string[] {
   const problems: string[] = [];
-  const { sceneDurations, aiTool, characterName } = context;
+  const { sceneDurations, aiTool, characterName, productName, category } = context;
   const charLimit = getAiToolSpec(aiTool).charLimit;
 
   if (result.scenes.length !== sceneDurations.length) {
@@ -71,6 +89,10 @@ export function validateOutput(result: GenerationResult, context: ValidationCont
 
     if (characterName && scene.ai_ready_prompt && !scene.ai_ready_prompt.toLowerCase().includes(characterName.toLowerCase())) {
       problems.push(`Scene ${index + 1}: ai_ready_prompt tidak menyebut nama karakter "${characterName}" -- foto referensi karakter berisiko diabaikan AI video tool.`);
+    }
+
+    if (scene.ai_ready_prompt && !mentionsProduct(scene.ai_ready_prompt, productName, category)) {
+      problems.push(`Scene ${index + 1}: ai_ready_prompt sepertinya TIDAK tentang produk "${productName}" -- kontennya melenceng, tulis ulang supaya jelas tentang produk ini.`);
     }
   });
 
@@ -121,7 +143,14 @@ export function parseSceneResponse(rawText: string): SceneOutput | null {
   return trySceneParse(rawText.slice(firstBrace, lastBrace + 1));
 }
 
-export function validateScene(scene: SceneOutput, expectedDuration: number, aiTool: AiToolId, characterName: string | null): string[] {
+export function validateScene(
+  scene: SceneOutput,
+  expectedDuration: number,
+  aiTool: AiToolId,
+  characterName: string | null,
+  productName: string,
+  category: string
+): string[] {
   const problems: string[] = [];
   const charLimit = getAiToolSpec(aiTool).charLimit;
 
@@ -139,6 +168,9 @@ export function validateScene(scene: SceneOutput, expectedDuration: number, aiTo
   }
   if (characterName && scene.ai_ready_prompt && !scene.ai_ready_prompt.toLowerCase().includes(characterName.toLowerCase())) {
     problems.push(`ai_ready_prompt tidak menyebut nama karakter "${characterName}".`);
+  }
+  if (scene.ai_ready_prompt && !mentionsProduct(scene.ai_ready_prompt, productName, category)) {
+    problems.push(`ai_ready_prompt sepertinya TIDAK tentang produk "${productName}" -- kontennya melenceng.`);
   }
 
   return problems;

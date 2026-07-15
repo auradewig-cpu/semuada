@@ -154,6 +154,9 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context }: 
                 <Button size="sm" variant="outline" onClick={() => copyText(scene.ai_ready_prompt, `Prompt scene ${scene.scene_number}`)}>
                   <Copy className="h-3.5 w-3.5 mr-1" /> Copy Prompt
                 </Button>
+                <Button size="sm" variant="outline" onClick={() => copyText(JSON.stringify(scene, null, 2), `Prompt JSON scene ${scene.scene_number}`)}>
+                  <Copy className="h-3.5 w-3.5 mr-1" /> Copy Prompt JSON
+                </Button>
               </div>
             </CardTitle>
           </CardHeader>

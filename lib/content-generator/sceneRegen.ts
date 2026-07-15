@@ -1,9 +1,10 @@
 import { getContentStyle } from "./contentStyles";
 import { buildHookInstruction } from "./hookPatterns";
-import { getAiToolSpec, usesLiteralDialogueConvention } from "./aiTools";
+import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { getCtaType, resolveCtaForGoal } from "./ctaTypes";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
+import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule } from "./promptFragments";
 import type {
   AiToolId,
   AspectRatio,
@@ -49,15 +50,9 @@ export function compileSceneRegenPrompt(input: SceneRegenInput): string {
   const effectiveCta = resolveCtaForGoal(input.ctaType, input.contentGoal);
   const ctaSpec = getCtaType(effectiveCta);
 
-  const characterBlock = input.characterName
-    ? `KARAKTER (WAJIB KONSISTEN): "${input.characterName}". ${
-        input.characterDescription ?? "Gunakan foto referensi karakter yang dilampirkan."
-      } ai_ready_prompt WAJIB menyebut nama karakter ini.`
-    : "Tidak ada karakter/talent yang tampil (faceless).";
-
-  const dialogueRule = usesLiteralDialogueConvention(input.aiTool)
-    ? `Dialog WAJIB kutipan literal: [Subjek] says, "<script_narration verbatim>" (no subtitles).`
-    : `Sisipkan tag [DIALOGUE: Bahasa Indonesia] setelah deskripsi visual.`;
+  const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
+  const dialogueRule = buildDialogueRule(input.aiTool);
+  const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
 
   const hookBlock = isFirstScene
     ? `\n[HOOK -- SCENE INI ADALAH SCENE 1]\n${buildHookInstruction(input.hookArchetype, input.platform, input.sceneDuration)}\n`
@@ -84,6 +79,7 @@ ${contextBlock}
 ATURAN:
 - scene_number HARUS PERSIS ${sceneNumber}, duration_seconds HARUS PERSIS ${input.sceneDuration}.
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris.
+- ${productAnchorRule}
 - ${dialogueRule}
 - ${SPOKEN_NUMBER_RULE}
 
