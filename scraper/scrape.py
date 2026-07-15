@@ -93,7 +93,13 @@ def build_driver() -> uc.Chrome:
     CHROME_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     options.add_argument(f"--user-data-dir={CHROME_PROFILE_DIR}")
     # Headed on purpose -- headless is far more likely to be flagged by Shopee.
-    return uc.Chrome(options=options)
+    driver = uc.Chrome(options=options)
+    # Selenium's driver.get() has NO timeout by default -- it waits
+    # indefinitely for the page "load" event, which heavy SPAs like Shopee
+    # (ads/trackers/websockets) can fail to ever fully fire. Without this,
+    # a single stuck page hangs the whole scrape forever with zero progress.
+    driver.set_page_load_timeout(30)
+    return driver
 
 
 def wait_for_manual_login(driver) -> None:
