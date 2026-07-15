@@ -92,12 +92,17 @@ def build_driver() -> uc.Chrome:
     # have to log into Shopee once (not before every single scrape run).
     CHROME_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     options.add_argument(f"--user-data-dir={CHROME_PROFILE_DIR}")
+    # "eager" = driver.get() returns once the DOM is ready (DOMContentLoaded),
+    # instead of Selenium's default "normal" strategy which waits for the
+    # browser's full "load" event -- ads/trackers/beacons on a page like
+    # Shopee's can keep the network "busy" indefinitely and that event may
+    # never fire, which is what was hanging the scraper. We only need the
+    # DOM (checked again below via WebDriverWait for <body>), not every
+    # last background request to finish.
+    options.page_load_strategy = "eager"
     # Headed on purpose -- headless is far more likely to be flagged by Shopee.
     driver = uc.Chrome(options=options)
-    # Selenium's driver.get() has NO timeout by default -- it waits
-    # indefinitely for the page "load" event, which heavy SPAs like Shopee
-    # (ads/trackers/websockets) can fail to ever fully fire. Without this,
-    # a single stuck page hangs the whole scrape forever with zero progress.
+    # Extra safety net in case "eager" still isn't enough on some page.
     driver.set_page_load_timeout(30)
     return driver
 
