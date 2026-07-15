@@ -192,6 +192,7 @@ export function ContentGeneratorTab() {
           result={result}
           onResultChange={setResult}
           warnings={warnings}
+          affiliateUrl={product.affiliate_url}
           context={{
             productId: product.id,
             characterId,

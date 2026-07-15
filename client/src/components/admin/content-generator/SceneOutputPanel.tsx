@@ -34,6 +34,15 @@ interface SceneOutputPanelProps {
   onResultChange: (result: GenerationResult) => void;
   warnings: string[];
   context: SceneGenerationContext;
+  affiliateUrl: string | null;
+}
+
+// Defensive cleanup for display/copy -- the prompt instructs the AI to keep
+// hashtags out of the caption text, but strip any that slip through so the
+// caption never shows hashtags twice (once in the text, once in the
+// dedicated hashtags line below it).
+function stripHashtags(text: string): string {
+  return text.replace(/#\w+/g, "").replace(/\s{2,}/g, " ").trim();
 }
 
 async function downloadAs(url: string, filename: string) {
@@ -47,7 +56,7 @@ async function downloadAs(url: string, filename: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function SceneOutputPanel({ result, onResultChange, warnings, context }: SceneOutputPanelProps) {
+export function SceneOutputPanel({ result, onResultChange, warnings, context, affiliateUrl }: SceneOutputPanelProps) {
   const { toast } = useToast();
   const regenerateScene = useRegenerateScene();
   const hookVariants = useHookVariants();
@@ -200,14 +209,32 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context }: 
         <CardHeader>
           <CardTitle className="text-base flex items-center justify-between">
             <span>Caption &amp; Hashtag</span>
-            <Button size="sm" variant="outline" onClick={() => copyText(`${result.caption}\n\n${result.hashtags.map((h) => `#${h.replace(/^#+/, '')}`).join(' ')}`, 'Caption + hashtag')}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                copyText(
+                  [
+                    stripHashtags(result.caption),
+                    result.hashtags.map((h) => `#${h.replace(/^#+/, '')}`).join(' '),
+                    affiliateUrl ? `\n${affiliateUrl}` : '',
+                  ].filter(Boolean).join('\n\n'),
+                  'Caption + hashtag'
+                )
+              }
+            >
               <Copy className="h-3.5 w-3.5 mr-1" /> Copy
             </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <p>{result.caption}</p>
+          <p>{stripHashtags(result.caption)}</p>
           <p className="text-primary">{result.hashtags.map((h) => `#${h.replace(/^#+/, '')}`).join(' ')}</p>
+          {affiliateUrl && (
+            <p className="text-xs text-muted-foreground break-all pt-2 border-t">
+              <span className="font-medium">Link Affiliate:</span> {affiliateUrl}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

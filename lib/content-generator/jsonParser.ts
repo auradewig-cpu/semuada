@@ -98,6 +98,8 @@ export function validateOutput(result: GenerationResult, context: ValidationCont
 
   if (!result.caption || result.caption.trim().length === 0) {
     problems.push("Caption kosong.");
+  } else if (/#\w/.test(result.caption)) {
+    problems.push('Field "caption" mengandung hashtag di dalam teksnya -- hashtag HARUS hanya di field "hashtags", hapus dari teks caption.');
   }
 
   const uniqueHashtags = new Set(result.hashtags.map((h) => h.replace(/^#+/, "").toLowerCase()));

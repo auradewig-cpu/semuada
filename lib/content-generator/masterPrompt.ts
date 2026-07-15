@@ -93,7 +93,7 @@ ATURAN WAJIB (SANGAT PENTING):
 8. ${dialogueRule}
 9. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
 10. ${SPOKEN_NUMBER_RULE}
-11. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda).
+11. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
 12. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
 
 ${NEGATIVE_PROMPT_BLOCK}
