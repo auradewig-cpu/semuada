@@ -10,6 +10,7 @@ Usage:
 import csv
 import io
 import logging
+import os
 import threading
 
 import requests
@@ -226,4 +227,7 @@ def stop():
 if __name__ == "__main__":
     # 127.0.0.1 only -- this panel must never be reachable from outside your PC,
     # since /api/start-scrape takes your admin password.
-    app.run(host="127.0.0.1", port=5000, threaded=True)
+    # Port is overridable (PANEL_PORT env var) in case something else already
+    # holds 5000 -- e.g. a stale/killed process leaving a lingering socket.
+    port = int(os.environ.get("PANEL_PORT", 5000))
+    app.run(host="127.0.0.1", port=port, threaded=True)
