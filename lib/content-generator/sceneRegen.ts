@@ -4,14 +4,23 @@ import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { getCtaType, resolveCtaForGoal } from "./ctaTypes";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
-import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule, buildProductPriceLine, buildPriceRule } from "./promptFragments";
+import {
+  buildCharacterBlock,
+  buildDialogueRule,
+  buildProductAnchorRule,
+  buildProductPriceLine,
+  buildPriceRule,
+  buildCameraPatternRule,
+} from "./promptFragments";
 import type {
   AiToolId,
   AspectRatio,
+  CameraPattern,
   ContentGoal,
   ContentStyleId,
   CtaTypeId,
   HookArchetype,
+  NarrationMode,
   PlatformTarget,
   SceneOutput,
 } from "./types";
@@ -37,6 +46,8 @@ export interface SceneRegenInput {
   characterDescription: string | null;
   narrationWpm: number;
   includePrice: boolean;
+  narrationMode: NarrationMode;
+  cameraPattern: CameraPattern;
 }
 
 // Regenerates a SINGLE scene without touching the others -- saves quota when
@@ -52,10 +63,11 @@ export function compileSceneRegenPrompt(input: SceneRegenInput): string {
   const ctaSpec = getCtaType(effectiveCta);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
-  const dialogueRule = buildDialogueRule(input.aiTool);
+  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   const priceRule = buildPriceRule(input.includePrice);
+  const cameraPatternRule = buildCameraPatternRule(input.cameraPattern);
 
   const hookBlock = isFirstScene
     ? `\n[HOOK -- SCENE INI ADALAH SCENE 1]\n${buildHookInstruction(input.hookArchetype, input.platform, input.sceneDuration)}\n`
@@ -84,6 +96,7 @@ ATURAN:
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris.
 - ${productAnchorRule}
 - ${priceRule}
+- ${cameraPatternRule}
 - ${dialogueRule}
 - ${SPOKEN_NUMBER_RULE}
 

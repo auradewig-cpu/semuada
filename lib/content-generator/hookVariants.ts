@@ -3,8 +3,15 @@ import { HOOK_ARCHETYPES } from "./hookPatterns";
 import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
-import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule, buildProductPriceLine, buildPriceRule } from "./promptFragments";
-import type { AiToolId, AspectRatio, ContentStyleId, HookArchetype, PlatformTarget, SceneOutput } from "./types";
+import {
+  buildCharacterBlock,
+  buildDialogueRule,
+  buildProductAnchorRule,
+  buildProductPriceLine,
+  buildPriceRule,
+  buildCameraPatternRule,
+} from "./promptFragments";
+import type { AiToolId, AspectRatio, CameraPattern, ContentStyleId, HookArchetype, NarrationMode, PlatformTarget, SceneOutput } from "./types";
 
 export interface HookVariantsInput {
   productName: string;
@@ -21,6 +28,8 @@ export interface HookVariantsInput {
   characterName: string | null;
   characterDescription: string | null;
   includePrice: boolean;
+  narrationMode: NarrationMode;
+  cameraPattern: CameraPattern;
   variantCount?: number;
 }
 
@@ -43,10 +52,11 @@ export function compileHookVariantsPrompt(input: HookVariantsInput): string {
   const archetypeList = availableArchetypes.map((a) => `- ${a.id}: ${a.instruction}`).join("\n");
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
-  const dialogueRule = buildDialogueRule(input.aiTool);
+  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   const priceRule = buildPriceRule(input.includePrice);
+  const cameraPatternRule = buildCameraPatternRule(input.cameraPattern);
 
   return `
 Kamu membuat ${variantCount} VARIASI HOOK untuk scene 1 dari sebuah video affiliate produk, masing-masing memakai teknik hook BERBEDA.
@@ -72,6 +82,7 @@ ATURAN WAJIB:
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris.
 - ${productAnchorRule}
 - ${priceRule}
+- ${cameraPatternRule}
 - ${dialogueRule}
 - ${SPOKEN_NUMBER_RULE}
 

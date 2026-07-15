@@ -1,5 +1,5 @@
 import { getAiToolSpec, usesLiteralDialogueConvention } from "./aiTools";
-import type { AiToolId } from "./types";
+import type { AiToolId, CameraPattern, NarrationMode } from "./types";
 
 // Shared prompt fragments used by masterPrompt.ts, sceneRegen.ts, and
 // hookVariants.ts -- extracted so the character-anchor and dialogue-language
@@ -22,12 +22,29 @@ export function buildCharacterBlock(characterName: string | null, characterDescr
 // freely hallucinate unrelated content/language. Now the real narration text
 // is embedded (quoted) alongside the tag for every tool, matching Veo3's
 // literal-quote convention just with a language tag prefix.
-export function buildDialogueRule(aiTool: AiToolId): string {
+//
+// narrationMode gates this entirely: "voiceover" means the character performs
+// silently (VO demo / non-sync) and NO dialogue tag or quoted speech should
+// appear at all -- only "lipsync" uses the tool-specific dialogue convention.
+export function buildDialogueRule(aiTool: AiToolId, narrationMode: NarrationMode): string {
+  if (narrationMode === "voiceover") {
+    return `Mode narasi VOICEOVER (non-sync) -- karakter TIDAK berbicara dan mulutnya TIDAK bergerak mengucapkan kata apapun, hanya beraktivitas/memperagakan produk secara diam (silent demo/action). JANGAN sisipkan dialog terkutip atau tag [DIALOGUE: ...] apapun ke "ai_ready_prompt" -- audio HANYA voiceover narasi yang diputar terpisah di atas visual (narator tidak terlihat di frame).`;
+  }
   const toolSpec = getAiToolSpec(aiTool);
   if (usesLiteralDialogueConvention(aiTool)) {
     return `Dialog WAJIB disisipkan sebagai kutipan literal persis begini: [Subjek] says, "<script_narration WORD-FOR-WORD, SAMA PERSIS dengan field script_narration, JANGAN diterjemahkan/diparafrase>" (no subtitles). Ini konvensi resmi ${toolSpec.label} -- model menyimpulkan bahasa ucapan dari ISI kalimat dalam kutip, bukan label bahasa.`;
   }
   return `Dialog WAJIB disisipkan persis begini: [DIALOGUE: Bahasa Indonesia] "<script_narration WORD-FOR-WORD, SAMA PERSIS dengan field script_narration, JANGAN diterjemahkan/diparafrase/dikosongkan>". WAJIB sertakan kutipan narasi asli, BUKAN hanya tag kosong -- tanpa kutipan ini AI video tool tidak tahu harus mengucapkan/menampilkan apa dan akan mengarang konten/dialog sendiri yang bisa melenceng jauh dari produk.`;
+}
+
+// A-roll/B-roll intercutting -- alternates character shots with product
+// cutaways within/across scenes, a standard UGC-ad pattern that keeps
+// completion rate high by changing visuals every few seconds.
+export function buildCameraPatternRule(pattern: CameraPattern): string {
+  if (pattern === "aroll_broll") {
+    return `POLA KAMERA: A-ROLL/B-ROLL INTERCUTTING -- "camera_direction" WAJIB menyelingi shot karakter (A-roll, fokus wajah/aksi karakter) dengan cutaway close-up produk (B-roll, angle/fokus berbeda, mis. zoom ke detail produk di tangan). Tiap scene idealnya punya minimal satu momen cutaway ke produk sebelum kembali ke karakter -- pola ini terbukti menjaga perhatian penonton lebih lama.`;
+  }
+  return `POLA KAMERA: SINGLE ANGLE -- "camera_direction" fokus konsisten pada satu angle/subjek per scene tanpa cutaway bergantian, mengikuti gaya video yang dipilih.`;
 }
 
 // Anchors scene content to the actual selected product -- the second half of

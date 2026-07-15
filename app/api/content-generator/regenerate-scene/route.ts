@@ -12,10 +12,12 @@ import type {
   AiProvider,
   AiToolId,
   AspectRatio,
+  CameraPattern,
   ContentGoal,
   ContentStyleId,
   CtaTypeId,
   HookArchetype,
+  NarrationMode,
   PlatformTarget,
   SceneOutput,
 } from "@root/lib/content-generator/types";
@@ -43,6 +45,8 @@ export async function POST(request: NextRequest) {
   const previousScene: SceneOutput | null = body.previousScene ?? null;
   const nextScene: SceneOutput | null = body.nextScene ?? null;
   const includePrice: boolean = body.includePrice !== false;
+  const narrationMode: NarrationMode = body.narrationMode === "voiceover" ? "voiceover" : "lipsync";
+  const cameraPattern: CameraPattern = body.cameraPattern === "aroll_broll" ? "aroll_broll" : "single_angle";
 
   if (!productId || typeof sceneIndex !== "number" || typeof sceneDuration !== "number" || !productImageUrl) {
     return NextResponse.json({ error: "Parameter regenerate scene tidak lengkap." }, { status: 400 });
@@ -92,6 +96,8 @@ export async function POST(request: NextRequest) {
     characterDescription: character?.description ?? null,
     narrationWpm: settingsRow.narrationWpm ?? 180,
     includePrice,
+    narrationMode,
+    cameraPattern,
   });
 
   const images = [

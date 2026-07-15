@@ -4,8 +4,15 @@ import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { getCtaType, resolveCtaForGoal } from "./ctaTypes";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
-import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule, buildProductPriceLine, buildPriceRule } from "./promptFragments";
-import type { AiToolId, AspectRatio, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, PlatformTarget } from "./types";
+import {
+  buildCharacterBlock,
+  buildDialogueRule,
+  buildProductAnchorRule,
+  buildProductPriceLine,
+  buildPriceRule,
+  buildCameraPatternRule,
+} from "./promptFragments";
+import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, NarrationMode, PlatformTarget } from "./types";
 
 interface MasterPromptInput {
   productName: string;
@@ -23,6 +30,8 @@ interface MasterPromptInput {
   characterDescription: string | null;
   narrationWpm: number;
   includePrice: boolean;
+  narrationMode: NarrationMode;
+  cameraPattern: CameraPattern;
 }
 
 export function compileMasterPrompt(input: MasterPromptInput): string {
@@ -35,10 +44,11 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
   const ctaSpec = getCtaType(effectiveCta);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
-  const dialogueRule = buildDialogueRule(input.aiTool);
+  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   const priceRule = buildPriceRule(input.includePrice);
+  const cameraPatternRule = buildCameraPatternRule(input.cameraPattern);
 
   const ctaGoalNote =
     input.contentGoal === "growth"
@@ -94,11 +104,12 @@ ATURAN WAJIB (SANGAT PENTING):
 6. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit.
 7. JANGAN gunakan kata "sempurna", "flawless", "studio quality", "dijamin", "terbukti ampuh 100%" -- hindari klaim berlebihan dan bahasa yang terdengar buatan AI.
 8. Instruksi kamera harus terasa seperti rekaman HP asli: sedikit tidak simetris, pencahayaan ruangan natural (bukan studio), ada momen kecil yang tidak sempurna supaya tidak terlihat "AI banget".
-9. ${dialogueRule}
-10. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
-11. ${SPOKEN_NUMBER_RULE}
-12. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
-13. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
+9. ${cameraPatternRule}
+10. ${dialogueRule}
+11. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
+12. ${SPOKEN_NUMBER_RULE}
+13. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
+14. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
 
 ${NEGATIVE_PROMPT_BLOCK}
 

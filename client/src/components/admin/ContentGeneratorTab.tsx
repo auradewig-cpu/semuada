@@ -15,6 +15,8 @@ import {
   type HookArchetype,
   type ContentGoal,
   type CtaTypeId,
+  type NarrationMode,
+  type CameraPattern,
 } from "@/hooks/useContentGenerator";
 import { ProductPicker } from "@/components/admin/content-generator/ProductPicker";
 import { ImagePicker } from "@/components/admin/content-generator/ImagePicker";
@@ -27,6 +29,8 @@ import { StyleSelector } from "@/components/admin/content-generator/StyleSelecto
 import { ContentGoalSelector } from "@/components/admin/content-generator/ContentGoalSelector";
 import { CtaTypeSelector } from "@/components/admin/content-generator/CtaTypeSelector";
 import { HookArchetypeSelector } from "@/components/admin/content-generator/HookArchetypeSelector";
+import { NarrationModeSelector } from "@/components/admin/content-generator/NarrationModeSelector";
+import { CameraPatternSelector } from "@/components/admin/content-generator/CameraPatternSelector";
 import { SceneOutputPanel } from "@/components/admin/content-generator/SceneOutputPanel";
 import type { Product } from "@/types";
 
@@ -43,6 +47,8 @@ export function ContentGeneratorTab() {
   const [ctaType, setCtaType] = useState<CtaTypeId>('klik_keranjang_kuning');
   const [hookArchetype, setHookArchetype] = useState<HookArchetype>('specific_outcome');
   const [includePrice, setIncludePrice] = useState(true);
+  const [narrationMode, setNarrationMode] = useState<NarrationMode>('lipsync');
+  const [cameraPattern, setCameraPattern] = useState<CameraPattern>('single_angle');
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
 
@@ -77,6 +83,8 @@ export function ContentGeneratorTab() {
         ctaType,
         sceneDurations,
         includePrice,
+        narrationMode,
+        cameraPattern,
       },
       {
         onSuccess: (data) => {
@@ -182,7 +190,19 @@ export function ContentGeneratorTab() {
       {selectedImageUrls.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>8. CTA &amp; Pola Hook Scene 1</CardTitle>
+            <CardTitle>8. Mode Narasi &amp; Pola Kamera</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <NarrationModeSelector value={narrationMode} onChange={setNarrationMode} />
+            <CameraPatternSelector value={cameraPattern} onChange={setCameraPattern} />
+          </CardContent>
+        </Card>
+      )}
+
+      {selectedImageUrls.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>9. CTA &amp; Pola Hook Scene 1</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <CtaTypeSelector value={ctaType} onChange={setCtaType} contentGoal={contentGoal} platform={platform} />
@@ -214,6 +234,8 @@ export function ContentGeneratorTab() {
             contentGoal,
             ctaType,
             includePrice,
+            narrationMode,
+            cameraPattern,
           }}
         />
       )}

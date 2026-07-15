@@ -41,6 +41,15 @@ export type CtaTypeId =
 // GROWTH_MODE_RULES gating (no jualan, only follow/save/share/comment asks).
 export const GROWTH_ALLOWED_CTAS: CtaTypeId[] = ["follow_more", "save_for_later", "share_tag_friend", "comment_keyword"];
 
+// lipsync = character speaks in sync with the narration (dialogue tag/quote
+// embedded). voiceover = character performs/demos silently, audio is narration
+// only (non-sync) -- no dialogue tag or quoted speech should appear at all.
+export type NarrationMode = "lipsync" | "voiceover";
+
+// single_angle = one consistent shot style per scene. aroll_broll = intercut
+// between character shots (A-roll) and product cutaways (B-roll) within scenes.
+export type CameraPattern = "single_angle" | "aroll_broll";
+
 export interface SceneOutput {
   scene_number: number;
   duration_seconds: number;
@@ -78,4 +87,6 @@ export interface GenerateRequest {
   ctaType: CtaTypeId;
   sceneDurations: number[];
   includePrice: boolean;
+  narrationMode: NarrationMode;
+  cameraPattern: CameraPattern;
 }

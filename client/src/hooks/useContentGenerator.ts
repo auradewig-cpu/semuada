@@ -37,6 +37,9 @@ export type CtaTypeId =
 
 export const GROWTH_ALLOWED_CTAS: CtaTypeId[] = ['follow_more', 'save_for_later', 'share_tag_friend', 'comment_keyword'];
 
+export type NarrationMode = 'lipsync' | 'voiceover';
+export type CameraPattern = 'single_angle' | 'aroll_broll';
+
 export interface SceneOutput {
   scene_number: number;
   duration_seconds: number;
@@ -74,6 +77,8 @@ export interface GenerateContentInput {
   ctaType: CtaTypeId;
   sceneDurations: number[];
   includePrice: boolean;
+  narrationMode: NarrationMode;
+  cameraPattern: CameraPattern;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -151,6 +156,8 @@ export interface RegenerateSceneInput {
   previousScene: SceneOutput | null;
   nextScene: SceneOutput | null;
   includePrice: boolean;
+  narrationMode: NarrationMode;
+  cameraPattern: CameraPattern;
 }
 
 export function useRegenerateScene() {
@@ -174,6 +181,8 @@ export interface HookVariantsInput {
   productImageUrl: string;
   currentScene: SceneOutput;
   includePrice: boolean;
+  narrationMode: NarrationMode;
+  cameraPattern: CameraPattern;
 }
 
 export function useHookVariants() {

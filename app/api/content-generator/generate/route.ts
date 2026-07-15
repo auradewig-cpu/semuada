@@ -13,11 +13,13 @@ import type {
   AiProvider,
   AiToolId,
   AspectRatio,
+  CameraPattern,
   ContentGoal,
   ContentStyleId,
   CtaTypeId,
   GenerationResult,
   HookArchetype,
+  NarrationMode,
   PlatformTarget,
 } from "@root/lib/content-generator/types";
 
@@ -53,6 +55,8 @@ export async function POST(request: NextRequest) {
   const ctaType: CtaTypeId = body.ctaType;
   const sceneDurations: number[] = Array.isArray(body.sceneDurations) ? body.sceneDurations : [];
   const includePrice: boolean = body.includePrice !== false;
+  const narrationMode: NarrationMode = body.narrationMode === "voiceover" ? "voiceover" : "lipsync";
+  const cameraPattern: CameraPattern = body.cameraPattern === "aroll_broll" ? "aroll_broll" : "single_angle";
 
   if (!productId || selectedImageUrls.length === 0 || !style || !aiTool || !platform || !aspectRatio || !hookArchetype || !contentGoal || !ctaType) {
     return NextResponse.json({ error: "Semua parameter (produk, gambar, gaya, AI tool, platform, rasio, hook, tujuan, CTA) wajib diisi." }, { status: 400 });
@@ -101,6 +105,8 @@ export async function POST(request: NextRequest) {
     characterDescription: character?.description ?? null,
     narrationWpm,
     includePrice,
+    narrationMode,
+    cameraPattern,
   });
 
   const images = [

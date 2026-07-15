@@ -12,8 +12,10 @@ import type {
   AiProvider,
   AiToolId,
   AspectRatio,
+  CameraPattern,
   ContentStyleId,
   HookArchetype,
+  NarrationMode,
   PlatformTarget,
   SceneOutput,
 } from "@root/lib/content-generator/types";
@@ -36,6 +38,8 @@ export async function POST(request: NextRequest) {
   const productImageUrl: string = body.productImageUrl;
   const currentScene: SceneOutput = body.currentScene;
   const includePrice: boolean = body.includePrice !== false;
+  const narrationMode: NarrationMode = body.narrationMode === "voiceover" ? "voiceover" : "lipsync";
+  const cameraPattern: CameraPattern = body.cameraPattern === "aroll_broll" ? "aroll_broll" : "single_angle";
 
   if (!productId || typeof sceneDuration !== "number" || !productImageUrl || !currentScene) {
     return NextResponse.json({ error: "Parameter hook variants tidak lengkap." }, { status: 400 });
@@ -80,6 +84,8 @@ export async function POST(request: NextRequest) {
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
     includePrice,
+    narrationMode,
+    cameraPattern,
     variantCount,
   });
 

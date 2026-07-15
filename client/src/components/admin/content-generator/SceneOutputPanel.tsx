@@ -15,6 +15,8 @@ import {
   type HookArchetype,
   type ContentGoal,
   type CtaTypeId,
+  type NarrationMode,
+  type CameraPattern,
 } from "@/hooks/useContentGenerator";
 
 export interface SceneGenerationContext {
@@ -28,6 +30,8 @@ export interface SceneGenerationContext {
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
   includePrice: boolean;
+  narrationMode: NarrationMode;
+  cameraPattern: CameraPattern;
 }
 
 interface SceneOutputPanelProps {
@@ -114,6 +118,8 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, af
         productImageUrl: scene.reference_images.product,
         currentScene: scene,
         includePrice: context.includePrice,
+        narrationMode: context.narrationMode,
+        cameraPattern: context.cameraPattern,
       },
       {
         onSuccess: (data) => setVariants(data.variants),
