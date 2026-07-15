@@ -104,6 +104,11 @@ def build_driver() -> uc.Chrome:
     driver = uc.Chrome(options=options)
     # Extra safety net in case "eager" still isn't enough on some page.
     driver.set_page_load_timeout(30)
+    # Selenium's default HTTP timeout to chromedriver is 120s PER ATTEMPT,
+    # retried up to 3 times -- so one slow command (e.g. reading .text off a
+    # huge/animating page) can block for 6+ minutes before finally raising.
+    # Cut that down so a stuck command fails fast instead.
+    driver.command_executor.set_timeout(20)
     return driver
 
 
