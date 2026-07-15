@@ -22,9 +22,9 @@ const aiSettingsFormSchema = z.object({
 type AiSettingsFormValues = z.infer<typeof aiSettingsFormSchema>;
 
 const GEMINI_MODELS = [
-  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (cepat, limit gratis besar)' },
-  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (kualitas lebih tinggi)' },
-  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+  { value: 'gemini-flash-latest', label: 'Gemini Flash Latest (disarankan, cepat, limit gratis besar)' },
+  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+  { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite (paling hemat kuota)' },
 ];
 
 const PROVIDERS = [
@@ -43,14 +43,14 @@ export function AiProviderSettings() {
 
   const form = useForm<AiSettingsFormValues>({
     resolver: zodResolver(aiSettingsFormSchema),
-    defaultValues: { gemini_api_key: '', gemini_model: 'gemini-2.5-flash', groq_api_key: '', openrouter_api_key: '', deepseek_api_key: '' },
+    defaultValues: { gemini_api_key: '', gemini_model: 'gemini-flash-latest', groq_api_key: '', openrouter_api_key: '', deepseek_api_key: '' },
   });
 
   useEffect(() => {
     if (aiSettings) {
       form.reset({
         gemini_api_key: '',
-        gemini_model: aiSettings.gemini_model || 'gemini-2.5-flash',
+        gemini_model: aiSettings.gemini_model || 'gemini-flash-latest',
         groq_api_key: '',
         openrouter_api_key: '',
         deepseek_api_key: '',

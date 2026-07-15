@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     switch (provider) {
       case "gemini":
         if (!row.geminiApiKey) throw new Error("Gemini API key belum diisi.");
-        await testGemini(row.geminiApiKey, row.geminiModel || "gemini-2.5-flash");
+        await testGemini(row.geminiApiKey, row.geminiModel || "gemini-flash-latest");
         break;
       case "groq":
         if (!row.groqApiKey) throw new Error("Groq API key belum diisi.");

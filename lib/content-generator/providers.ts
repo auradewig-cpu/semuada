@@ -103,7 +103,7 @@ async function callProvider(
   switch (provider) {
     case "gemini":
       if (!keys.geminiApiKey) throw new Error("Gemini API key belum diisi.");
-      return callGemini(keys.geminiApiKey, keys.geminiModel || "gemini-2.5-flash", prompt, images);
+      return callGemini(keys.geminiApiKey, keys.geminiModel || "gemini-flash-latest", prompt, images);
     case "groq":
       if (!keys.groqApiKey) throw new Error("Groq API key belum diisi.");
       return callOpenAiCompatible(

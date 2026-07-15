@@ -18,7 +18,7 @@ export async function GET() {
   }
   return NextResponse.json({
     id: AI_SETTINGS_ID,
-    gemini_model: "gemini-2.5-flash",
+    gemini_model: "gemini-flash-latest",
     provider_order: ["gemini", "groq", "openrouter", "deepseek"],
     updated_at: null,
     has_gemini_key: false,
@@ -41,7 +41,7 @@ export async function PUT(request: NextRequest) {
   const nextValues = {
     id: AI_SETTINGS_ID,
     geminiApiKey: body.gemini_api_key || existing?.geminiApiKey,
-    geminiModel: body.gemini_model || existing?.geminiModel || "gemini-2.5-flash",
+    geminiModel: body.gemini_model || existing?.geminiModel || "gemini-flash-latest",
     groqApiKey: body.groq_api_key || existing?.groqApiKey,
     openrouterApiKey: body.openrouter_api_key || existing?.openrouterApiKey,
     deepseekApiKey: body.deepseek_api_key || existing?.deepseekApiKey,

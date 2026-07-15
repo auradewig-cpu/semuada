@@ -60,7 +60,7 @@ export const characters = pgTable("characters", {
 export const aiSettings = pgTable("ai_settings", {
   id: uuid("id").defaultRandom().primaryKey(),
   geminiApiKey: text("gemini_api_key"),
-  geminiModel: text("gemini_model").default("gemini-2.5-flash"),
+  geminiModel: text("gemini_model").default("gemini-flash-latest"),
   groqApiKey: text("groq_api_key"),
   openrouterApiKey: text("openrouter_api_key"),
   deepseekApiKey: text("deepseek_api_key"),
