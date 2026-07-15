@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>SEMUADA Scraper Panel</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+  h1 { font-size: 1.4rem; }
+  fieldset { border: 1px solid #8883; border-radius: 8px; margin-bottom: 1.2rem; padding: 1rem; }
+  legend { font-weight: 600; padding: 0 0.4rem; }
+  label { display: block; margin: 0.6rem 0 0.2rem; font-size: 0.9rem; }
+  input[type=text], input[type=password], input[type=file], select {
+    width: 100%; padding: 0.5rem; box-sizing: border-box; border-radius: 6px; border: 1px solid #8886;
+  }
+  .row { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.8rem; }
+  button {
+    padding: 0.6rem 1rem; border-radius: 6px; border: none; cursor: pointer;
+    font-weight: 600; background: #10b981; color: white;
+  }
+  button:disabled { background: #8886; cursor: not-allowed; }
+  button.secondary { background: #6366f1; }
+  button.danger { background: #ef4444; }
+  #status-badge {
+    display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px;
+    font-size: 0.8rem; font-weight: 600; background: #8883;
+  }
+  #progress-bar-outer { background: #8883; border-radius: 999px; height: 10px; overflow: hidden; margin: 0.6rem 0; }
+  #progress-bar-inner { background: #10b981; height: 100%; width: 0%; transition: width 0.3s; }
+  #log { background: #0002; border-radius: 6px; padding: 0.6rem; height: 260px; overflow-y: auto;
+    font-family: ui-monospace, monospace; font-size: 0.8rem; white-space: pre-wrap; }
+  .hint { font-size: 0.8rem; opacity: 0.7; margin-top: 0.3rem; }
+  .ok { color: #10b981; }
+  .err { color: #ef4444; }
+</style>
+</head>
+<body>
+<h1>🛍️ SEMUADA Scraper Panel</h1>
+<p class="hint">Jalan lokal di komputer ini saja. Hasil scraping langsung masuk ke database situs lewat API admin.</p>
+
+<fieldset>
+  <legend>1. Situs &amp; login admin</legend>
+  <label>Base URL website (contoh: https://semuada.vercel.app atau http://localhost:3000)</label>
+  <input type="text" id="base-url" placeholder="https://semuada.vercel.app" />
+  <label>Username / email admin</label>
+  <input type="text" id="username" placeholder="admin@semuada.com" />
+  <label>Password admin</label>
+  <input type="password" id="password" />
+</fieldset>
+
+<fieldset>
+  <legend>2. CSV affiliate Shopee</legend>
+  <input type="file" id="csv-file" accept=".csv" />
+  <div id="csv-info" class="hint"></div>
+  <div id="column-picker" style="display:none">
+    <label>Kolom mana yang berisi link produk?</label>
+    <select id="link-column"></select>
+  </div>
+</fieldset>
+
+<fieldset>
+  <legend>3. Kontrol scraping</legend>
+  <div class="row">
+    <button id="btn-prepare">Siapkan Browser</button>
+    <button id="btn-start" disabled>Mulai Scrape</button>
+    <button id="btn-pause" class="secondary" disabled>Pause</button>
+    <button id="btn-stop" class="danger" disabled>Stop</button>
+  </div>
+
+  <p style="margin-top:1rem">Status: <span id="status-badge">idle</span></p>
+  <div id="progress-bar-outer"><div id="progress-bar-inner"></div></div>
+  <p class="hint" id="progress-text"></p>
+  <div id="log"></div>
+</fieldset>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let browserReady = false;
+let csvUploaded = false;
+
+function setStatusBadge(status) {
+  $('status-badge').textContent = status;
+}
+
+function logLine(text, cls) {
+  const el = $('log');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = text;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+$('btn-prepare').addEventListener('click', async () => {
+  $('btn-prepare').disabled = true;
+  $('btn-prepare').textContent = 'Membuka browser...';
+  try {
+    await api('/api/prepare-browser', { method: 'POST' });
+    browserReady = true;
+    $('btn-prepare').textContent = 'Browser Siap ✓';
+    logLine('Browser terbuka -- silakan login ke Shopee di jendela Chrome, lalu klik Mulai Scrape.', 'ok');
+    updateStartButton();
+  } catch (e) {
+    $('btn-prepare').disabled = false;
+    $('btn-prepare').textContent = 'Siapkan Browser';
+    logLine('Gagal membuka browser: ' + e.message, 'err');
+  }
+});
+
+$('csv-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const data = await api('/api/upload-csv', { method: 'POST', body: formData });
+    csvUploaded = true;
+    $('csv-info').textContent = `${data.row_count} baris terbaca.`;
+    if (data.detected_column) {
+      $('csv-info').textContent += ` Kolom link produk terdeteksi otomatis: "${data.detected_column}".`;
+      $('column-picker').style.display = 'none';
+      $('link-column').value = data.detected_column;
+      // still populate options in case user wants to override
+      $('link-column').innerHTML = data.headers.map(h => `<option ${h === data.detected_column ? 'selected' : ''}>${h}</option>`).join('');
+    } else {
+      $('csv-info').textContent += ' Kolom link produk tidak terdeteksi otomatis -- pilih manual di bawah.';
+      $('link-column').innerHTML = data.headers.map(h => `<option>${h}</option>`).join('');
+      $('column-picker').style.display = 'block';
+    }
+    updateStartButton();
+  } catch (e) {
+    $('csv-info').textContent = 'Gagal upload: ' + e.message;
+  }
+});
+
+function updateStartButton() {
+  $('btn-start').disabled = !(browserReady && csvUploaded);
+}
+
+$('btn-start').addEventListener('click', async () => {
+  const base_url = $('base-url').value.trim();
+  const username = $('username').value.trim();
+  const password = $('password').value;
+  const link_column = $('link-column').value;
+
+  if (!base_url || !username || !password) {
+    alert('Isi dulu Base URL, username, dan password admin.');
+    return;
+  }
+
+  try {
+    await api('/api/start-scrape', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ link_column, base_url, username, password }),
+    });
+    $('btn-start').disabled = true;
+    $('btn-pause').disabled = false;
+    $('btn-stop').disabled = false;
+  } catch (e) {
+    logLine('Gagal mulai scraping: ' + e.message, 'err');
+  }
+});
+
+let paused = false;
+$('btn-pause').addEventListener('click', async () => {
+  try {
+    if (!paused) {
+      await api('/api/pause', { method: 'POST' });
+      $('btn-pause').textContent = 'Resume';
+      paused = true;
+    } else {
+      await api('/api/resume', { method: 'POST' });
+      $('btn-pause').textContent = 'Pause';
+      paused = false;
+    }
+  } catch (e) {
+    logLine('Error: ' + e.message, 'err');
+  }
+});
+
+$('btn-stop').addEventListener('click', async () => {
+  if (!confirm('Hentikan proses scraping?')) return;
+  try {
+    await api('/api/stop', { method: 'POST' });
+    $('btn-stop').disabled = true;
+    $('btn-pause').disabled = true;
+  } catch (e) {
+    logLine('Error: ' + e.message, 'err');
+  }
+});
+
+let lastLogLength = 0;
+async function pollStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const s = await res.json();
+    setStatusBadge(s.status);
+
+    if (s.total > 0) {
+      const pct = Math.round((s.current / s.total) * 100);
+      $('progress-bar-inner').style.width = pct + '%';
+      $('progress-text').textContent = `${s.current} / ${s.total} produk -- sukses: ${s.success}, gagal: ${s.failed}`;
+    }
+
+    if (s.log.length > lastLogLength) {
+      for (let i = lastLogLength; i < s.log.length; i++) {
+        logLine(s.log[i]);
+      }
+      lastLogLength = s.log.length;
+    }
+
+    if (s.status === 'done' || s.status === 'stopped' || s.status === 'error') {
+      $('btn-pause').disabled = true;
+      $('btn-stop').disabled = true;
+      if (s.status === 'done') $('btn-start').disabled = false;
+    }
+  } catch (e) {
+    // network hiccup while polling -- ignore, next tick retries
+  }
+}
+setInterval(pollStatus, 1500);
+pollStatus();
+</script>
+</body>
+</html>

@@ -19,7 +19,37 @@ pip install -r requirements.txt
 Chrome harus sudah terinstall di komputer (undetected-chromedriver memakai
 Chrome yang ada, bukan browser bawaan sendiri).
 
-## Menjalankan
+## Cara pakai Panel (direkomendasikan)
+
+Panel kontrol web lokal -- tombol Siapkan Browser / Mulai Scrape / Pause /
+Stop, dan hasil scraping **langsung masuk ke database** situs (skip proses
+CSV/Import manual sepenuhnya).
+
+```
+python panel_app.py
+```
+
+Buka `http://localhost:5000` di browser. Panel ini **cuma bisa diakses dari
+komputer ini sendiri** (`127.0.0.1`), tidak bisa dibuka dari HP/komputer lain.
+
+Langkah di panel:
+1. Isi **Base URL** situs (misal `https://semuada.vercel.app`), username &
+   password admin -- ini dipakai untuk login ke API situs, disimpan hanya di
+   memori selama panel jalan (tidak pernah ditulis ke file).
+2. Upload CSV affiliate Shopee. Panel otomatis mendeteksi kolom "Link
+   Produk"; kalau tidak ketemu (nama kolom beda), pilih manual dari dropdown.
+3. Klik **Siapkan Browser** -- Chrome terbuka, login manual ke akun Shopee
+   di jendela itu (cuma perlu sekali, sesi tersimpan di `chrome_profile/`).
+4. Klik **Mulai Scrape**. Progress, jumlah sukses/gagal, dan log berjalan
+   real-time di panel.
+5. **Pause** untuk jeda sementara (browser tetap terbuka, lanjut kapan saja
+   dengan klik lagi), **Stop** untuk berhenti total setelah produk yang
+   sedang diproses selesai.
+
+Produk yang `ID Produk`-nya sudah ada di database otomatis dilewati -- jadi
+aman upload CSV yang sama berkali-kali atau lanjut habis di-Stop.
+
+## Menjalankan lewat command line (alternatif/lanjutan)
 
 ```
 python scrape.py "G:\Viral Frame Konten\Shopee\...\Produk A.csv" "output\Produk A - hasil scrape.csv"
@@ -53,18 +83,18 @@ nol.
 
 ## Kalau hasilnya kosong / salah (Shopee ganti tampilan)
 
-Selector CSS yang dipakai ada di `selectors.py` (satu file terpisah biar
+Selector CSS yang dipakai ada di `shopee_selectors.py` (satu file terpisah biar
 gampang diupdate). Kalau Shopee redesign halaman produk mereka, biasanya
 cuma perlu update nama class di file itu:
 
 1. Buka halaman produk Shopee di Chrome biasa, klik kanan elemen yang mau
    diambil (harga/gambar/rating) > **Inspect**.
-2. Lihat nama class-nya, update konstanta yang sesuai di `selectors.py`.
+2. Lihat nama class-nya, update konstanta yang sesuai di `shopee_selectors.py`.
 3. Field yang tidak pakai CSS class (jumlah terjual, jumlah penilaian,
    dikirim dari) dicari lewat teks di sekitarnya, jadi biasanya lebih tahan
    terhadap perubahan tampilan -- tapi kalau labelnya sendiri berubah
    (misalnya "Terjual" jadi kata lain), update juga pattern regex terkait
-   di `selectors.py`.
+   di `shopee_selectors.py`.
 
 ## Setelah scraping selesai
 

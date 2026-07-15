@@ -18,8 +18,11 @@ import logging
 import random
 import re
 import sys
+import threading
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable, Optional
 
 import undetected_chromedriver as uc
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException
@@ -27,7 +30,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-import selectors as sel
+import shopee_selectors as sel
 from parsers import parse_count, parse_price, parse_rating
 
 OUTPUT_HEADERS = [
@@ -312,6 +315,112 @@ def build_output_row(csv_row: dict, scraped: dict) -> dict:
     }
 
 
+@dataclass
+class ScrapeControl:
+    """Lets an external caller (e.g. a Flask route) pause/stop a scrape loop
+    that's running in a background thread. `paused` follows threading.Event
+    convention inverted for readability: set() = running, clear() = paused."""
+    _running: threading.Event = field(default_factory=threading.Event)
+    _stop: threading.Event = field(default_factory=threading.Event)
+
+    def __post_init__(self):
+        self._running.set()  # not paused by default
+
+    def pause(self) -> None:
+        self._running.clear()
+
+    def resume(self) -> None:
+        self._running.set()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._running.set()  # wake up if currently paused, so it can see stopped and exit
+
+    @property
+    def stopped(self) -> bool:
+        return self._stop.is_set()
+
+    @property
+    def paused(self) -> bool:
+        return not self._running.is_set()
+
+    def wait_if_paused(self) -> None:
+        """Blocks here while paused; returns immediately once resumed or stopped."""
+        self._running.wait()
+
+    def interruptible_sleep(self, seconds: float) -> None:
+        """Sleeps in 1s ticks, checking pause/stop each tick, so Pause/Stop
+        react within ~1s instead of waiting out a full 25-32s delay."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if self.stopped:
+                return
+            self.wait_if_paused()
+            if self.stopped:
+                return
+            time.sleep(min(1.0, deadline - time.monotonic()))
+
+
+def run_scrape_loop(
+    driver,
+    rows: list[dict],
+    link_column: str,
+    on_result: Callable[[dict, dict], None],
+    control: Optional[ScrapeControl] = None,
+    progress_cb: Optional[Callable[[int, int, str, bool], None]] = None,
+) -> tuple[int, int]:
+    """Scrapes each row's `link_column` URL and calls on_result(csv_row,
+    scraped) for every success. Shared by the CLI (writes CSV rows) and the
+    local control panel (POSTs straight to the site's API).
+
+    progress_cb(index, total, message, ok) is called after every row
+    (success or failure) so a caller can report live progress.
+    """
+    control = control or ScrapeControl()
+    success, failed = 0, 0
+
+    for i, row in enumerate(rows, start=1):
+        if control.stopped:
+            log.info("Dihentikan oleh pengguna pada baris %d/%d.", i, len(rows))
+            break
+
+        control.wait_if_paused()
+        if control.stopped:
+            break
+
+        product_id = row.get("ID Produk", "").strip()
+        product_url = row.get(link_column, "").strip()
+        if not product_url:
+            log.warning("[%d/%d] Lewati ID %s: kolom '%s' kosong", i, len(rows), product_id, link_column)
+            if progress_cb:
+                progress_cb(i, len(rows), f"Lewati ID {product_id}: link kosong", False)
+            continue
+
+        try:
+            log.info("[%d/%d] Scraping ID %s -> %s", i, len(rows), product_id, product_url)
+            scraped = scrape_product(driver, product_url, product_id)
+            on_result(row, scraped)
+            success += 1
+            msg = f"OK: {scraped.get('product_name')} | Rp{scraped.get('price')} | {scraped.get('category')} > {scraped.get('subcategory')} > {scraped.get('item')}"
+            log.info("  %s", msg)
+            if progress_cb:
+                progress_cb(i, len(rows), msg, True)
+        except (TimeoutException, WebDriverException) as e:
+            failed += 1
+            log.error("  GAGAL ID %s: %s", product_id, e)
+            if progress_cb:
+                progress_cb(i, len(rows), f"GAGAL ID {product_id}: {e}", False)
+        except Exception as e:  # noqa: BLE001 - keep the batch running no matter what
+            failed += 1
+            log.error("  GAGAL ID %s (unexpected): %s", product_id, e)
+            if progress_cb:
+                progress_cb(i, len(rows), f"GAGAL ID {product_id}: {e}", False)
+
+        control.interruptible_sleep(random.uniform(MIN_DELAY_SECONDS, MAX_DELAY_SECONDS))
+
+    return success, failed
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input_csv", type=Path)
@@ -331,35 +440,13 @@ def main() -> None:
         return
 
     driver = build_driver()
-    success, failed = 0, 0
+
+    def on_result(csv_row: dict, scraped: dict) -> None:
+        append_output_row(args.output_csv, build_output_row(csv_row, scraped))
 
     try:
         wait_for_manual_login(driver)
-
-        for i, row in enumerate(todo, start=1):
-            product_id = row.get("ID Produk", "").strip()
-            product_url = row.get("Link Produk", "").strip()
-            if not product_url:
-                log.warning("[%d/%d] Lewati ID %s: kolom 'Link Produk' kosong", i, len(todo), product_id)
-                continue
-
-            try:
-                log.info("[%d/%d] Scraping ID %s -> %s", i, len(todo), product_id, product_url)
-                scraped = scrape_product(driver, product_url, product_id)
-                output_row = build_output_row(row, scraped)
-                append_output_row(args.output_csv, output_row)
-                success += 1
-                log.info("  OK: %s | Rp%s | %s > %s > %s",
-                          output_row["product_name"], output_row["price"],
-                          output_row["category"], output_row["subcategory"], output_row["item"])
-            except (TimeoutException, WebDriverException) as e:
-                failed += 1
-                log.error("  GAGAL ID %s: %s", product_id, e)
-            except Exception as e:  # noqa: BLE001 - keep the batch running no matter what
-                failed += 1
-                log.error("  GAGAL ID %s (unexpected): %s", product_id, e)
-
-            time.sleep(random.uniform(MIN_DELAY_SECONDS, MAX_DELAY_SECONDS))
+        success, failed = run_scrape_loop(driver, todo, "Link Produk", on_result)
     finally:
         driver.quit()
 
