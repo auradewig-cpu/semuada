@@ -108,7 +108,7 @@ def build_driver() -> uc.Chrome:
     # retried up to 3 times -- so one slow command (e.g. reading .text off a
     # huge/animating page) can block for 6+ minutes before finally raising.
     # Cut that down so a stuck command fails fast instead.
-    driver.command_executor.set_timeout(20)
+    driver.command_executor.set_timeout(45)
     return driver
 
 
@@ -279,7 +279,13 @@ def scrape_product(driver, product_url: str, product_id: str = "") -> dict:
     time.sleep(3)
     human_scroll(driver)
 
-    body_text = driver.find_element(By.TAG_NAME, "body").text
+    # WebElement.text (via find_element(...).text) is notoriously slow on
+    # large/complex pages -- Selenium has to walk every node checking
+    # visibility. Shopee product pages are huge (related products, reviews,
+    # ads), which is what was timing out every single row. Reading
+    # document.body.innerText via JS runs natively in the browser and is
+    # dramatically faster for the exact same text content.
+    body_text = driver.execute_script("return document.body.innerText;")
 
     category, subcategory, item, scraped_title = scrape_breadcrumb(driver)
     price = scrape_price(driver, body_text)
