@@ -20,6 +20,25 @@ interface CallResult {
 
 const TIMEOUT_MS = 60_000;
 
+// Circuit breaker: after a provider fails, skip it for a cooldown window
+// instead of retrying it fresh on every request (wastes a full timeout on a
+// provider that's currently down/misconfigured). Module-level state persists
+// for the lifetime of a warm serverless instance (Fluid Compute reuses
+// instances across requests) -- best-effort, not guaranteed across cold
+// starts, same tradeoff ViralFrame Studio's imageClient.ts circuit breaker
+// made for its own (browser-memory) provider fallback chain.
+const COOLDOWN_MS = 5 * 60_000;
+const providerCooldowns = new Map<AiProvider, number>();
+
+function isOnCooldown(provider: AiProvider): boolean {
+  const until = providerCooldowns.get(provider);
+  return until !== undefined && Date.now() < until;
+}
+
+function markCooldown(provider: AiProvider): void {
+  providerCooldowns.set(provider, Date.now() + COOLDOWN_MS);
+}
+
 function isPrivateBlobUrl(url: string): boolean {
   return url.includes(".private.blob.vercel-storage.com/");
 }
@@ -163,12 +182,22 @@ export async function generateWithFallback(
   images: ImageInput[]
 ): Promise<{ text: string; providerUsed: AiProvider }> {
   const errors: string[] = [];
+  // Don't let cooldowns lock out generation entirely -- if every provider in
+  // the order happens to be on cooldown, ignore cooldowns this once rather
+  // than fail with zero attempts.
+  const allOnCooldown = providerOrder.every((p) => isOnCooldown(p));
 
   for (const provider of providerOrder) {
+    if (!allOnCooldown && isOnCooldown(provider)) {
+      errors.push(`${provider}: dilewati sementara (cooldown setelah gagal baru-baru ini)`);
+      continue;
+    }
     try {
       const result = await callProvider(provider, keys, prompt, images);
+      providerCooldowns.delete(provider);
       return { text: result.text, providerUsed: provider };
     } catch (err) {
+      markCooldown(provider);
       errors.push(`${provider}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
