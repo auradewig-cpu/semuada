@@ -69,6 +69,8 @@ export const generateRequestSchema = z
     path: ["sceneDurations"],
   });
 
+export type GenerateRequest = z.infer<typeof generateRequestSchema>;
+
 export const regenerateSceneRequestSchema = z.object({
   productId: z.string().min(1),
   characterId: z.string().nullable().default(null),

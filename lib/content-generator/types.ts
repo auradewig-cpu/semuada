@@ -74,19 +74,8 @@ export interface GenerationResult {
   hashtags: string[];
 }
 
-export interface GenerateRequest {
-  productId: string;
-  selectedImageUrls: string[];
-  characterId: string | null;
-  style: ContentStyleId;
-  aiTool: AiToolId;
-  platform: PlatformTarget;
-  aspectRatio: AspectRatio;
-  hookArchetype: HookArchetype;
-  contentGoal: ContentGoal;
-  ctaType: CtaTypeId;
-  sceneDurations: number[];
-  includePrice: boolean;
-  narrationMode: NarrationMode;
-  cameraPattern: CameraPattern;
-}
+// GenerateRequest is derived from generateRequestSchema (validation.ts) via
+// z.infer, not hand-duplicated here -- a hand-written copy previously existed
+// and was never actually used for type-checking anywhere, so it silently
+// risked drifting from the real request shape enforced at the API boundary.
+export type { GenerateRequest } from "./validation";
