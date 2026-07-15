@@ -11,6 +11,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { useSettings, useUpdateSettings } from "@/hooks/useSettings"; // Assuming BarChart3 is not used elsewhere
 import { useToast } from "@/hooks/use-toast";
 import { Facebook, MonitorSmartphone, Folder } from 'lucide-react';
+import { AiProviderSettings } from "@/components/admin/AiProviderSettings";
 
 const settingsFormSchema = z.object({
   show_category_filter: z.boolean(),
@@ -56,6 +57,7 @@ export function SettingsTab() {
   };
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader>
         <CardTitle>Tracking Settings</CardTitle>
@@ -138,5 +140,7 @@ export function SettingsTab() {
         )}
       </CardContent>
     </Card>
+    <AiProviderSettings />
+    </div>
   );
 }

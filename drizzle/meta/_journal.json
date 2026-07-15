@@ -43,6 +43,13 @@
       "when": 1784109264438,
       "tag": "0005_misty_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784128333442,
+      "tag": "0006_unusual_nightmare",
+      "breakpoints": true
     }
   ]
 }

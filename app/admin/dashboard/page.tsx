@@ -9,6 +9,7 @@ import { ProductManagementTab } from "@/components/admin/ProductManagementTab";
 import { FeaturedManagementTab } from "@/components/admin/FeaturedManagementTab";
 import { SettingsTab } from "@/components/admin/SettingsTab";
 import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
+import { ContentGeneratorTab } from "@/components/admin/ContentGeneratorTab";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 export default function AdminDashboard() {
@@ -44,9 +45,10 @@ export default function AdminDashboard() {
 
         <main className="container mx-auto px-4 py-8">
           <Tabs defaultValue="products" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="products">Products</TabsTrigger>
               <TabsTrigger value="featured">Featured</TabsTrigger>
+              <TabsTrigger value="content-generator">Content Generator</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
@@ -60,6 +62,12 @@ export default function AdminDashboard() {
             <TabsContent value="featured">
               <ErrorBoundary>
                 <FeaturedManagementTab />
+              </ErrorBoundary>
+            </TabsContent>
+
+            <TabsContent value="content-generator">
+              <ErrorBoundary>
+                <ContentGeneratorTab />
               </ErrorBoundary>
             </TabsContent>
 

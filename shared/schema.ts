@@ -49,6 +49,34 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
 });
 
+export const characters = pgTable("characters", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  photoUrl: text("photo_url").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const aiSettings = pgTable("ai_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  geminiApiKey: text("gemini_api_key"),
+  geminiModel: text("gemini_model").default("gemini-2.5-flash"),
+  groqApiKey: text("groq_api_key"),
+  openrouterApiKey: text("openrouter_api_key"),
+  deepseekApiKey: text("deepseek_api_key"),
+  providerOrder: text("provider_order").array().default(sql`ARRAY['gemini','groq','openrouter','deepseek']`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+export const contentGenerations = pgTable("content_generations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  productId: text("product_id").notNull(),
+  characterId: uuid("character_id"),
+  style: text("style").notNull(),
+  output: text("output").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
 export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
   createdAt: true,
@@ -69,6 +97,21 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
 });
 
+export const insertCharacterSchema = createInsertSchema(characters).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAiSettingsSchema = createInsertSchema(aiSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const insertContentGenerationSchema = createInsertSchema(contentGenerations).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type ProductAnalytics = typeof productAnalytics.$inferSelect;
@@ -77,3 +120,9 @@ export type Settings = typeof settings.$inferSelect;
 export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type Character = typeof characters.$inferSelect;
+export type InsertCharacter = z.infer<typeof insertCharacterSchema>;
+export type AiSettings = typeof aiSettings.$inferSelect;
+export type InsertAiSettings = z.infer<typeof insertAiSettingsSchema>;
+export type ContentGeneration = typeof contentGenerations.$inferSelect;
+export type InsertContentGeneration = z.infer<typeof insertContentGenerationSchema>;
