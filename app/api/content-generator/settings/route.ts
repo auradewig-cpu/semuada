@@ -20,6 +20,7 @@ export async function GET() {
     id: AI_SETTINGS_ID,
     gemini_model: "gemini-flash-latest",
     provider_order: ["gemini", "groq", "openrouter", "deepseek"],
+    narration_wpm: 180,
     updated_at: null,
     has_gemini_key: false,
     has_groq_key: false,
@@ -46,6 +47,7 @@ export async function PUT(request: NextRequest) {
     openrouterApiKey: body.openrouter_api_key || existing?.openrouterApiKey,
     deepseekApiKey: body.deepseek_api_key || existing?.deepseekApiKey,
     providerOrder: Array.isArray(body.provider_order) ? body.provider_order : existing?.providerOrder,
+    narrationWpm: typeof body.narration_wpm === "number" ? body.narration_wpm : existing?.narrationWpm ?? 180,
     updatedAt: new Date(),
   };
 

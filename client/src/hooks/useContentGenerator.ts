@@ -9,6 +9,34 @@ export interface Character {
   createdAt: string;
 }
 
+export type ContentStyleId =
+  | 'direct_response'
+  | 'vlog_daily'
+  | 'tutorial_howto'
+  | 'storytime'
+  | 'listicle_countdown'
+  | 'before_after'
+  | 'pattern_break_twist'
+  | 'series_episodic';
+
+export type AiToolId = 'google_flow' | 'veo3' | 'kling_ai' | 'runway_gen4' | 'luma_dream' | 'pika_labs' | 'sora';
+export type PlatformTarget = 'shopee_video' | 'instagram_reels' | 'facebook_reels' | 'youtube_shorts';
+export type AspectRatio = '9:16' | '16:9' | '1:1' | '4:5' | '3:4';
+export type HookArchetype = 'unpopular_opinion' | 'pov_realism' | 'specific_outcome' | 'curiosity_gap' | 'relatable' | 'emotional';
+export type ContentGoal = 'conversion' | 'growth' | 'engagement';
+export type CtaTypeId =
+  | 'link_bio'
+  | 'dm_whatsapp'
+  | 'comment_keyword'
+  | 'follow_more'
+  | 'share_tag_friend'
+  | 'visit_website'
+  | 'limited_urgency'
+  | 'save_for_later'
+  | 'klik_keranjang_kuning';
+
+export const GROWTH_ALLOWED_CTAS: CtaTypeId[] = ['follow_more', 'save_for_later', 'share_tag_friend', 'comment_keyword'];
+
 export interface SceneOutput {
   scene_number: number;
   duration_seconds: number;
@@ -24,12 +52,27 @@ export interface SceneOutput {
     product_filename: string;
   };
   ai_ready_prompt: string;
+  transition_to_next: string;
 }
 
 export interface GenerationResult {
   scenes: SceneOutput[];
   caption: string;
   hashtags: string[];
+}
+
+export interface GenerateContentInput {
+  productId: string;
+  selectedImageUrls: string[];
+  characterId: string | null;
+  style: ContentStyleId;
+  aiTool: AiToolId;
+  platform: PlatformTarget;
+  aspectRatio: AspectRatio;
+  hookArchetype: HookArchetype;
+  contentGoal: ContentGoal;
+  ctaType: CtaTypeId;
+  sceneDurations: number[];
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -83,14 +126,58 @@ export function useDeleteCharacter() {
 
 export function useGenerateContent() {
   return useMutation({
-    mutationFn: async (input: {
-      productId: string;
-      selectedImageUrls: string[];
-      characterId: string | null;
-      style: 'vlog' | 'content_creator' | 'faceless_pov';
-    }) => {
+    mutationFn: async (input: GenerateContentInput) => {
       const res = await apiRequest('POST', '/api/content-generator/generate', input);
       return res.json() as Promise<{ result: GenerationResult; warnings: string[] }>;
+    },
+  });
+}
+
+export interface RegenerateSceneInput {
+  productId: string;
+  characterId: string | null;
+  style: ContentStyleId;
+  aiTool: AiToolId;
+  platform: PlatformTarget;
+  aspectRatio: AspectRatio;
+  hookArchetype: HookArchetype;
+  contentGoal: ContentGoal;
+  ctaType: CtaTypeId;
+  sceneIndex: number;
+  sceneDuration: number;
+  totalScenes: number;
+  productImageUrl: string;
+  previousScene: SceneOutput | null;
+  nextScene: SceneOutput | null;
+}
+
+export function useRegenerateScene() {
+  return useMutation({
+    mutationFn: async (input: RegenerateSceneInput) => {
+      const res = await apiRequest('POST', '/api/content-generator/regenerate-scene', input);
+      return res.json() as Promise<{ scene: SceneOutput; warnings: string[] }>;
+    },
+  });
+}
+
+export interface HookVariantsInput {
+  productId: string;
+  characterId: string | null;
+  style: ContentStyleId;
+  aiTool: AiToolId;
+  platform: PlatformTarget;
+  aspectRatio: AspectRatio;
+  currentArchetype: HookArchetype;
+  sceneDuration: number;
+  productImageUrl: string;
+  currentScene: SceneOutput;
+}
+
+export function useHookVariants() {
+  return useMutation({
+    mutationFn: async (input: HookVariantsInput) => {
+      const res = await apiRequest('POST', '/api/content-generator/hook-variants', input);
+      return res.json() as Promise<{ variants: SceneOutput[] }>;
     },
   });
 }

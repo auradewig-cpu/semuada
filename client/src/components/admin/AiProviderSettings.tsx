@@ -17,6 +17,7 @@ const aiSettingsFormSchema = z.object({
   groq_api_key: z.string().optional(),
   openrouter_api_key: z.string().optional(),
   deepseek_api_key: z.string().optional(),
+  narration_wpm: z.coerce.number().min(60).max(400),
 });
 
 type AiSettingsFormValues = z.infer<typeof aiSettingsFormSchema>;
@@ -43,7 +44,7 @@ export function AiProviderSettings() {
 
   const form = useForm<AiSettingsFormValues>({
     resolver: zodResolver(aiSettingsFormSchema),
-    defaultValues: { gemini_api_key: '', gemini_model: 'gemini-flash-latest', groq_api_key: '', openrouter_api_key: '', deepseek_api_key: '' },
+    defaultValues: { gemini_api_key: '', gemini_model: 'gemini-flash-latest', groq_api_key: '', openrouter_api_key: '', deepseek_api_key: '', narration_wpm: 180 },
   });
 
   useEffect(() => {
@@ -54,6 +55,7 @@ export function AiProviderSettings() {
         groq_api_key: '',
         openrouter_api_key: '',
         deepseek_api_key: '',
+        narration_wpm: aiSettings.narration_wpm || 180,
       });
     }
   }, [aiSettings, form]);
@@ -122,6 +124,20 @@ export function AiProviderSettings() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="narration_wpm"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Kecepatan Narasi (WPM)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={60} max={400} {...field} />
+                    </FormControl>
+                    <FormDescription>Target kata per menit untuk narasi -- default 180 (cepat tapi jelas untuk Bahasa Indonesia).</FormDescription>
                   </FormItem>
                 )}
               />

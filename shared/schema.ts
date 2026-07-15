@@ -65,6 +65,7 @@ export const aiSettings = pgTable("ai_settings", {
   openrouterApiKey: text("openrouter_api_key"),
   deepseekApiKey: text("deepseek_api_key"),
   providerOrder: text("provider_order").array().default(sql`ARRAY['gemini','groq','openrouter','deepseek']`),
+  narrationWpm: integer("narration_wpm").default(180),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 

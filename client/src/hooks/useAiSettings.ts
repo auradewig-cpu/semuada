@@ -5,6 +5,7 @@ export interface AiSettings {
   id: string;
   gemini_model: string;
   provider_order: string[];
+  narration_wpm: number;
   updated_at: string | null;
   has_gemini_key: boolean;
   has_groq_key: boolean;
@@ -19,6 +20,7 @@ export interface AiSettingsUpdate {
   openrouter_api_key?: string;
   deepseek_api_key?: string;
   provider_order?: string[];
+  narration_wpm?: number;
 }
 
 export function useAiSettings() {

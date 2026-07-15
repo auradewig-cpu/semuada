@@ -1,4 +1,5 @@
-import type { GenerationResult, SceneOutput } from "./types";
+import { getAiToolSpec } from "./aiTools";
+import type { AiToolId, GenerationResult, SceneOutput } from "./types";
 
 export function parseAiResponse(rawText: string): GenerationResult | null {
   const direct = tryParse(rawText);
@@ -23,15 +24,23 @@ function tryParse(text: string): GenerationResult | null {
   }
 }
 
-function countWords(text: string): number {
+export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export function validateOutput(result: GenerationResult, expectedSceneCount: number): string[] {
-  const problems: string[] = [];
+export interface ValidationContext {
+  sceneDurations: number[];
+  aiTool: AiToolId;
+  characterName: string | null;
+}
 
-  if (result.scenes.length !== expectedSceneCount) {
-    problems.push(`Jumlah scene harus tepat ${expectedSceneCount}, AI mengembalikan ${result.scenes.length}.`);
+export function validateOutput(result: GenerationResult, context: ValidationContext): string[] {
+  const problems: string[] = [];
+  const { sceneDurations, aiTool, characterName } = context;
+  const charLimit = getAiToolSpec(aiTool).charLimit;
+
+  if (result.scenes.length !== sceneDurations.length) {
+    problems.push(`Jumlah scene harus tepat ${sceneDurations.length}, AI mengembalikan ${result.scenes.length}.`);
   }
 
   result.scenes.forEach((scene: SceneOutput, index: number) => {
@@ -43,6 +52,25 @@ export function validateOutput(result: GenerationResult, expectedSceneCount: num
     }
     if (!scene.ai_ready_prompt) {
       problems.push(`Scene ${index + 1}: ai_ready_prompt kosong.`);
+    } else if (scene.ai_ready_prompt.length > charLimit) {
+      problems.push(`Scene ${index + 1}: ai_ready_prompt ${scene.ai_ready_prompt.length} karakter, melebihi batas ${charLimit} untuk tool ini -- persingkat.`);
+    }
+
+    const expectedDuration = sceneDurations[index];
+    if (expectedDuration !== undefined && scene.duration_seconds !== expectedDuration) {
+      problems.push(`Scene ${index + 1}: duration_seconds harus tepat ${expectedDuration}, AI mengembalikan ${scene.duration_seconds}.`);
+    }
+
+    if (index === 0 && scene.script_narration) {
+      const hasDigit = /\d/.test(scene.script_narration);
+      const isDetailedEnough = actualWordCount >= 5;
+      if (!hasDigit && !isDetailedEnough) {
+        problems.push(`Scene 1: hook terasa generik (tidak ada angka/detail spesifik) -- perkuat dengan detail konkret.`);
+      }
+    }
+
+    if (characterName && scene.ai_ready_prompt && !scene.ai_ready_prompt.toLowerCase().includes(characterName.toLowerCase())) {
+      problems.push(`Scene ${index + 1}: ai_ready_prompt tidak menyebut nama karakter "${characterName}" -- foto referensi karakter berisiko diabaikan AI video tool.`);
     }
   });
 
@@ -68,4 +96,75 @@ ${JSON.stringify(result)}
 
 Perbaiki HANYA bagian yang bermasalah di atas, pertahankan bagian lain yang sudah benar. Balas HANYA dengan JSON valid berstruktur sama seperti sebelumnya, tanpa teks lain.
 `.trim();
+}
+
+function trySceneParse(text: string): SceneOutput | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed.scene_number === "number" && typeof parsed.script_narration === "string") {
+      return parsed as SceneOutput;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseSceneResponse(rawText: string): SceneOutput | null {
+  const direct = trySceneParse(rawText);
+  if (direct) return direct;
+
+  const firstBrace = rawText.indexOf("{");
+  const lastBrace = rawText.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
+
+  return trySceneParse(rawText.slice(firstBrace, lastBrace + 1));
+}
+
+export function validateScene(scene: SceneOutput, expectedDuration: number, aiTool: AiToolId, characterName: string | null): string[] {
+  const problems: string[] = [];
+  const charLimit = getAiToolSpec(aiTool).charLimit;
+
+  const actualWordCount = countWords(scene.script_narration || "");
+  scene.script_word_count = actualWordCount;
+
+  if (!scene.script_narration || actualWordCount === 0) problems.push("Narasi kosong.");
+  if (!scene.ai_ready_prompt) {
+    problems.push("ai_ready_prompt kosong.");
+  } else if (scene.ai_ready_prompt.length > charLimit) {
+    problems.push(`ai_ready_prompt ${scene.ai_ready_prompt.length} karakter, melebihi batas ${charLimit} -- persingkat.`);
+  }
+  if (scene.duration_seconds !== expectedDuration) {
+    problems.push(`duration_seconds harus tepat ${expectedDuration}, dapat ${scene.duration_seconds}.`);
+  }
+  if (characterName && scene.ai_ready_prompt && !scene.ai_ready_prompt.toLowerCase().includes(characterName.toLowerCase())) {
+    problems.push(`ai_ready_prompt tidak menyebut nama karakter "${characterName}".`);
+  }
+
+  return problems;
+}
+
+interface HookVariantsResult {
+  variants: SceneOutput[];
+}
+
+function tryVariantsParse(text: string): HookVariantsResult | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && Array.isArray(parsed.variants)) return parsed as HookVariantsResult;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseHookVariantsResponse(rawText: string): HookVariantsResult | null {
+  const direct = tryVariantsParse(rawText);
+  if (direct) return direct;
+
+  const firstBrace = rawText.indexOf("{");
+  const lastBrace = rawText.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
+
+  return tryVariantsParse(rawText.slice(firstBrace, lastBrace + 1));
 }

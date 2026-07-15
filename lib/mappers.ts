@@ -45,6 +45,7 @@ export function toApiAiSettings(row: DbAiSettings) {
     id: row.id,
     gemini_model: row.geminiModel,
     provider_order: row.providerOrder,
+    narration_wpm: row.narrationWpm,
     updated_at: row.updatedAt,
     has_gemini_key: Boolean(row.geminiApiKey),
     has_groq_key: Boolean(row.groqApiKey),
