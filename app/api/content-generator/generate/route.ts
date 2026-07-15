@@ -6,8 +6,10 @@ import { products, characters, aiSettings, contentGenerations } from "@shared/sc
 import { requireAuth } from "@root/lib/apiAuth";
 import { compileMasterPrompt } from "@root/lib/content-generator/masterPrompt";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
-import { parseAiResponse, validateOutput, buildRepairPrompt } from "@root/lib/content-generator/jsonParser";
+import { parseAiResponse, parseSceneResponse, validateOutput, buildRepairPrompt } from "@root/lib/content-generator/jsonParser";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
+import { buildSceneRephrasePrompt, buildCaptionRephrasePrompt } from "@root/lib/content-generator/autoRephrase";
+import type { PolicyViolation } from "@root/lib/content-generator/policyCheck";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
 import type {
   AiProvider,
@@ -24,6 +26,53 @@ import type {
 } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
+
+// Targeted fix for policy violations: rewrite only the flagged scene/caption
+// instead of resending the whole result (cheaper, less drift risk than the
+// structural repair loop above). Best-effort -- if a rephrase attempt fails
+// or doesn't parse, the scene/caption is left as-is and the violation stays
+// in the warnings for the user to see.
+async function applyTargetedRephrase(
+  result: GenerationResult,
+  violations: PolicyViolation[],
+  providerOrder: AiProvider[],
+  keys: Parameters<typeof generateWithFallback>[1]
+): Promise<void> {
+  const violationsByScene = new Map<number, PolicyViolation[]>();
+  const captionViolations: PolicyViolation[] = [];
+  for (const v of violations) {
+    if (v.sceneNumber === null) {
+      captionViolations.push(v);
+    } else {
+      if (!violationsByScene.has(v.sceneNumber)) violationsByScene.set(v.sceneNumber, []);
+      violationsByScene.get(v.sceneNumber)!.push(v);
+    }
+  }
+
+  for (const [sceneNumber, sceneViolations] of violationsByScene) {
+    const sceneIndex = result.scenes.findIndex((s) => s.scene_number === sceneNumber);
+    if (sceneIndex === -1) continue;
+    try {
+      const rephrasePrompt = buildSceneRephrasePrompt(result.scenes[sceneIndex], sceneViolations);
+      const response = await generateWithFallback(providerOrder, keys, rephrasePrompt, []);
+      const rephrased = parseSceneResponse(response.text);
+      if (rephrased) result.scenes[sceneIndex] = rephrased;
+    } catch {
+      // leave scene as-is, violation stays in warnings
+    }
+  }
+
+  if (captionViolations.length > 0) {
+    try {
+      const rephrasePrompt = buildCaptionRephrasePrompt(result.caption, captionViolations);
+      const response = await generateWithFallback(providerOrder, keys, rephrasePrompt, []);
+      const newCaption = response.text.trim().replace(/^["']|["']$/g, "");
+      if (newCaption) result.caption = newCaption;
+    } catch {
+      // leave caption as-is
+    }
+  }
+}
 
 function applyReferenceImages(result: GenerationResult, selectedImageUrls: string[], characterPhotoUrl: string | null) {
   const characterDisplayUrl = characterPhotoUrl ? toCharacterPhotoProxyUrl(characterPhotoUrl) : null;
@@ -146,9 +195,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let policyViolations = checkPolicyCompliance(result, contentGoal);
+    if (policyViolations.length > 0) {
+      await applyTargetedRephrase(result, policyViolations, providerOrder, keys);
+      policyViolations = checkPolicyCompliance(result, contentGoal);
+    }
+
+    // Stamp reference image URLs/filenames deterministically last, so it's
+    // correct regardless of whether the rephrase step touched that field.
     applyReferenceImages(result, selectedImageUrls, character?.photoUrl ?? null);
 
-    const policyViolations = checkPolicyCompliance(result, contentGoal);
     const warnings = [...problems, ...formatPolicyViolations(policyViolations)];
 
     await db.insert(contentGenerations).values({
