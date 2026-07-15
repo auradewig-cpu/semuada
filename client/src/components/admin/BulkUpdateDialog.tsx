@@ -226,9 +226,9 @@ export function BulkUpdateDialog({ isOpen, onOpenChange, onSubmit }: BulkUpdateD
               name="commission"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Commission (%)</FormLabel>
+                  <FormLabel>Commission (Rp)</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="New Commission Percentage" {...field} />
+                    <Input type="number" placeholder="New Commission Amount" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

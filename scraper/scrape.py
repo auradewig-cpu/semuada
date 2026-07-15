@@ -48,6 +48,10 @@ PAGE_LOAD_TIMEOUT = 20
 # bot-detection sees a browsing pace rather than a scraping pace.
 MIN_DELAY_SECONDS = 25
 MAX_DELAY_SECONDS = 32
+# Circuit breaker: abort the run early if this many rows in a row fail --
+# almost always means Shopee is blocking the session or the admin login
+# expired, so grinding through the rest of the CSV would just waste an hour.
+MAX_CONSECUTIVE_FAILURES = 8
 
 logging.basicConfig(
     level=logging.INFO,
@@ -411,6 +415,7 @@ def run_scrape_loop(
     """
     control = control or ScrapeControl()
     success, failed = 0, 0
+    consecutive_failures = 0
 
     for i, row in enumerate(rows, start=1):
         if control.stopped:
@@ -434,20 +439,35 @@ def run_scrape_loop(
             scraped = scrape_product(driver, product_url, product_id)
             on_result(row, scraped)
             success += 1
+            consecutive_failures = 0
             msg = f"OK: {scraped.get('product_name')} | Rp{scraped.get('price')} | {scraped.get('category')} > {scraped.get('subcategory')} > {scraped.get('item')}"
             log.info("  %s", msg)
             if progress_cb:
                 progress_cb(i, len(rows), msg, True)
         except (TimeoutException, WebDriverException) as e:
             failed += 1
+            consecutive_failures += 1
             log.error("  GAGAL ID %s: %s", product_id, e)
             if progress_cb:
                 progress_cb(i, len(rows), f"GAGAL ID {product_id}: {e}", False)
         except Exception as e:  # noqa: BLE001 - keep the batch running no matter what
             failed += 1
+            consecutive_failures += 1
             log.error("  GAGAL ID %s (unexpected): %s", product_id, e)
             if progress_cb:
                 progress_cb(i, len(rows), f"GAGAL ID {product_id}: {e}", False)
+
+        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            reason = (
+                f"Berhenti otomatis: {consecutive_failures} produk gagal berturut-turut -- "
+                f"kemungkinan Shopee memblokir/membatasi sesi ini, atau sesi admin/login sudah tidak valid. "
+                f"Cek koneksi/login lalu coba lagi (produk yang sudah berhasil tidak akan diulang)."
+            )
+            log.error(reason)
+            if progress_cb:
+                progress_cb(i, len(rows), reason, False)
+            control.stop()
+            break
 
         control.interruptible_sleep(random.uniform(MIN_DELAY_SECONDS, MAX_DELAY_SECONDS))
 

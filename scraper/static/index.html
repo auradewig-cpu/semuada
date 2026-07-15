@@ -65,7 +65,9 @@
     <button id="btn-start" disabled>Mulai Scrape</button>
     <button id="btn-pause" class="secondary" disabled>Pause</button>
     <button id="btn-stop" class="danger" disabled>Stop</button>
+    <button id="btn-close-browser" class="danger" disabled>Tutup Browser</button>
   </div>
+  <p class="hint">Selesai scraping untuk hari ini? Klik <strong>Tutup Browser</strong> supaya Chrome tidak menumpuk di komputer kamu.</p>
 
   <p style="margin-top:1rem">Status: <span id="status-badge">idle</span></p>
   <div id="progress-bar-outer"><div id="progress-bar-inner"></div></div>
@@ -107,12 +109,28 @@ $('btn-prepare').addEventListener('click', async () => {
     await api('/api/prepare-browser', { method: 'POST' });
     browserReady = true;
     $('btn-prepare').textContent = 'Browser Siap ✓';
+    $('btn-close-browser').disabled = false;
     logLine('Browser terbuka -- silakan login ke Shopee di jendela Chrome, lalu klik Mulai Scrape.', 'ok');
     updateStartButton();
   } catch (e) {
     $('btn-prepare').disabled = false;
     $('btn-prepare').textContent = 'Siapkan Browser';
     logLine('Gagal membuka browser: ' + e.message, 'err');
+  }
+});
+
+$('btn-close-browser').addEventListener('click', async () => {
+  if (!confirm('Tutup browser Chrome sekarang?')) return;
+  try {
+    await api('/api/close-browser', { method: 'POST' });
+    browserReady = false;
+    $('btn-prepare').disabled = false;
+    $('btn-prepare').textContent = 'Siapkan Browser';
+    $('btn-close-browser').disabled = true;
+    $('btn-start').disabled = true;
+    logLine('Browser ditutup.', 'ok');
+  } catch (e) {
+    logLine('Gagal menutup browser: ' + e.message, 'err');
   }
 });
 
@@ -157,16 +175,20 @@ $('btn-start').addEventListener('click', async () => {
     return;
   }
 
+  // Disable immediately (not after the request resolves) so a fast
+  // double-click can't fire two overlapping start-scrape requests.
+  $('btn-start').disabled = true;
+
   try {
     await api('/api/start-scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ link_column, base_url, username, password }),
     });
-    $('btn-start').disabled = true;
     $('btn-pause').disabled = false;
     $('btn-stop').disabled = false;
   } catch (e) {
+    $('btn-start').disabled = false;
     logLine('Gagal mulai scraping: ' + e.message, 'err');
   }
 });

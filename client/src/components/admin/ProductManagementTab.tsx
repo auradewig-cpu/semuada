@@ -93,16 +93,6 @@ export function ProductManagementTab() {
   const endIndex = startIndex + itemsPerPage;
   const products = allProducts.slice(startIndex, endIndex);
 
-  // Debug logging to check total products
-  console.log('Total products in database:', products.length);
-  console.log('First 5 products:', products.slice(0, 5).map(p => ({ id: p.id, name: p.product_name, productId: p.product_id })));
-
-  // Check if we have all 1131 products
-  if (products.length > 0 && products.length < 1131) {
-    console.log('WARNING: Only', products.length, 'products loaded, expected 1131. The fix may not be working yet.');
-  } else if (products.length >= 1131) {
-    console.log('SUCCESS: All', products.length, 'products loaded successfully!');
-  }
   const addProduct = useAddProduct();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
@@ -473,8 +463,6 @@ export function ProductManagementTab() {
         let failedImports = 0;
 
         const importPromises = parsedData.map(async (item, index) => {
-           console.log(`[DEBUG] Row ${index + 2} - Processing product: ${item.product_name?.substring(0, 50)}...`);
-
           // Map CSV column names to database field names
           const mappedItem = {
             ...item,
@@ -508,15 +496,8 @@ export function ProductManagementTab() {
             }
           });
 
-          // console.log(`[DEBUG] Row ${index + 2} - Mapped data:`, mappedItem);
-
           // Use schema to validate and parse each row
           const validationResult = productFormSchema.safeParse(mappedItem);
-
-          console.log(`[DEBUG] Row ${index + 2} - Validation:`, validationResult.success ? 'SUCCESS' : 'FAILED');
-          if (!validationResult.success) {
-            console.log(`[DEBUG] Row ${index + 2} - Validation errors:`, validationResult.error.errors);
-          }
 
           if (validationResult.success) {
             // Ensure required fields are present and clean undefined values
@@ -548,36 +529,12 @@ export function ProductManagementTab() {
               ...(data.image_url_5 && { image_url_5: data.image_url_5 }),
             };
 
-            // Debug log untuk memverifikasi data yang dikirim
-            if (index < 2) { // Log hanya untuk 2 produk pertama
-              console.log(`[DEBUG] Row ${index + 2} - Clean data for Supabase:`, {
-                commission: cleanData.commission,
-                commission_type: typeof cleanData.commission,
-                item: cleanData.item,
-                video_url: cleanData.video_url?.substring(0, 50),
-                product_name: cleanData.product_name?.substring(0, 30)
-              });
-            }
-
             successfulImports++;
             try {
-              const result = await addProduct.mutateAsync(cleanData);
-              console.log(`[DEBUG] Row ${index + 2} - Insert result:`, result);
+              await addProduct.mutateAsync(cleanData);
               return { success: true };
             } catch (insertError: any) {
-              console.error(`[DEBUG] Row ${index + 2} - Insert failed:`, {
-                error: insertError,
-                message: insertError?.message,
-                details: insertError?.details,
-                hint: insertError?.hint,
-                code: insertError?.code
-              });
-
-              // Check if it's an RLS policy error
-              if (insertError?.message?.includes('policy') || insertError?.code === '42501') {
-                console.error(`[DEBUG] Row ${index + 2} - RLS Policy Error: User may not have admin role in profiles table`);
-              }
-
+              console.error(`Row ${index + 2} - Insert failed:`, insertError?.message || insertError);
               throw insertError; // Re-throw to be caught by Promise.allSettled
             }
           } else {

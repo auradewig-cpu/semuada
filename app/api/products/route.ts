@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
       rating: body.rating != null ? String(body.rating) : undefined,
       isFeatured: body.is_featured,
       featuredOrder: body.featured_order,
+      stockAvailable: body.stock_available,
     })
     .returning();
 

@@ -34,6 +34,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       rating: body.rating != null ? String(body.rating) : undefined,
       isFeatured: body.is_featured,
       featuredOrder: body.featured_order,
+      stockAvailable: body.stock_available,
     })
     .where(eq(products.id, id))
     .returning();

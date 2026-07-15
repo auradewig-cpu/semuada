@@ -177,9 +177,9 @@ export function ProductForm({ product, onSubmit, isSubmitting }: ProductFormProp
             name="commission"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Komisi (%)</FormLabel>
+                <FormLabel>Komisi (Rp)</FormLabel>
                 <FormControl>
-                  <Input type="number" placeholder="e.g. 5" {...field} />
+                  <Input type="number" placeholder="e.g. 15000" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

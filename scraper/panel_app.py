@@ -7,10 +7,13 @@ Usage:
     python panel_app.py
     (then open http://localhost:5000 in your browser)
 """
+import atexit
 import csv
 import io
 import logging
 import os
+import signal
+import sys
 import threading
 
 import requests
@@ -83,6 +86,41 @@ def prepare_browser():
     except Exception as e:  # noqa: BLE001
         log.exception("Gagal membuka browser")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _cleanup_driver() -> None:
+    """Closes the Chrome/chromedriver process tree if one is open. Registered
+    for normal process exit AND Ctrl+C/kill, since leaving Selenium sessions
+    open was leaking Chrome processes every time the panel was restarted."""
+    global _driver
+    if _driver is not None:
+        try:
+            _driver.quit()
+        except Exception:  # noqa: BLE001 - best-effort on shutdown
+            pass
+        _driver = None
+
+
+atexit.register(_cleanup_driver)
+
+
+def _handle_signal(signum, frame):  # noqa: ARG001
+    _cleanup_driver()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, _handle_signal)
+signal.signal(signal.SIGTERM, _handle_signal)
+
+
+@app.post("/api/close-browser")
+def close_browser():
+    if _state["status"] == "running":
+        return jsonify({"ok": False, "error": "Sedang scraping -- Stop dulu sebelum menutup browser."}), 400
+    _cleanup_driver()
+    _set_status("idle")
+    _push_log("Browser ditutup.")
+    return jsonify({"ok": True})
 
 
 @app.post("/api/upload-csv")
@@ -185,6 +223,14 @@ def start_scrape():
         return jsonify({"ok": False, "error": f"Kolom '{link_column}' tidak ada di CSV."}), 400
     if not base_url or not username or not password:
         return jsonify({"ok": False, "error": "Base URL, username, dan password wajib diisi."}), 400
+
+    # Atomically claim the "starting" state under the lock so two rapid
+    # clicks (or a slow double-submit) can't both pass this check and spawn
+    # two worker threads sharing the same Selenium session.
+    with _lock:
+        if _state["status"] in ("starting", "running", "paused"):
+            return jsonify({"ok": False, "error": "Scraping sudah berjalan -- tunggu selesai atau klik Stop dulu."}), 409
+        _state["status"] = "starting"
 
     _control = ScrapeControl()
     thread = threading.Thread(
