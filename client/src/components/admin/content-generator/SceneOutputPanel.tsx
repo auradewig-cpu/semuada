@@ -18,6 +18,7 @@ import {
   type NarrationMode,
   type CameraPattern,
 } from "@/hooks/useContentGenerator";
+import { ReferenceFrameGuide } from "@/components/admin/content-generator/ReferenceFrameGuide";
 
 export interface SceneGenerationContext {
   productId: string;
@@ -136,6 +137,8 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, af
 
   return (
     <div className="space-y-4">
+      <ReferenceFrameGuide aiTool={context.aiTool} />
+
       {warnings.length > 0 && (
         <Card className="border-amber-400">
           <CardHeader>

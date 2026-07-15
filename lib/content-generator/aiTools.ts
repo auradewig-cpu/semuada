@@ -23,7 +23,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     id: "veo3",
     label: "Google Veo 3",
     charLimit: 500,
-    supportsRef: false,
+    supportsRef: true,
     formatTemplate:
       "Mulai dengan CHARACTER ANCHOR (salin persis dari deskripsi karakter, jika ada). Format: '[Character anchor] -- [scene action]. [Camera movement]. [Environment, lighting]. [Mood]. [Xs, RATIO frame]' English only. Dialog WAJIB disisipkan sebagai kutipan literal: [Subjek] says, \"<script_narration verbatim>\" (no subtitles) -- konvensi resmi Veo3, model menyimpulkan bahasa ucapan dari isi kalimat dalam kutip, bukan label bahasa.",
   },
