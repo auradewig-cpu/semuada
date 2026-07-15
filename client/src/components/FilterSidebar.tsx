@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useRouter } from 'next/navigation';
 import { Tag, Folder, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,8 +25,11 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
   const { hierarchy, isLoading: isHierarchyLoading, categorySlugMap, subcategorySlugMap } = useCategoryContext();
   const { data: settings, isLoading: isLoadingSettings } = useSettings();
   const { data: pengirimanOptions, isLoading: isLoadingPengiriman } = usePengirimanOptions();
-  const { category: categorySlug, subcategory: subcategorySlug } = useParams<{ category: string; subcategory?: string }>();
-  const navigate = useNavigate();
+  const params = useParams<{ category?: string; subcategory?: string }>();
+  const categorySlug = params.category;
+  const subcategorySlug = params.subcategory;
+  const router = useRouter();
+  const navigate = (path: string) => router.push(path);
 
   // Get item options for the currently active subcategory
   const activeCategoryName = categorySlug ? categorySlugMap.get(categorySlug) : undefined;

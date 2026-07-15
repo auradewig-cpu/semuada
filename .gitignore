@@ -4,3 +4,17 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+.env
+.env.local
+.next/
+stats.html
+
+# Claude Code / tooling scaffolding, not part of the app
+.claude/
+.claude-flow/
+.mcp.json
+.local/
+CLAUDE.md
+
+# Stray duplicate project backup folder
+Daftar-Product-UPDATE HEADER BARU & PENGIRIMAN/

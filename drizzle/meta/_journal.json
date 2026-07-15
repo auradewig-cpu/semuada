@@ -29,6 +29,13 @@
       "when": 1763859963928,
       "tag": "0003_freezing_exodus",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784087401444,
+      "tag": "0004_sharp_jigsaw",
+      "breakpoints": true
     }
   ]
 }

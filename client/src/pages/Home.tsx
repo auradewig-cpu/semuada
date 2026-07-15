@@ -1,5 +1,7 @@
+"use client";
+
 import { useState, useEffect } from "react";
-import { Link, useParams } from "react-router-dom";
+import Link from "next/link";
 import { Search, Loader2 } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FeaturedCarousel } from '@/components/FeaturedCarousel';
@@ -11,7 +13,12 @@ import { useCategoryContext } from "@/context/CategoryContext";
 import { useInfiniteProducts, useTrackProductClick } from "@/hooks/useProductQueries";
 import type { FilterState } from '@/types';
 
-export default function Home() {
+interface HomeProps {
+  categorySlug?: string;
+  subcategorySlug?: string;
+}
+
+export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     priceMin: 0,
@@ -21,7 +28,6 @@ export default function Home() {
     item: undefined
   });
   const [showFilters, setShowFilters] = useState(false);
-  const { category: categorySlug, subcategory: subcategorySlug } = useParams<{ category: string; subcategory?: string }>();
   const { hierarchy, isLoading: isCategoryLoading, categorySlugMap, subcategorySlugMap } = useCategoryContext();
 
   useEffect(() => {
@@ -209,7 +215,7 @@ export default function Home() {
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   {Array.from(hierarchy.keys()).slice(0, 5).map(category => (
                     <li key={category}>
-                      <Link to={`/${slugify(category)}`} className="hover:text-emerald transition-colors">
+                      <Link href={`/${slugify(category)}`} className="hover:text-emerald transition-colors">
                         {category}
                       </Link>
                     </li>
@@ -221,10 +227,10 @@ export default function Home() {
             <div>
               <h4 className="font-semibold mb-4">Bantuan</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link to="/faq" className="hover:text-emerald transition-colors">FAQ</Link></li>
-                <li><Link to="/how-to-shop" className="hover:text-emerald transition-colors">Cara Berbelanja</Link></li>
-                <li><Link to="/privacy-policy" className="hover:text-emerald transition-colors">Kebijakan Privasi</Link></li>
-                <li><Link to="/terms-and-conditions" className="hover:text-emerald transition-colors">Syarat & Ketentuan</Link></li>
+                <li><Link href="/faq" className="hover:text-emerald transition-colors">FAQ</Link></li>
+                <li><Link href="/how-to-shop" className="hover:text-emerald transition-colors">Cara Berbelanja</Link></li>
+                <li><Link href="/privacy-policy" className="hover:text-emerald transition-colors">Kebijakan Privasi</Link></li>
+                <li><Link href="/terms-and-conditions" className="hover:text-emerald transition-colors">Syarat & Ketentuan</Link></li>
               </ul>
             </div>
             
@@ -245,7 +251,7 @@ export default function Home() {
             <div className="flex items-center space-x-4 mt-4 md:mt-0">
               <span className="text-xs text-muted-foreground">Powered by</span>
               <div className="flex items-center space-x-2">
-                <span className="text-xs text-emerald font-semibold">Supabase</span>
+                <span className="text-xs text-emerald font-semibold">Neon</span>
                 <span className="text-xs text-metallic font-semibold">Next.js</span>
                 <span className="text-xs text-violet font-semibold">Tailwind</span>
               </div>

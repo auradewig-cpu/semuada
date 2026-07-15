@@ -1,8 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabaseClient';
+import { apiRequest } from '@/lib/queryClient';
 import * as z from "zod";
 
-// Schema for form validation, can be shared or defined here
 export const productFormSchema = z.object({
   product_id: z.string().optional(),
   product_name: z.string().min(3),
@@ -28,32 +27,10 @@ export function useAddProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (newProduct: z.infer<typeof productFormSchema>) => {
-      const { data, error } = await supabase.from('products').insert([{
-        product_id: newProduct.product_id,
-        product_name: newProduct.product_name,
-        category: newProduct.category,
-        subcategory: newProduct.subcategory,
-        original_price: newProduct.original_price,
-        price: newProduct.price,
-        sales: newProduct.sales,
-        item: newProduct.item || '', // Include item field
-        commission: newProduct.commission, // Use 'commission' for database compatibility
-        dikirim_dari: newProduct.dikirim_dari,
-        toko: newProduct.toko,
-        affiliate_url: newProduct.affiliate_url,
-        image_url: newProduct.image_url,
-        video_url: newProduct.video_url || '', // Include video_url field
-        rating: newProduct.rating, // Include rating field
-        is_featured: newProduct.is_featured, // Include is_featured field
-        featured_order: newProduct.featured_order, // Include featured_order field
-        // Note: stock_available not in current database
-      }]);
-
-      if (error) throw new Error(error.message);
-      return data;
+      const res = await apiRequest('POST', '/api/products', newProduct);
+      return res.json();
     },
     onSuccess: () => {
-      console.log('Invalidating product queries after insert...');
       queryClient.invalidateQueries({ queryKey: ['products'], exact: false });
       queryClient.invalidateQueries({ queryKey: ['products-infinite'], exact: false });
       queryClient.invalidateQueries({ queryKey: ['featuredProducts'], exact: false });
@@ -66,32 +43,8 @@ export function useUpdateProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...updateData }: { id: string } & Partial<z.infer<typeof productFormSchema>>) => {
-      const { data, error } = await supabase
-        .from('products')
-        .update({
-          product_id: updateData.product_id,
-          product_name: updateData.product_name,
-          category: updateData.category,
-          subcategory: updateData.subcategory,
-          original_price: updateData.original_price,
-          price: updateData.price,
-          sales: updateData.sales,
-          item: updateData.item || '', // Include item field
-          commission: updateData.commission, // Use 'commission' for database compatibility
-          dikirim_dari: updateData.dikirim_dari,
-          toko: updateData.toko,
-          affiliate_url: updateData.affiliate_url,
-          image_url: updateData.image_url,
-          video_url: updateData.video_url || '', // Include video_url field
-          rating: updateData.rating, // Include rating field
-          is_featured: updateData.is_featured, // Include is_featured field
-          featured_order: updateData.featured_order, // Include featured_order field
-          // Note: stock_available not in current database
-        })
-        .eq('id', id);
-
-      if (error) throw new Error(error.message);
-      return data;
+      const res = await apiRequest('PUT', `/api/products/${id}`, updateData);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'], exact: false });
@@ -106,8 +59,7 @@ export function useDeleteProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('products').delete().eq('id', id);
-      if (error) throw new Error(error.message);
+      await apiRequest('DELETE', `/api/products/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'], exact: false });

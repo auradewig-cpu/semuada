@@ -1,10 +1,15 @@
+import 'dotenv/config';
 import { defineConfig } from 'drizzle-kit';
+
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is not set');
+}
 
 export default defineConfig({
   schema: './shared/schema.ts',
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url: `postgresql://postgres.ibmfsihdkdqxtjlavstp:password123@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres`,
+    url: process.env.DATABASE_URL,
   },
 });

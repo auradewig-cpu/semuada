@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "clicks" integer DEFAULT 0;

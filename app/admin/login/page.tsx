@@ -1,21 +1,23 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
-import { supabase } from '../lib/supabaseClient';
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
+import { Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminLogin() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,31 +25,32 @@ export default function AdminLogin() {
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password
+      const result = await signIn("credentials", {
+        username: formData.email,
+        password: formData.password,
+        redirect: false,
       });
 
-      if (error) {
+      if (!result || result.error) {
         toast({
           variant: "destructive",
           title: "Login Failed",
-          description: "Email atau password salah"
+          description: "Email atau password salah",
         });
         return;
       }
 
       toast({
         title: "Login Successful",
-        description: "Redirecting to dashboard..."
+        description: "Redirecting to dashboard...",
       });
 
-      navigate('/admin/dashboard');
+      router.push("/admin/dashboard");
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Email atau password salah"
+        description: "Email atau password salah",
       });
     } finally {
       setIsLoading(false);
@@ -55,9 +58,9 @@ export default function AdminLogin() {
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
@@ -85,7 +88,7 @@ export default function AdminLogin() {
                     type="email"
                     placeholder="admin@example.com"
                     value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    onChange={(e) => handleInputChange("email", e.target.value)}
                     className="pl-10"
                     required
                     data-testid="input-admin-email"
@@ -99,10 +102,10 @@ export default function AdminLogin() {
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="password"
-                    type={showPassword ? 'text' : 'password'}
+                    type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
                     value={formData.password}
-                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    onChange={(e) => handleInputChange("password", e.target.value)}
                     className="pl-10 pr-10"
                     required
                     data-testid="input-admin-password"
@@ -134,20 +137,9 @@ export default function AdminLogin() {
                     <span>Signing in...</span>
                   </div>
                 ) : (
-                  'Sign In to Dashboard'
+                  "Sign In to Dashboard"
                 )}
               </Button>
-
-              <div className="text-center">
-                <Button
-                  type="button"
-                  variant="link"
-                  className="text-muted-foreground hover:text-emerald text-sm"
-                  data-testid="button-enable-2fa"
-                >
-                  Enable 2FA Authentication
-                </Button>
-              </div>
             </form>
           </CardContent>
         </Card>

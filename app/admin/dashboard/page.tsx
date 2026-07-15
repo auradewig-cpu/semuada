@@ -1,21 +1,22 @@
-import { useNavigate } from 'react-router-dom';
-import { Settings, Home, LogOut, BarChart3 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { supabase } from '../lib/supabaseClient';
-import { ProductManagementTab } from '@/components/admin/ProductManagementTab';
-import { FeaturedManagementTab } from '@/components/admin/FeaturedManagementTab';
-import { SettingsTab } from '@/components/admin/SettingsTab';
-import { AnalyticsTab } from '@/components/admin/AnalyticsTab';
-import ErrorBoundary from '@/components/ErrorBoundary';
+"use client";
+
+import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
+import { Settings, Home, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProductManagementTab } from "@/components/admin/ProductManagementTab";
+import { FeaturedManagementTab } from "@/components/admin/FeaturedManagementTab";
+import { SettingsTab } from "@/components/admin/SettingsTab";
+import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export default function AdminDashboard() {
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/admin/login');
+    await signOut({ redirect: false });
+    router.push("/admin/login");
   };
 
   return (
@@ -34,7 +35,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className="flex items-center space-x-4">
-                <Button variant="outline" onClick={() => navigate('/')}><Home className="h-4 w-4 mr-2" />View Site</Button>
+                <Button variant="outline" onClick={() => router.push("/")}><Home className="h-4 w-4 mr-2" />View Site</Button>
                 <Button variant="outline" onClick={handleLogout}><LogOut className="h-4 w-4 mr-2" />Logout</Button>
               </div>
             </div>

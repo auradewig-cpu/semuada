@@ -23,6 +23,7 @@ export const products = pgTable("products", {
   isFeatured: boolean("is_featured").default(false),
   featuredOrder: integer("featured_order"),
   stockAvailable: boolean("stock_available").default(true),
+  clicks: integer("clicks").default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
