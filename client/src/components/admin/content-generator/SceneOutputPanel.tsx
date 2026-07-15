@@ -231,14 +231,9 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, af
           <p>{stripHashtags(result.caption)}</p>
           <p className="text-primary">{result.hashtags.map((h) => `#${h.replace(/^#+/, '')}`).join(' ')}</p>
           {affiliateUrl && (
-            <div className="flex items-center justify-between gap-2 pt-2 border-t">
-              <p className="text-xs text-muted-foreground break-all">
-                <span className="font-medium">Link Affiliate:</span> {affiliateUrl}
-              </p>
-              <Button size="sm" variant="outline" className="shrink-0" onClick={() => copyText(affiliateUrl, 'Link affiliate')}>
-                <Copy className="h-3.5 w-3.5 mr-1" /> Copy
-              </Button>
-            </div>
+            <p className="text-xs text-muted-foreground break-all pt-2 border-t">
+              <span className="font-medium">Link Affiliate:</span> {affiliateUrl}
+            </p>
           )}
         </CardContent>
       </Card>
