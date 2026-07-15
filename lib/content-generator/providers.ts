@@ -1,3 +1,4 @@
+import { get } from "@vercel/blob";
 import type { AiProvider } from "./types";
 
 export interface ProviderKeys {
@@ -19,7 +20,23 @@ interface CallResult {
 
 const TIMEOUT_MS = 60_000;
 
+function isPrivateBlobUrl(url: string): boolean {
+  return url.includes(".private.blob.vercel-storage.com/");
+}
+
 async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeType: string }> {
+  // Character photos live in a private Blob store and require SDK-level
+  // auth to read; product photos are plain external URLs and use a normal
+  // fetch.
+  if (isPrivateBlobUrl(url)) {
+    const result = await get(url, { access: "private" });
+    if (!result || result.statusCode !== 200 || !result.stream) {
+      throw new Error(`Gagal mengambil gambar referensi karakter: ${url}`);
+    }
+    const buffer = await new Response(result.stream).arrayBuffer();
+    return { base64: Buffer.from(buffer).toString("base64"), mimeType: result.blob.contentType };
+  }
+
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Gagal mengambil gambar referensi: ${url}`);
   const contentType = res.headers.get("content-type") || "image/jpeg";

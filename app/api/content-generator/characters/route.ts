@@ -5,13 +5,14 @@ import { put } from "@vercel/blob";
 import { db } from "@root/lib/db";
 import { characters } from "@shared/schema";
 import { requireAuth } from "@root/lib/apiAuth";
+import { toApiCharacter } from "@root/lib/mappers";
 
 export async function GET() {
   const unauthorized = await requireAuth();
   if (unauthorized) return unauthorized;
 
   const rows = await db.select().from(characters).orderBy(desc(characters.createdAt));
-  return NextResponse.json({ items: rows });
+  return NextResponse.json({ items: rows.map(toApiCharacter) });
 }
 
 export async function POST(request: NextRequest) {
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
   }
 
   const blob = await put(`content-generator/characters/${Date.now()}-${file.name}`, file, {
-    access: "public",
+    access: "private",
   });
 
   const [row] = await db
@@ -43,5 +44,5 @@ export async function POST(request: NextRequest) {
     })
     .returning();
 
-  return NextResponse.json(row, { status: 201 });
+  return NextResponse.json(toApiCharacter(row), { status: 201 });
 }

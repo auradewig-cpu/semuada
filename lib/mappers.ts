@@ -1,4 +1,4 @@
-import type { Product as DbProduct, Settings as DbSettings, AiSettings as DbAiSettings } from "@shared/schema";
+import type { Product as DbProduct, Settings as DbSettings, AiSettings as DbAiSettings, Character as DbCharacter } from "@shared/schema";
 
 export function toApiProduct(row: DbProduct) {
   return {
@@ -50,5 +50,23 @@ export function toApiAiSettings(row: DbAiSettings) {
     has_groq_key: Boolean(row.groqApiKey),
     has_openrouter_key: Boolean(row.openrouterApiKey),
     has_deepseek_key: Boolean(row.deepseekApiKey),
+  };
+}
+
+// Character photos live in a private Blob store -- the raw blob URL isn't
+// browser-accessible, so the client gets a proxied URL through our own
+// authenticated route instead. The raw URL is still used internally (e.g.
+// by the Gemini vision call) straight from the DB row.
+export function toCharacterPhotoProxyUrl(rawBlobUrl: string): string {
+  return `/api/content-generator/characters/photo?url=${encodeURIComponent(rawBlobUrl)}`;
+}
+
+export function toApiCharacter(row: DbCharacter) {
+  return {
+    id: row.id,
+    name: row.name,
+    photoUrl: toCharacterPhotoProxyUrl(row.photoUrl),
+    description: row.description,
+    createdAt: row.createdAt,
   };
 }
