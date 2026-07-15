@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   useGenerateContent,
@@ -40,6 +42,7 @@ export function ContentGeneratorTab() {
   const [contentGoal, setContentGoal] = useState<ContentGoal>('conversion');
   const [ctaType, setCtaType] = useState<CtaTypeId>('klik_keranjang_kuning');
   const [hookArchetype, setHookArchetype] = useState<HookArchetype>('specific_outcome');
+  const [includePrice, setIncludePrice] = useState(true);
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
 
@@ -73,6 +76,7 @@ export function ContentGeneratorTab() {
         contentGoal,
         ctaType,
         sceneDurations,
+        includePrice,
       },
       {
         onSuccess: (data) => {
@@ -165,6 +169,12 @@ export function ContentGeneratorTab() {
           <CardContent className="space-y-4">
             <StyleSelector value={style} onChange={setStyle} />
             <ContentGoalSelector value={contentGoal} onChange={setContentGoal} />
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <Switch id="include-price" checked={includePrice} onCheckedChange={setIncludePrice} />
+              <Label htmlFor="include-price" className="text-sm cursor-pointer">
+                Sertakan harga di narasi
+              </Label>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -203,6 +213,7 @@ export function ContentGeneratorTab() {
             hookArchetype,
             contentGoal,
             ctaType,
+            includePrice,
           }}
         />
       )}

@@ -73,6 +73,7 @@ export interface GenerateContentInput {
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
   sceneDurations: number[];
+  includePrice: boolean;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -149,6 +150,7 @@ export interface RegenerateSceneInput {
   productImageUrl: string;
   previousScene: SceneOutput | null;
   nextScene: SceneOutput | null;
+  includePrice: boolean;
 }
 
 export function useRegenerateScene() {
@@ -171,6 +173,7 @@ export interface HookVariantsInput {
   sceneDuration: number;
   productImageUrl: string;
   currentScene: SceneOutput;
+  includePrice: boolean;
 }
 
 export function useHookVariants() {

@@ -4,7 +4,7 @@ import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { getCtaType, resolveCtaForGoal } from "./ctaTypes";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
-import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule } from "./promptFragments";
+import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule, buildProductPriceLine, buildPriceRule } from "./promptFragments";
 import type {
   AiToolId,
   AspectRatio,
@@ -36,6 +36,7 @@ export interface SceneRegenInput {
   characterName: string | null;
   characterDescription: string | null;
   narrationWpm: number;
+  includePrice: boolean;
 }
 
 // Regenerates a SINGLE scene without touching the others -- saves quota when
@@ -53,6 +54,8 @@ export function compileSceneRegenPrompt(input: SceneRegenInput): string {
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const dialogueRule = buildDialogueRule(input.aiTool);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
+  const priceLine = buildProductPriceLine(input.price, input.includePrice);
+  const priceRule = buildPriceRule(input.includePrice);
 
   const hookBlock = isFirstScene
     ? `\n[HOOK -- SCENE INI ADALAH SCENE 1]\n${buildHookInstruction(input.hookArchetype, input.platform, input.sceneDuration)}\n`
@@ -65,7 +68,7 @@ ${input.nextScene ? `\n[SCENE SESUDAHNYA -- konteks, JANGAN diubah]\n${JSON.stri
   return `
 Kamu meregenerate SATU scene (scene ${sceneNumber} dari ${input.totalScenes}) dari sebuah video affiliate produk, TANPA mengubah scene lain.
 
-PRODUK: ${input.productName} (${input.category}, Rp ${input.price})
+PRODUK: ${input.productName} (${input.category})${priceLine ? `, ${priceLine.replace(/^- /, '')}` : ''}
 ${characterBlock}
 
 GAYA VIDEO: ${style.label} -- ${style.narrativeVoiceGuidance}
@@ -80,6 +83,7 @@ ATURAN:
 - scene_number HARUS PERSIS ${sceneNumber}, duration_seconds HARUS PERSIS ${input.sceneDuration}.
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris.
 - ${productAnchorRule}
+- ${priceRule}
 - ${dialogueRule}
 - ${SPOKEN_NUMBER_RULE}
 

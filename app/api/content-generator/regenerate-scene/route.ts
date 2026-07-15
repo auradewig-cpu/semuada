@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
   const totalScenes: number = body.totalScenes;
   const previousScene: SceneOutput | null = body.previousScene ?? null;
   const nextScene: SceneOutput | null = body.nextScene ?? null;
+  const includePrice: boolean = body.includePrice !== false;
 
   if (!productId || typeof sceneIndex !== "number" || typeof sceneDuration !== "number" || !productImageUrl) {
     return NextResponse.json({ error: "Parameter regenerate scene tidak lengkap." }, { status: 400 });
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
     narrationWpm: settingsRow.narrationWpm ?? 180,
+    includePrice,
   });
 
   const images = [

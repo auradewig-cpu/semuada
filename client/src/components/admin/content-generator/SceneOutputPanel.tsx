@@ -27,6 +27,7 @@ export interface SceneGenerationContext {
   hookArchetype: HookArchetype;
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
+  includePrice: boolean;
 }
 
 interface SceneOutputPanelProps {
@@ -112,6 +113,7 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, af
         sceneDuration: scene.duration_seconds,
         productImageUrl: scene.reference_images.product,
         currentScene: scene,
+        includePrice: context.includePrice,
       },
       {
         onSuccess: (data) => setVariants(data.variants),

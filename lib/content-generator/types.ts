@@ -77,4 +77,5 @@ export interface GenerateRequest {
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
   sceneDurations: number[];
+  includePrice: boolean;
 }

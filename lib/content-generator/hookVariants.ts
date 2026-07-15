@@ -3,7 +3,7 @@ import { HOOK_ARCHETYPES } from "./hookPatterns";
 import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
-import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule } from "./promptFragments";
+import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule, buildProductPriceLine, buildPriceRule } from "./promptFragments";
 import type { AiToolId, AspectRatio, ContentStyleId, HookArchetype, PlatformTarget, SceneOutput } from "./types";
 
 export interface HookVariantsInput {
@@ -20,6 +20,7 @@ export interface HookVariantsInput {
   aspectRatio: AspectRatio;
   characterName: string | null;
   characterDescription: string | null;
+  includePrice: boolean;
   variantCount?: number;
 }
 
@@ -44,11 +45,13 @@ export function compileHookVariantsPrompt(input: HookVariantsInput): string {
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const dialogueRule = buildDialogueRule(input.aiTool);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
+  const priceLine = buildProductPriceLine(input.price, input.includePrice);
+  const priceRule = buildPriceRule(input.includePrice);
 
   return `
 Kamu membuat ${variantCount} VARIASI HOOK untuk scene 1 dari sebuah video affiliate produk, masing-masing memakai teknik hook BERBEDA.
 
-PRODUK: ${input.productName} (${input.category}, Rp ${input.price})
+PRODUK: ${input.productName} (${input.category})${priceLine ? `, ${priceLine.replace(/^- /, '')}` : ''}
 ${characterBlock}
 
 GAYA VIDEO: ${style.label}
@@ -68,6 +71,7 @@ ATURAN WAJIB:
 - Hook front-loaded: kalimat pertama script_narration = inti hook langsung, bukan basa-basi. WAJIB angka/detail spesifik, bukan generik.
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris.
 - ${productAnchorRule}
+- ${priceRule}
 - ${dialogueRule}
 - ${SPOKEN_NUMBER_RULE}
 

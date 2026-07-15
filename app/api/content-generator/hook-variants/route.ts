@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
   const sceneDuration: number = body.sceneDuration;
   const productImageUrl: string = body.productImageUrl;
   const currentScene: SceneOutput = body.currentScene;
+  const includePrice: boolean = body.includePrice !== false;
 
   if (!productId || typeof sceneDuration !== "number" || !productImageUrl || !currentScene) {
     return NextResponse.json({ error: "Parameter hook variants tidak lengkap." }, { status: 400 });
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
     aspectRatio,
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
+    includePrice,
     variantCount,
   });
 

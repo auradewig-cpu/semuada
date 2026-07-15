@@ -4,7 +4,7 @@ import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { getCtaType, resolveCtaForGoal } from "./ctaTypes";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
-import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule } from "./promptFragments";
+import { buildCharacterBlock, buildDialogueRule, buildProductAnchorRule, buildProductPriceLine, buildPriceRule } from "./promptFragments";
 import type { AiToolId, AspectRatio, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, PlatformTarget } from "./types";
 
 interface MasterPromptInput {
@@ -22,6 +22,7 @@ interface MasterPromptInput {
   characterName: string | null;
   characterDescription: string | null;
   narrationWpm: number;
+  includePrice: boolean;
 }
 
 export function compileMasterPrompt(input: MasterPromptInput): string {
@@ -36,6 +37,8 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const dialogueRule = buildDialogueRule(input.aiTool);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
+  const priceLine = buildProductPriceLine(input.price, input.includePrice);
+  const priceRule = buildPriceRule(input.includePrice);
 
   const ctaGoalNote =
     input.contentGoal === "growth"
@@ -60,7 +63,7 @@ PERAN: Kamu adalah script writer video affiliate marketing untuk pasar Indonesia
 PRODUK:
 - Nama: ${input.productName}
 - Kategori: ${input.category}
-- Harga: Rp ${input.price}
+${priceLine}
 
 ${characterBlock}
 
@@ -87,14 +90,15 @@ ATURAN WAJIB (SANGAT PENTING):
 2. Durasi tiap scene SUDAH DITENTUKAN dan TIDAK BOLEH diubah: ${input.sceneDurations.map((d, i) => `scene ${i + 1} = ${d}s`).join(", ")}.
 3. BAHASA PER FIELD (WAJIB DIPATUHI PERSIS): "script_narration" WAJIB Bahasa Indonesia. "visual_description", "camera_direction", dan "ai_ready_prompt" WAJIB Bahasa Inggris (English) -- field-field ini dibaca oleh AI video tool, bukan manusia Indonesia.
 4. ${productAnchorRule}
-5. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit.
-6. JANGAN gunakan kata "sempurna", "flawless", "studio quality", "dijamin", "terbukti ampuh 100%" -- hindari klaim berlebihan dan bahasa yang terdengar buatan AI.
-7. Instruksi kamera harus terasa seperti rekaman HP asli: sedikit tidak simetris, pencahayaan ruangan natural (bukan studio), ada momen kecil yang tidak sempurna supaya tidak terlihat "AI banget".
-8. ${dialogueRule}
-9. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
-10. ${SPOKEN_NUMBER_RULE}
-11. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
-12. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
+5. ${priceRule}
+6. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit.
+7. JANGAN gunakan kata "sempurna", "flawless", "studio quality", "dijamin", "terbukti ampuh 100%" -- hindari klaim berlebihan dan bahasa yang terdengar buatan AI.
+8. Instruksi kamera harus terasa seperti rekaman HP asli: sedikit tidak simetris, pencahayaan ruangan natural (bukan studio), ada momen kecil yang tidak sempurna supaya tidak terlihat "AI banget".
+9. ${dialogueRule}
+10. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
+11. ${SPOKEN_NUMBER_RULE}
+12. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
+13. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
 
 ${NEGATIVE_PROMPT_BLOCK}
 

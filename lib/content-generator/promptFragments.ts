@@ -37,3 +37,17 @@ export function buildDialogueRule(aiTool: AiToolId): string {
 export function buildProductAnchorRule(productName: string, category: string): string {
   return `SETIAP "ai_ready_prompt" dan "visual_description" WAJIB secara eksplisit tentang produk "${productName}" (kategori ${category}) -- sebutkan jenis produknya jelas di kalimat pertama. DILARANG KERAS mengganti dengan produk lain, skenario lain, atau konten yang tidak diminta (mis. kalau produknya smartwatch, JANGAN membuat video tentang memasak/makanan atau produk lain apapun).`;
 }
+
+// Line shown in the PRODUK block -- omits the price entirely when the user
+// turns price-mentioning off, so the AI never even sees the number.
+export function buildProductPriceLine(price: string, includePrice: boolean): string {
+  return includePrice ? `- Harga: Rp ${price}` : "";
+}
+
+// Explicit rule so the AI doesn't invent or infer a price from context
+// (style/CTA text can still imply "murah"/"affordable" without a number).
+export function buildPriceRule(includePrice: boolean): string {
+  return includePrice
+    ? `Harga produk BOLEH disebut di narasi jika mendukung hook/CTA, sebutkan dalam bentuk lisan natural (lihat aturan angka di bawah).`
+    : `DILARANG menyebutkan harga produk dalam bentuk apapun (angka, "murah", "terjangkau", atau perbandingan harga) di "script_narration" maupun "ai_ready_prompt" -- harga TIDAK boleh muncul sama sekali di video ini.`;
+}

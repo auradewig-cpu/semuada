@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
   const contentGoal: ContentGoal = body.contentGoal;
   const ctaType: CtaTypeId = body.ctaType;
   const sceneDurations: number[] = Array.isArray(body.sceneDurations) ? body.sceneDurations : [];
+  const includePrice: boolean = body.includePrice !== false;
 
   if (!productId || selectedImageUrls.length === 0 || !style || !aiTool || !platform || !aspectRatio || !hookArchetype || !contentGoal || !ctaType) {
     return NextResponse.json({ error: "Semua parameter (produk, gambar, gaya, AI tool, platform, rasio, hook, tujuan, CTA) wajib diisi." }, { status: 400 });
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
     narrationWpm,
+    includePrice,
   });
 
   const images = [
