@@ -63,14 +63,22 @@ async function callGemini(apiKey: string, model: string, prompt: string, images:
         signal: controller.signal,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }, ...imageParts] }],
-          generationConfig: { temperature: 0.35, maxOutputTokens: 8192, responseMimeType: "application/json" },
+          generationConfig: { temperature: 0.35, maxOutputTokens: 16384, responseMimeType: "application/json" },
         }),
       }
     );
     if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`);
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("Gemini tidak mengembalikan teks.");
+    const candidate = data?.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
+    if (!text) {
+      throw new Error(
+        `Gemini tidak mengembalikan teks (finishReason: ${candidate?.finishReason ?? "unknown"}).`
+      );
+    }
+    if (candidate?.finishReason === "MAX_TOKENS") {
+      throw new Error("Gemini terpotong karena kehabisan token (MAX_TOKENS) -- coba kurangi jumlah scene.");
+    }
     return { text };
   } finally {
     clearTimeout(timeout);

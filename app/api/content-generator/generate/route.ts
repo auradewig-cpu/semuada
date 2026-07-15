@@ -81,7 +81,13 @@ export async function POST(request: NextRequest) {
     const first = await generateWithFallback(providerOrder, keys, prompt, images);
     let result = parseAiResponse(first.text);
     if (!result) {
-      return NextResponse.json({ error: "AI mengembalikan format yang tidak bisa dibaca." }, { status: 502 });
+      return NextResponse.json(
+        {
+          error: "AI mengembalikan format yang tidak bisa dibaca.",
+          raw_preview: first.text.slice(0, 800),
+        },
+        { status: 502 }
+      );
     }
 
     let problems = validateOutput(result, selectedImageUrls.length);
