@@ -6,12 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useSettings, useUpdateSettings } from "@/hooks/useSettings"; // Assuming BarChart3 is not used elsewhere
 import { useToast } from "@/hooks/use-toast";
-import { Facebook, MonitorSmartphone } from 'lucide-react';
+import { Facebook, MonitorSmartphone, Folder } from 'lucide-react';
 
 const settingsFormSchema = z.object({
+  show_category_filter: z.boolean(),
   facebook_pixel_id: z.string().optional(),
   google_analytics_id: z.string().optional(),
 });
@@ -26,6 +28,7 @@ export function SettingsTab() {
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
     defaultValues: {
+      show_category_filter: true,
       facebook_pixel_id: '',
       google_analytics_id: '',
     },
@@ -34,6 +37,7 @@ export function SettingsTab() {
   useEffect(() => {
     if (settings) {
       form.reset({
+        show_category_filter: settings.show_category_filter ?? true,
         facebook_pixel_id: settings.facebook_pixel_id || '',
         google_analytics_id: settings.google_analytics_id || '',
       });
@@ -65,6 +69,27 @@ export function SettingsTab() {
         ) : (
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+              <FormField
+                control={form.control}
+                name="show_category_filter"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base flex items-center">
+                        <Folder className="h-4 w-4 mr-2" />
+                        Filter Kategori
+                      </FormLabel>
+                      <FormDescription>
+                        Tampilkan filter Kategori &gt; Subkategori &gt; Item di sidebar homepage.
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="facebook_pixel_id"

@@ -10,7 +10,20 @@ const SETTINGS_ID = "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed";
 
 export async function GET() {
   const [row] = await db.select().from(settings).where(eq(settings.id, SETTINGS_ID));
-  return NextResponse.json(row ? toApiSettings(row) : null);
+  if (row) {
+    return NextResponse.json(toApiSettings(row));
+  }
+  // No settings row yet (e.g. fresh database) -- fall back to schema
+  // defaults instead of null, so features gated on a setting (like the
+  // category filter) aren't silently hidden just because nobody has
+  // saved the Settings form yet.
+  return NextResponse.json({
+    id: SETTINGS_ID,
+    show_category_filter: true,
+    updated_at: null,
+    facebook_pixel_id: null,
+    google_analytics_id: null,
+  });
 }
 
 export async function PUT(request: NextRequest) {
