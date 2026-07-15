@@ -1,7 +1,30 @@
+import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const QUICK_PICKS = [5, 8, 10];
+
+// Non-blocking nudges, not hard limits -- most short-form platforms perform
+// best under these thresholds, but nothing stops the user from ignoring them.
+const MAX_RECOMMENDED_SCENE_SECONDS = 20;
+const MAX_RECOMMENDED_TOTAL_SECONDS = 90;
+
+function getDurationWarnings(sceneDurations: number[]): string[] {
+  const warnings: string[] = [];
+  const total = sceneDurations.reduce((a, b) => a + b, 0);
+
+  sceneDurations.forEach((d, i) => {
+    if (d > MAX_RECOMMENDED_SCENE_SECONDS) {
+      warnings.push(`Scene ${i + 1} (${d}s) cukup panjang -- scene di atas ${MAX_RECOMMENDED_SCENE_SECONDS}s berisiko bikin penonton bosan sebelum cut berikutnya.`);
+    }
+  });
+
+  if (total > MAX_RECOMMENDED_TOTAL_SECONDS) {
+    warnings.push(`Total durasi ${total}s cukup panjang -- kebanyakan platform video pendek optimal di bawah ${MAX_RECOMMENDED_TOTAL_SECONDS}s untuk completion rate terbaik.`);
+  }
+
+  return warnings;
+}
 
 interface ScenePlannerProps {
   sceneDurations: number[];
@@ -18,6 +41,8 @@ export function ScenePlanner({ sceneDurations, onChange }: ScenePlannerProps) {
   const applyToAll = (value: number) => {
     onChange(sceneDurations.map(() => value));
   };
+
+  const warnings = getDurationWarnings(sceneDurations);
 
   return (
     <div className="space-y-3">
@@ -49,6 +74,17 @@ export function ScenePlanner({ sceneDurations, onChange }: ScenePlannerProps) {
           </div>
         ))}
       </div>
+
+      {warnings.length > 0 && (
+        <ul className="text-xs space-y-1">
+          {warnings.map((w, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-amber-600">
+              <TriangleAlert className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              {w}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
