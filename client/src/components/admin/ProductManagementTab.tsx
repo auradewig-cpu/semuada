@@ -52,6 +52,10 @@ const productFormSchema = z.object({
   video_url: z.string().optional(),
   affiliate_url: z.string().url(),
   image_url: z.string().url(),
+  image_url_2: z.string().url().optional().or(z.literal('')),
+  image_url_3: z.string().url().optional().or(z.literal('')),
+  image_url_4: z.string().url().optional().or(z.literal('')),
+  image_url_5: z.string().url().optional().or(z.literal('')),
   is_featured: z.boolean().default(false),
   featured_order: z.coerce.number().optional(),
   rating: z.coerce.number().min(0).max(5).optional(),
@@ -402,6 +406,10 @@ export function ProductManagementTab() {
       { label: "item", key: "item" },
       { label: "affiliate_url", key: "affiliate_url" },
       { label: "image_url", key: "image_url" },
+      { label: "image_url_2", key: "image_url_2" },
+      { label: "image_url_3", key: "image_url_3" },
+      { label: "image_url_4", key: "image_url_4" },
+      { label: "image_url_5", key: "image_url_5" },
       { label: "video_url", key: "video_url" },
       { label: "original_price", key: "original_price" },
       { label: "dikirim_dari", key: "dikirim_dari" },
@@ -429,6 +437,10 @@ export function ProductManagementTab() {
       toko: product.toko,
       affiliate_url: product.affiliate_url,
       image_url: product.image_url,
+      image_url_2: product.image_urls?.[0] || '',
+      image_url_3: product.image_urls?.[1] || '',
+      image_url_4: product.image_urls?.[2] || '',
+      image_url_5: product.image_urls?.[3] || '',
       video_url: (product as any).video_url || '', // Include video_url field
       // Note: is_featured, featured_order, rating, stock_available not in current database
     }));
@@ -530,6 +542,10 @@ export function ProductManagementTab() {
               ...(data.sales !== undefined && { sales: data.sales }),
               ...(data.featured_order !== undefined && { featured_order: data.featured_order }),
               ...(data.rating !== undefined && { rating: data.rating }),
+              ...(data.image_url_2 && { image_url_2: data.image_url_2 }),
+              ...(data.image_url_3 && { image_url_3: data.image_url_3 }),
+              ...(data.image_url_4 && { image_url_4: data.image_url_4 }),
+              ...(data.image_url_5 && { image_url_5: data.image_url_5 }),
             };
 
             // Debug log untuk memverifikasi data yang dikirim

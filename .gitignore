@@ -18,3 +18,14 @@ CLAUDE.md
 
 # Stray duplicate project backup folder
 Daftar-Product-UPDATE HEADER BARU & PENGIRIMAN/
+
+# Scraper: virtualenv, scraped output data, and Chrome login profile
+scraper/venv/
+scraper/output/
+scraper/debug/
+scraper/chrome_profile/
+scraper/*.csv
+scraper/__pycache__/
+
+# Old compiled scraper (source lost, superseded by scrape.py) -- 73MB binary, don't bloat the repo
+scraper/main.exe

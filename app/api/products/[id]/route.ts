@@ -29,6 +29,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       toko: body.toko,
       affiliateUrl: body.affiliate_url,
       imageUrl: body.image_url,
+      imageUrls: Array.isArray(body.image_urls) ? body.image_urls.filter(Boolean) : undefined,
       video_url: body.video_url || "",
       rating: body.rating != null ? String(body.rating) : undefined,
       isFeatured: body.is_featured,

@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ProductImageCarousel } from '@/components/ProductImageCarousel';
 import { useToast } from '@/hooks/use-toast';
 import type { Product } from '@/types';
 
@@ -47,17 +48,14 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
       <div className="relative overflow-hidden">
         {/* Overlay "HABIS" jika produk tidak tersedia */}
         {(product.stock_available === false || product.stock_available === null) && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-30">
             <span className="text-white text-2xl font-bold uppercase tracking-wider">HABIS</span>
           </div>
         )}
-        <img
-          src={product.image_url || 'https://via.placeholder.com/300'}
+        <ProductImageCarousel
+          images={[product.image_url, ...(product.image_urls ?? [])].filter((url): url is string => !!url)}
           alt={product.product_name}
-          className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-300"
-          onError={(e) => {
-            e.currentTarget.src = 'https://via.placeholder.com/300';
-          }}
+          className="w-full h-48"
         />
         <div className="absolute top-2 left-2 flex flex-col space-y-1">
           {product.sales && product.sales > 500 && (

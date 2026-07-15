@@ -30,6 +30,10 @@ const formSchema = z.object({
   sales: z.coerce.number().min(0, "Sales must be a positive number").optional(),
   affiliate_url: z.string().url("Must be a valid URL"),
   image_url: z.string().url("Must be a valid URL"),
+  image_url_2: z.string().url("Must be a valid URL").optional().or(z.literal('')),
+  image_url_3: z.string().url("Must be a valid URL").optional().or(z.literal('')),
+  image_url_4: z.string().url("Must be a valid URL").optional().or(z.literal('')),
+  image_url_5: z.string().url("Must be a valid URL").optional().or(z.literal('')),
   is_featured: z.boolean().optional().default(false),
   featured_order: z.coerce.number().optional(),
   rating: z.coerce.number().optional(),
@@ -58,6 +62,10 @@ export function ProductForm({ product, onSubmit, isSubmitting }: ProductFormProp
       sales: product?.sales || 0,
       affiliate_url: product?.affiliate_url || "",
       image_url: product?.image_url || "",
+      image_url_2: product?.image_urls?.[0] || "",
+      image_url_3: product?.image_urls?.[1] || "",
+      image_url_4: product?.image_urls?.[2] || "",
+      image_url_5: product?.image_urls?.[3] || "",
       is_featured: product?.is_featured || false,
       featured_order: product?.featured_order || 0,
       commission: product?.commission != null ? (typeof product.commission === 'string' ? parseFloat(product.commission) : product.commission) : 0,
@@ -211,7 +219,7 @@ export function ProductForm({ product, onSubmit, isSubmitting }: ProductFormProp
           name="image_url"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Image URL</FormLabel>
+              <FormLabel>Image URL (foto ke-1)</FormLabel>
               <FormControl>
                 <Input placeholder="https://example.com/image.jpg" {...field} />
               </FormControl>
@@ -219,6 +227,63 @@ export function ProductForm({ product, onSubmit, isSubmitting }: ProductFormProp
             </FormItem>
           )}
         />
+        <FormDescription>
+          Foto ke-2 sampai ke-5 opsional -- kalau diisi, produk tampil sebagai carousel yang bisa digeser di homepage.
+        </FormDescription>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="image_url_2"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Foto ke-2 (opsional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="https://example.com/image2.jpg" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="image_url_3"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Foto ke-3 (opsional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="https://example.com/image3.jpg" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="image_url_4"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Foto ke-4 (opsional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="https://example.com/image4.jpg" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="image_url_5"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Foto ke-5 (opsional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="https://example.com/image5.jpg" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         <FormField
           control={form.control}
           name="affiliate_url"

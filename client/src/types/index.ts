@@ -10,6 +10,7 @@ export interface Product {
   item?: string | null; // Additional field from database
   affiliate_url: string | null;
   image_url: string | null;
+  image_urls?: string[] | null; // Foto ke-2 s/d ke-5 (foto pertama tetap di image_url)
   video_url?: string | null; // Additional field from database
   rating: number | null;
   commission: string | number | null;

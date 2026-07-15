@@ -1,0 +1,6 @@
+undetected-chromedriver>=3.5.5
+selenium>=4.20.0
+
+# Python 3.12+ removed the stdlib `distutils` module that undetected-chromedriver
+# still imports internally; setuptools ships a compatible shim.
+setuptools

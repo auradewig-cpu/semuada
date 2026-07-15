@@ -13,6 +13,7 @@ export function toApiProduct(row: DbProduct) {
     item: row.item,
     affiliate_url: row.affiliateUrl,
     image_url: row.imageUrl,
+    image_urls: row.imageUrls,
     video_url: row.video_url,
     rating: row.rating,
     commission: row.commission,

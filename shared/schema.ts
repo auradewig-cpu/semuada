@@ -14,6 +14,7 @@ export const products = pgTable("products", {
   subcategory: text("subcategory"),
   affiliateUrl: text("affiliate_url"),
   imageUrl: text("image_url"),
+  imageUrls: text("image_urls").array(),
   rating: numeric("rating").default("0"),
   commission: numeric("commission").default("0"),
   dikirim_dari: text("dikirim_dari"),
