@@ -8,17 +8,8 @@ import { compileHookVariantsPrompt } from "@root/lib/content-generator/hookVaria
 import { generateWithFallback } from "@root/lib/content-generator/providers";
 import { parseHookVariantsResponse, validateScene } from "@root/lib/content-generator/jsonParser";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
-import type {
-  AiProvider,
-  AiToolId,
-  AspectRatio,
-  CameraPattern,
-  ContentStyleId,
-  HookArchetype,
-  NarrationMode,
-  PlatformTarget,
-  SceneOutput,
-} from "@root/lib/content-generator/types";
+import { hookVariantsRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
+import type { AiProvider, SceneOutput } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
 
@@ -26,24 +17,25 @@ export async function POST(request: NextRequest) {
   const unauthorized = await requireAuth();
   if (unauthorized) return unauthorized;
 
-  const body = await request.json();
-  const productId: string | undefined = body.productId;
-  const characterId: string | null = body.characterId || null;
-  const style: ContentStyleId = body.style;
-  const aiTool: AiToolId = body.aiTool;
-  const platform: PlatformTarget = body.platform;
-  const aspectRatio: AspectRatio = body.aspectRatio;
-  const currentArchetype: HookArchetype = body.currentArchetype;
-  const sceneDuration: number = body.sceneDuration;
-  const productImageUrl: string = body.productImageUrl;
-  const currentScene: SceneOutput = body.currentScene;
-  const includePrice: boolean = body.includePrice !== false;
-  const narrationMode: NarrationMode = body.narrationMode === "voiceover" ? "voiceover" : "lipsync";
-  const cameraPattern: CameraPattern = body.cameraPattern === "aroll_broll" ? "aroll_broll" : "single_angle";
-
-  if (!productId || typeof sceneDuration !== "number" || !productImageUrl || !currentScene) {
-    return NextResponse.json({ error: "Parameter hook variants tidak lengkap." }, { status: 400 });
+  const parsed = hookVariantsRequestSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 });
   }
+  const {
+    productId,
+    characterId,
+    style,
+    aiTool,
+    platform,
+    aspectRatio,
+    currentArchetype,
+    sceneDuration,
+    productImageUrl,
+    includePrice,
+    narrationMode,
+    cameraPattern,
+  } = parsed.data;
+  const currentScene = parsed.data.currentScene as unknown as SceneOutput;
 
   const [product] = await db.select().from(products).where(eq(products.id, productId));
   if (!product) {

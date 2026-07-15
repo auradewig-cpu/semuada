@@ -11,19 +11,8 @@ import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content
 import { buildSceneRephrasePrompt, buildCaptionRephrasePrompt } from "@root/lib/content-generator/autoRephrase";
 import type { PolicyViolation } from "@root/lib/content-generator/policyCheck";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
-import type {
-  AiProvider,
-  AiToolId,
-  AspectRatio,
-  CameraPattern,
-  ContentGoal,
-  ContentStyleId,
-  CtaTypeId,
-  GenerationResult,
-  HookArchetype,
-  NarrationMode,
-  PlatformTarget,
-} from "@root/lib/content-generator/types";
+import { generateRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
+import type { AiProvider, GenerationResult } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
 
@@ -91,28 +80,26 @@ export async function POST(request: NextRequest) {
   const unauthorized = await requireAuth();
   if (unauthorized) return unauthorized;
 
-  const body = await request.json();
-  const productId: string | undefined = body.productId;
-  const selectedImageUrls: string[] = Array.isArray(body.selectedImageUrls) ? body.selectedImageUrls : [];
-  const characterId: string | null = body.characterId || null;
-  const style: ContentStyleId = body.style;
-  const aiTool: AiToolId = body.aiTool;
-  const platform: PlatformTarget = body.platform;
-  const aspectRatio: AspectRatio = body.aspectRatio;
-  const hookArchetype: HookArchetype = body.hookArchetype;
-  const contentGoal: ContentGoal = body.contentGoal;
-  const ctaType: CtaTypeId = body.ctaType;
-  const sceneDurations: number[] = Array.isArray(body.sceneDurations) ? body.sceneDurations : [];
-  const includePrice: boolean = body.includePrice !== false;
-  const narrationMode: NarrationMode = body.narrationMode === "voiceover" ? "voiceover" : "lipsync";
-  const cameraPattern: CameraPattern = body.cameraPattern === "aroll_broll" ? "aroll_broll" : "single_angle";
-
-  if (!productId || selectedImageUrls.length === 0 || !style || !aiTool || !platform || !aspectRatio || !hookArchetype || !contentGoal || !ctaType) {
-    return NextResponse.json({ error: "Semua parameter (produk, gambar, gaya, AI tool, platform, rasio, hook, tujuan, CTA) wajib diisi." }, { status: 400 });
+  const parsed = generateRequestSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 });
   }
-  if (sceneDurations.length !== selectedImageUrls.length) {
-    return NextResponse.json({ error: "Jumlah durasi scene harus sama dengan jumlah gambar yang dipilih." }, { status: 400 });
-  }
+  const {
+    productId,
+    selectedImageUrls,
+    characterId,
+    style,
+    aiTool,
+    platform,
+    aspectRatio,
+    hookArchetype,
+    contentGoal,
+    ctaType,
+    sceneDurations,
+    includePrice,
+    narrationMode,
+    cameraPattern,
+  } = parsed.data;
 
   const [product] = await db.select().from(products).where(eq(products.id, productId));
   if (!product) {

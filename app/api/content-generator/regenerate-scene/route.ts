@@ -8,19 +8,8 @@ import { compileSceneRegenPrompt } from "@root/lib/content-generator/sceneRegen"
 import { generateWithFallback } from "@root/lib/content-generator/providers";
 import { parseSceneResponse, validateScene } from "@root/lib/content-generator/jsonParser";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
-import type {
-  AiProvider,
-  AiToolId,
-  AspectRatio,
-  CameraPattern,
-  ContentGoal,
-  ContentStyleId,
-  CtaTypeId,
-  HookArchetype,
-  NarrationMode,
-  PlatformTarget,
-  SceneOutput,
-} from "@root/lib/content-generator/types";
+import { regenerateSceneRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
+import type { AiProvider, SceneOutput } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
 
@@ -28,29 +17,30 @@ export async function POST(request: NextRequest) {
   const unauthorized = await requireAuth();
   if (unauthorized) return unauthorized;
 
-  const body = await request.json();
-  const productId: string | undefined = body.productId;
-  const characterId: string | null = body.characterId || null;
-  const style: ContentStyleId = body.style;
-  const aiTool: AiToolId = body.aiTool;
-  const platform: PlatformTarget = body.platform;
-  const aspectRatio: AspectRatio = body.aspectRatio;
-  const hookArchetype: HookArchetype = body.hookArchetype;
-  const contentGoal: ContentGoal = body.contentGoal;
-  const ctaType: CtaTypeId = body.ctaType;
-  const sceneIndex: number = body.sceneIndex;
-  const sceneDuration: number = body.sceneDuration;
-  const productImageUrl: string = body.productImageUrl;
-  const totalScenes: number = body.totalScenes;
-  const previousScene: SceneOutput | null = body.previousScene ?? null;
-  const nextScene: SceneOutput | null = body.nextScene ?? null;
-  const includePrice: boolean = body.includePrice !== false;
-  const narrationMode: NarrationMode = body.narrationMode === "voiceover" ? "voiceover" : "lipsync";
-  const cameraPattern: CameraPattern = body.cameraPattern === "aroll_broll" ? "aroll_broll" : "single_angle";
-
-  if (!productId || typeof sceneIndex !== "number" || typeof sceneDuration !== "number" || !productImageUrl) {
-    return NextResponse.json({ error: "Parameter regenerate scene tidak lengkap." }, { status: 400 });
+  const parsed = regenerateSceneRequestSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: formatZodError(parsed.error) }, { status: 400 });
   }
+  const {
+    productId,
+    characterId,
+    style,
+    aiTool,
+    platform,
+    aspectRatio,
+    hookArchetype,
+    contentGoal,
+    ctaType,
+    sceneIndex,
+    sceneDuration,
+    productImageUrl,
+    totalScenes,
+    includePrice,
+    narrationMode,
+    cameraPattern,
+  } = parsed.data;
+  const previousScene = parsed.data.previousScene as SceneOutput | null;
+  const nextScene = parsed.data.nextScene as SceneOutput | null;
 
   const [product] = await db.select().from(products).where(eq(products.id, productId));
   if (!product) {
