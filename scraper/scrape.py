@@ -150,6 +150,15 @@ def scrape_price(driver, body_text: str) -> int | None:
     return parse_price(match.group(0)) if match else None
 
 
+def scrape_original_price(body_text: str) -> int | None:
+    """Only present on discounted products, e.g. 'Rp379.000 Rp1.000.000 -62%'
+    -- the current price, then the struck-through original price, then the
+    discount badge. Requiring the trailing '-NN%' avoids false-matching two
+    unrelated 'Rp...' amounts elsewhere on the page."""
+    match = re.search(r"Rp[\d.,]+\s*Rp([\d.,]+)\s*-\s*\d+\s*%", body_text)
+    return parse_price(match.group(1)) if match else None
+
+
 def scrape_rating(driver, body_text: str) -> float | None:
     try:
         el = driver.find_element(By.CSS_SELECTOR, sel.RATING_CSS)
@@ -258,6 +267,7 @@ def scrape_product(driver, product_url: str, product_id: str = "") -> dict:
 
     category, subcategory, item, scraped_title = scrape_breadcrumb(driver)
     price = scrape_price(driver, body_text)
+    original_price = scrape_original_price(body_text)
     rating = scrape_rating(driver, body_text)
     sold = scrape_sold_count(body_text)
     ship_from = scrape_ship_from(body_text)
@@ -273,6 +283,7 @@ def scrape_product(driver, product_url: str, product_id: str = "") -> dict:
     return {
         "product_name": scraped_title,
         "price": price,
+        "original_price": original_price,
         "sales": sold,
         "category": category,
         "subcategory": subcategory,
@@ -304,7 +315,7 @@ def build_output_row(csv_row: dict, scraped: dict) -> dict:
         "image_url_4": gallery[3] if len(gallery) >= 4 else "",
         "image_url_5": gallery[4] if len(gallery) >= 5 else "",
         "video_url": "",
-        "original_price": "",
+        "original_price": scraped.get("original_price") or "",
         "dikirim_dari": scraped.get("dikirim_dari") or "",
         "toko": csv_row.get("Nama Toko", "").strip(),
         "komisi": komisi,

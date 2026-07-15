@@ -18,6 +18,7 @@ def build_api_payload(csv_row: dict, scraped: dict) -> dict:
         "product_id": csv_row.get("ID Produk", "").strip(),
         "product_name": product_name,
         "price": scraped.get("price") or 0,
+        "original_price": scraped.get("original_price"),
         "sales": scraped.get("sales") or 0,
         "category": scraped.get("category") or "Lainnya",
         "subcategory": scraped.get("subcategory") or "",

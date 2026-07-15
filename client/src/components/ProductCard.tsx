@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ProductImageCarousel } from '@/components/ProductImageCarousel';
 import { useToast } from '@/hooks/use-toast';
+import { formatSalesCount } from '@/lib/utils';
 import type { Product } from '@/types';
 
 interface ProductCardProps {
@@ -229,7 +230,7 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
             })()}
           </div>
           {product.sales && (
-            <span className="text-xs text-muted-foreground mt-1 sm:mt-0">{product.sales} terjual</span>
+            <span className="text-xs text-muted-foreground mt-1 sm:mt-0">{formatSalesCount(product.sales)} terjual</span>
           )}
         </div>
       </div>

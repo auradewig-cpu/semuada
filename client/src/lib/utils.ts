@@ -25,6 +25,15 @@ export function calculateDiscount(price: number, originalPrice: number): number 
   return Math.round(((originalPrice - price) / originalPrice) * 100);
 }
 
+/** Formats a sales count Shopee-style: 7000 -> "7RB+", 1500000 -> "1JT+". */
+export function formatSalesCount(sales: number | string | null | undefined): string {
+  const n = typeof sales === 'string' ? parseInt(sales, 10) : sales;
+  if (!n || isNaN(n) || n <= 0) return '0';
+  if (n >= 1_000_000) return `${Math.floor(n / 1_000_000)}JT+`;
+  if (n >= 1_000) return `${Math.floor(n / 1_000)}RB+`;
+  return String(n);
+}
+
 export function slugify(text: string): string {
   if (!text) return '';
   return text

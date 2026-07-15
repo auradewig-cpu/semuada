@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, TrendingUp, Award } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFeaturedProducts } from '@/hooks/useProductQueries';
-import { formatPrice, calculateDiscount } from '@/lib/utils';
+import { formatPrice, calculateDiscount, formatSalesCount } from '@/lib/utils';
 import type { Product } from '@/types';
 
 interface FeaturedCarouselProps {
@@ -164,7 +164,7 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                             />
                           ))}
                           <span className="ml-2 text-white/80">
-                            {rating.toFixed(1)} {product.sales && `(${product.sales} terjual)`}
+                            {rating.toFixed(1)} {product.sales && `(${formatSalesCount(product.sales)} terjual)`}
                           </span>
                         </div>
                       </div>
