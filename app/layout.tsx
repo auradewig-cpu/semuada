@@ -3,7 +3,7 @@ import { Providers } from "./providers";
 import "@/index.css";
 
 export const metadata: Metadata = {
-  title: "Daftar Product - Temukan Produk Terbaik",
+  title: "SEMUADA - Temukan Produk Terbaik",
   description: "Platform untuk mencari dan menemukan produk-produk terbaik dari berbagai kategori, dilengkapi dengan filter dan fitur admin.",
 };
 

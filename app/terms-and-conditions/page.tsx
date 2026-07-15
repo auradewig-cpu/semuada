@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Syarat & Ketentuan - Daftar Product",
-  description: "Syarat dan ketentuan penggunaan Daftar Product.",
+  title: "Syarat & Ketentuan - SEMUADA",
+  description: "Syarat dan ketentuan penggunaan SEMUADA.",
 };
 
 export default function TermsAndConditionsPage() {
@@ -17,12 +17,12 @@ export default function TermsAndConditionsPage() {
           <CardContent className="prose dark:prose-invert max-w-none">
             <h2>1. Penerimaan Persyaratan</h2>
             <p>
-              Dengan mengakses dan menggunakan website Daftar Product, Anda setuju untuk mematuhi syarat dan ketentuan yang tercantum di halaman ini.
+              Dengan mengakses dan menggunakan website SEMUADA, Anda setuju untuk mematuhi syarat dan ketentuan yang tercantum di halaman ini.
             </p>
 
             <h2>2. Peran Website</h2>
             <p>
-              Daftar Product adalah platform direktori produk afiliasi. Kami tidak menjual produk secara langsung. Semua transaksi, termasuk pembayaran, pengiriman, dan layanan purna jual, adalah tanggung jawab penuh platform e-commerce partner.
+              SEMUADA adalah platform direktori produk afiliasi. Kami tidak menjual produk secara langsung. Semua transaksi, termasuk pembayaran, pengiriman, dan layanan purna jual, adalah tanggung jawab penuh platform e-commerce partner.
             </p>
 
             <h2>3. Akurasi Informasi</h2>

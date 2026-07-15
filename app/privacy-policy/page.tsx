@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Kebijakan Privasi - Daftar Product",
-  description: "Kebijakan privasi Daftar Product.",
+  title: "Kebijakan Privasi - SEMUADA",
+  description: "Kebijakan privasi SEMUADA.",
 };
 
 export default function PrivacyPolicyPage() {

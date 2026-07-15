@@ -188,7 +188,7 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
                   <i className="fas fa-store text-white text-sm"></i>
                 </div>
                 <h3 className="text-lg font-bold bg-gradient-to-r from-emerald to-metallic bg-clip-text text-transparent">
-                  DAFTAR PRODUCT
+                  SEMUADA
                 </h3>
               </div>
               <p className="text-muted-foreground text-sm mb-4">Platform untuk mencari dan menemukan produk-produk terbaik dari berbagai kategori.</p>
@@ -237,7 +237,7 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
             <div>
               <h4 className="font-semibold mb-4">Kontak</h4>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p className="flex items-center"><i className="fas fa-envelope text-emerald mr-2"></i> support@daftarproduct.com</p>
+                <p className="flex items-center"><i className="fas fa-envelope text-emerald mr-2"></i> support@semuada.com</p>
                 <p className="flex items-center"><i className="fas fa-phone text-emerald mr-2"></i> +62 21 1234 5678</p>
                 <p className="flex items-center"><i className="fas fa-map-marker-alt text-emerald mr-2"></i> Jakarta, Indonesia</p>
               </div>
@@ -246,7 +246,7 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
           
           <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between">
             <p className="text-muted-foreground text-sm">
-              © 2024 DAFTAR PRODUCT. All rights reserved.
+              © 2024 SEMUADA. All rights reserved.
             </p>
             <div className="flex items-center space-x-4 mt-4 md:mt-0">
               <span className="text-xs text-muted-foreground">Powered by</span>

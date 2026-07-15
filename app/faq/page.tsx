@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 export const metadata: Metadata = {
-  title: "FAQ - Daftar Product",
-  description: "Pertanyaan yang sering diajukan seputar Daftar Product.",
+  title: "FAQ - SEMUADA",
+  description: "Pertanyaan yang sering diajukan seputar SEMUADA.",
 };
 
 const faqs = [

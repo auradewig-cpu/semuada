@@ -25,7 +25,7 @@ export function Header({ searchQuery, onSearchChange, onMenuToggle }: HeaderProp
               <i className="fas fa-store text-white text-lg"></i>
             </div>
             <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald to-metallic bg-clip-text text-transparent">
-              DAFTAR PRODUCT
+              SEMUADA
             </h1>
           </Link>
           
