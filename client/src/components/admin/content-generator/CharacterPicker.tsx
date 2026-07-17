@@ -51,18 +51,18 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-4 gap-3 max-h-72 overflow-y-auto p-1">
+      <div className="grid grid-cols-4 gap-2 max-h-96 overflow-y-auto p-1">
         <button
           type="button"
           onClick={() => onSelect(null)}
-          className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 ${
-            characterId === null ? 'border-primary' : 'border-transparent'
+          className={`flex flex-col rounded-lg border-2 overflow-hidden ${
+            characterId === null ? 'border-primary' : 'border-border'
           }`}
         >
-          <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
-            <UserRound className="h-6 w-6 text-muted-foreground" />
+          <div className="w-full aspect-square bg-muted flex items-center justify-center">
+            <UserRound className="h-8 w-8 text-muted-foreground" />
           </div>
-          <span className="text-xs">Faceless</span>
+          <span className="text-xs py-1 text-center truncate px-1">Faceless</span>
         </button>
 
         {!isLoading && data?.items.map((character) => (
@@ -70,18 +70,18 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
             <button
               type="button"
               onClick={() => onSelect(character.id)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 w-full ${
-                characterId === character.id ? 'border-primary' : 'border-transparent'
+              className={`flex flex-col rounded-lg border-2 overflow-hidden w-full ${
+                characterId === character.id ? 'border-primary' : 'border-border'
               }`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={character.photoUrl} alt={character.name} className="w-14 h-14 rounded-full object-cover" />
-              <span className="text-xs max-w-[4rem] truncate">{character.name}</span>
+              <img src={character.photoUrl} alt={character.name} className="w-full aspect-square object-cover" />
+              <span className="text-xs py-1 text-center truncate px-1 w-full">{character.name}</span>
             </button>
             <button
               type="button"
               onClick={() => deleteCharacter.mutate(character.id)}
-              className="absolute -top-1 -right-1 hidden group-hover:flex bg-destructive text-destructive-foreground rounded-full w-5 h-5 items-center justify-center"
+              className="absolute top-1 right-1 hidden group-hover:flex bg-destructive text-destructive-foreground rounded-full w-5 h-5 items-center justify-center"
             >
               <Trash2 className="h-3 w-3" />
             </button>
@@ -91,12 +91,12 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
         <button
           type="button"
           onClick={() => setShowUploadForm((v) => !v)}
-          className="flex flex-col items-center gap-1 p-2 rounded-lg border-2 border-dashed border-muted-foreground/30"
+          className="flex flex-col rounded-lg border-2 border-dashed border-muted-foreground/30 overflow-hidden"
         >
-          <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
-            <Plus className="h-6 w-6 text-muted-foreground" />
+          <div className="w-full aspect-square bg-muted flex items-center justify-center">
+            <Plus className="h-8 w-8 text-muted-foreground" />
           </div>
-          <span className="text-xs">Tambah</span>
+          <span className="text-xs py-1 text-center truncate px-1">Tambah</span>
         </button>
       </div>
 
@@ -115,7 +115,7 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
           {pendingFile && (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={URL.createObjectURL(pendingFile)} alt="" className="w-10 h-10 rounded-full object-cover" />
+              <img src={URL.createObjectURL(pendingFile)} alt="" className="w-10 h-10 rounded object-cover" />
               <Input
                 placeholder="Nama karakter"
                 value={pendingName}

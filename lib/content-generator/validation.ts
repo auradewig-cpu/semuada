@@ -53,14 +53,21 @@ const sceneShapeSchema = z.record(z.string(), z.unknown());
 // the request-level global default below).
 const sceneInputSchema = z.object({
   imageUrl: z.string().url(),
-  duration: z.number().int().positive(),
+  duration: z.number().int().min(2, "Durasi scene minimal 2 detik.").max(60, "Durasi scene maksimal 60 detik."),
   narrationMode: narrationModeSchema.nullable().default(null),
   cameraPattern: cameraPatternSchema.nullable().default(null),
 });
 
+// Hard cap: beyond ~10 scenes a single generate call risks blowing Gemini's
+// maxOutputTokens (16384) and failing with MAX_TOKENS after burning quota.
+export const MAX_SCENES = 10;
+
 export const generateRequestSchema = z.object({
   productId: z.string().min(1, "productId wajib diisi."),
-  scenes: z.array(sceneInputSchema).min(1, "Minimal 1 scene wajib diisi."),
+  scenes: z
+    .array(sceneInputSchema)
+    .min(1, "Minimal 1 scene wajib diisi.")
+    .max(MAX_SCENES, `Maksimal ${MAX_SCENES} scene per generate.`),
   characterId: z.string().nullable().default(null),
   style: contentStyleSchema,
   aiTool: aiToolSchema,

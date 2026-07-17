@@ -17,6 +17,7 @@ import {
   type CtaTypeId,
   type NarrationMode,
   type CameraPattern,
+  type SceneInput,
 } from "@/hooks/useContentGenerator";
 import { ReferenceFrameGuide } from "@/components/admin/content-generator/ReferenceFrameGuide";
 
@@ -40,6 +41,10 @@ interface SceneOutputPanelProps {
   onResultChange: (result: GenerationResult) => void;
   warnings: string[];
   context: SceneGenerationContext;
+  // Scene plan used at generate time -- carries the per-scene narration/camera
+  // overrides so Regenerate/Hook Variants reuse the SAME effective mode as the
+  // original generate, instead of silently falling back to the global default.
+  scenePlan: SceneInput[];
   affiliateUrl: string | null;
 }
 
@@ -62,12 +67,19 @@ async function downloadAs(url: string, filename: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function SceneOutputPanel({ result, onResultChange, warnings, context, affiliateUrl }: SceneOutputPanelProps) {
+export function SceneOutputPanel({ result, onResultChange, warnings, context, scenePlan, affiliateUrl }: SceneOutputPanelProps) {
   const { toast } = useToast();
   const regenerateScene = useRegenerateScene();
   const hookVariants = useHookVariants();
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
   const [variants, setVariants] = useState<SceneOutput[] | null>(null);
+
+  // Effective per-scene mode: the scene's own override wins, global is the
+  // fallback -- mirrors how compileMasterPrompt resolved it at generate time.
+  const effectiveNarrationMode = (index: number): NarrationMode =>
+    scenePlan[index]?.narrationMode ?? context.narrationMode;
+  const effectiveCameraPattern = (index: number): CameraPattern =>
+    scenePlan[index]?.cameraPattern ?? context.cameraPattern;
 
   const copyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -86,6 +98,8 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, af
     regenerateScene.mutate(
       {
         ...context,
+        narrationMode: effectiveNarrationMode(index),
+        cameraPattern: effectiveCameraPattern(index),
         sceneIndex: index,
         sceneDuration: scene.duration_seconds,
         totalScenes: result.scenes.length,
@@ -119,11 +133,19 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, af
         productImageUrl: scene.reference_images.product,
         currentScene: scene,
         includePrice: context.includePrice,
-        narrationMode: context.narrationMode,
-        cameraPattern: context.cameraPattern,
+        narrationMode: effectiveNarrationMode(0),
+        cameraPattern: effectiveCameraPattern(0),
       },
       {
-        onSuccess: (data) => setVariants(data.variants),
+        onSuccess: (data) => {
+          setVariants(data.variants);
+          if (data.warnings?.length) {
+            toast({
+              title: `Varian dibuat dengan ${data.warnings.length} peringatan`,
+              description: data.warnings.slice(0, 3).join(" | "),
+            });
+          }
+        },
         onError: (error) => toast({ variant: "destructive", title: "Gagal generate varian", description: error.message }),
       }
     );

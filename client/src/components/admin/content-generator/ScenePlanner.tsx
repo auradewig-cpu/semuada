@@ -77,6 +77,10 @@ export function ScenePlanner({ scenes, onChange }: ScenePlannerProps) {
               max={60}
               value={scene.duration}
               onChange={(e) => updateScene(index, { duration: Number(e.target.value) || 0 })}
+              onBlur={() => {
+                const clamped = Math.min(60, Math.max(2, scene.duration || 2));
+                if (clamped !== scene.duration) updateScene(index, { duration: clamped });
+              }}
               className="w-20"
             />
             <span className="text-xs text-muted-foreground -ml-2">detik</span>

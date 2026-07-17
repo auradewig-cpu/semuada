@@ -198,7 +198,7 @@ export function useHookVariants() {
   return useMutation({
     mutationFn: async (input: HookVariantsInput) => {
       const res = await apiRequest('POST', '/api/content-generator/hook-variants', input);
-      return res.json() as Promise<{ variants: SceneOutput[] }>;
+      return res.json() as Promise<{ variants: SceneOutput[]; warnings: string[] }>;
     },
   });
 }

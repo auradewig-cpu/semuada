@@ -94,8 +94,10 @@ export async function POST(request: NextRequest) {
     }
 
     const characterProxyUrl = character ? toCharacterPhotoProxyUrl(character.photoUrl) : null;
-    const variants = result.variants.map((scene) => {
-      validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
+    const warnings: string[] = [];
+    const variants = result.variants.map((scene, i) => {
+      const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
+      warnings.push(...problems.map((p) => `Varian ${i + 1}: ${p}`));
       scene.scene_number = 1;
       scene.reference_images = {
         character: characterProxyUrl,
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest) {
       return scene;
     });
 
-    return NextResponse.json({ variants });
+    return NextResponse.json({ variants, warnings });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Gagal generate hook variants." },

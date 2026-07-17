@@ -51,6 +51,10 @@ export function ContentGeneratorTab() {
   const [cameraPattern, setCameraPattern] = useState<CameraPattern>('single_angle');
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  // Snapshot of the scene plan at generate time -- Regenerate/Hook Variants
+  // must reuse the per-scene overrides that actually produced the result,
+  // even if the user has since edited the scene list above.
+  const [generatedScenePlan, setGeneratedScenePlan] = useState<SceneInput[]>([]);
 
   const generateContent = useGenerateContent();
   const { toast } = useToast();
@@ -61,7 +65,17 @@ export function ContentGeneratorTab() {
     setResult(null);
   };
 
+  const MAX_SCENES = 10;
+
   const handleAddScene = (url: string) => {
+    if (scenes.length >= MAX_SCENES) {
+      toast({
+        variant: "destructive",
+        title: "Batas scene tercapai",
+        description: `Maksimal ${MAX_SCENES} scene per generate -- lebih dari itu berisiko gagal karena output AI terpotong.`,
+      });
+      return;
+    }
     setScenes((prev) => [...prev, { imageUrl: url, duration: 8, narrationMode: null, cameraPattern: null }]);
   };
 
@@ -92,6 +106,7 @@ export function ContentGeneratorTab() {
         onSuccess: (data) => {
           setResult(data.result);
           setWarnings(data.warnings);
+          setGeneratedScenePlan(scenes);
           toast({ title: "Berhasil", description: "Konten berhasil digenerate." });
         },
         onError: (error) => {
@@ -265,6 +280,7 @@ export function ContentGeneratorTab() {
           result={result}
           onResultChange={setResult}
           warnings={warnings}
+          scenePlan={generatedScenePlan}
           affiliateUrl={product.affiliate_url}
           context={{
             productId: product.id,
