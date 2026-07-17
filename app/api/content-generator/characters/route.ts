@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { desc } from "drizzle-orm";
-import { put } from "@vercel/blob";
+import { put, del } from "@vercel/blob";
 import { db } from "@root/lib/db";
 import { characters } from "@shared/schema";
 import { requireAuth } from "@root/lib/apiAuth";
@@ -45,4 +45,17 @@ export async function POST(request: NextRequest) {
     .returning();
 
   return NextResponse.json(toApiCharacter(row), { status: 201 });
+}
+
+export async function DELETE() {
+  const unauthorized = await requireAuth();
+  if (unauthorized) return unauthorized;
+
+  const rows = await db.delete(characters).returning();
+
+  // Best-effort blob cleanup, same as the single-character delete route --
+  // don't fail the request over an already-gone or slow blob.
+  await Promise.allSettled(rows.map((row) => del(row.photoUrl)));
+
+  return NextResponse.json({ ok: true, deleted: rows.length });
 }

@@ -140,6 +140,19 @@ export function useDeleteCharacter() {
   });
 }
 
+export function useDeleteAllCharacters() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('DELETE', '/api/content-generator/characters');
+      return res.json() as Promise<{ ok: boolean; deleted: number }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['characters'] });
+    },
+  });
+}
+
 export function useGenerateContent() {
   return useMutation({
     mutationFn: async (input: GenerateContentInput) => {

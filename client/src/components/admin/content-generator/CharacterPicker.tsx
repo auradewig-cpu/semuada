@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useCharacters, useAddCharacter, useDeleteCharacter, type Character } from "@/hooks/useContentGenerator";
+import { useCharacters, useAddCharacter, useDeleteCharacter, useDeleteAllCharacters, type Character } from "@/hooks/useContentGenerator";
 import { useToast } from "@/hooks/use-toast";
 
 interface CharacterPickerProps {
@@ -24,6 +24,7 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
   const { data, isLoading } = useCharacters();
   const addCharacter = useAddCharacter();
   const deleteCharacter = useDeleteCharacter();
+  const deleteAllCharacters = useDeleteAllCharacters();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingName, setPendingName] = useState('');
@@ -31,6 +32,7 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Character | null>(null);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
   const confirmDelete = () => {
@@ -43,6 +45,21 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
         if (characterId === deleteTarget.id) onSelect(null);
         toast({ title: "Dihapus", description: `Karakter "${deleteTarget.name}" dihapus.` });
         setDeleteTarget(null);
+      },
+      onError: (error) => {
+        toast({ variant: "destructive", title: "Gagal menghapus", description: error.message });
+      },
+    });
+  };
+
+  const confirmDeleteAllCharacters = () => {
+    deleteAllCharacters.mutate(undefined, {
+      onSuccess: (data) => {
+        // All characters are gone -- if one was selected, it no longer
+        // exists, same reasoning as the single-delete reset.
+        if (characterId !== null) onSelect(null);
+        toast({ title: "Semua karakter dihapus", description: `${data.deleted} karakter dihapus.` });
+        setConfirmDeleteAll(false);
       },
       onError: (error) => {
         toast({ variant: "destructive", title: "Gagal menghapus", description: error.message });
@@ -113,6 +130,20 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
 
   return (
     <div className="space-y-3">
+      {!isLoading && (data?.items.length ?? 0) > 0 && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setConfirmDeleteAll(true)}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1" /> Hapus Semua Karakter
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-4 gap-2 max-h-96 overflow-y-auto p-1">
         <button
           type="button"
@@ -213,6 +244,27 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmDeleteAll} onOpenChange={setConfirmDeleteAll}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus SEMUA karakter ({data?.items.length ?? 0})?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tindakan ini tidak bisa dibatalkan -- semua karakter dan foto referensinya akan dihapus permanen. Kalau ada karakter yang sedang dipakai di scene manapun, generate berikutnya akan otomatis jadi faceless.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteAllCharacters}
+              disabled={deleteAllCharacters.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteAllCharacters.isPending ? 'Menghapus...' : 'Hapus Semua'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
