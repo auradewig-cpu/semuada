@@ -35,15 +35,6 @@ export default function RootLayout({
           integrity={FONT_AWESOME_INTEGRITY}
           crossOrigin="anonymous"
         />
-        <noscript>
-          <link
-            rel="stylesheet"
-            href={FONT_AWESOME_URL}
-            integrity={FONT_AWESOME_INTEGRITY}
-            crossOrigin="anonymous"
-            referrerPolicy="no-referrer"
-          />
-        </noscript>
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.classList.add(t);}catch(e){}function loadFA(){var l=document.createElement('link');l.rel='stylesheet';l.href='${FONT_AWESOME_URL}';l.integrity='${FONT_AWESOME_INTEGRITY}';l.crossOrigin='anonymous';l.referrerPolicy='no-referrer';document.head.appendChild(l);}if(document.readyState==='complete'){loadFA();}else{window.addEventListener('load',loadFA);}})();`,
