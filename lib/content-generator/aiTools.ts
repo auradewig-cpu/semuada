@@ -25,7 +25,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 500,
     supportsRef: true,
     formatTemplate:
-      "Mulai dengan CHARACTER ANCHOR (salin persis dari deskripsi karakter, jika ada). Format: '[Character anchor] -- [scene action]. [Camera movement]. [Environment, lighting]. [Mood]. [Xs, RATIO frame]' English only. Dialog WAJIB disisipkan sebagai kutipan literal: [Subjek] says, \"<script_narration verbatim>\" (no subtitles) -- konvensi resmi Veo3, model menyimpulkan bahasa ucapan dari isi kalimat dalam kutip, bukan label bahasa.",
+      "Mulai dengan CHARACTER ANCHOR (salin persis dari deskripsi karakter, jika ada). Format: '[Character anchor] -- [scene action]. [Camera movement]. [Environment, lighting]. [Mood]. [Xs, RATIO frame]' English only. DIALOG/NON-DIALOG (apakah ada quote ucapan \"[Subjek] says, ...\" atau SAMA SEKALI TIDAK ADA) WAJIB IKUTI PERSIS instruksi mode narasi per scene di bagian \"INSTRUKSI PER SCENE\" -- JANGAN tambahkan quote ucapan sendiri di luar instruksi itu, khususnya untuk scene voiceover.",
   },
   kling_ai: {
     id: "kling_ai",
@@ -33,7 +33,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 400,
     supportsRef: true,
     formatTemplate:
-      'Subject description. Action/motion. Camera movement. Environment. Lighting. Style/mood. English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
+      'Subject description. Action/motion. Camera movement. Environment. Lighting. Style/mood. English. DIALOG/NON-DIALOG (tag [DIALOGUE: ...] atau SAMA SEKALI TIDAK ADA) WAJIB IKUTI PERSIS instruksi mode narasi per scene di bagian "INSTRUKSI PER SCENE" -- JANGAN tambahkan tag dialog sendiri di luar instruksi itu, khususnya untuk scene voiceover.',
   },
   runway_gen4: {
     id: "runway_gen4",
@@ -41,7 +41,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 300,
     supportsRef: true,
     formatTemplate:
-      'Action-first. Camera keyword. Environment. Style. [X]s. English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
+      'Action-first. Camera keyword. Environment. Style. [X]s. English. DIALOG/NON-DIALOG (tag [DIALOGUE: ...] atau SAMA SEKALI TIDAK ADA) WAJIB IKUTI PERSIS instruksi mode narasi per scene di bagian "INSTRUKSI PER SCENE" -- JANGAN tambahkan tag dialog sendiri di luar instruksi itu, khususnya untuk scene voiceover.',
   },
   luma_dream: {
     id: "luma_dream",
@@ -49,7 +49,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 300,
     supportsRef: true,
     formatTemplate:
-      'One cinematic sentence + style tags. English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
+      'One cinematic sentence + style tags. English. DIALOG/NON-DIALOG (tag [DIALOGUE: ...] atau SAMA SEKALI TIDAK ADA) WAJIB IKUTI PERSIS instruksi mode narasi per scene di bagian "INSTRUKSI PER SCENE" -- JANGAN tambahkan tag dialog sendiri di luar instruksi itu, khususnya untuk scene voiceover.',
   },
   pika_labs: {
     id: "pika_labs",
@@ -57,7 +57,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 250,
     supportsRef: true,
     formatTemplate:
-      'Short: \'[Subject] [action] [environment]. [Camera]. [Mood]. [X]s.\' English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
+      'Short: \'[Subject] [action] [environment]. [Camera]. [Mood]. [X]s.\' English. DIALOG/NON-DIALOG (tag [DIALOGUE: ...] atau SAMA SEKALI TIDAK ADA) WAJIB IKUTI PERSIS instruksi mode narasi per scene di bagian "INSTRUKSI PER SCENE" -- JANGAN tambahkan tag dialog sendiri di luar instruksi itu, khususnya untuk scene voiceover.',
   },
   sora: {
     id: "sora",
@@ -65,7 +65,7 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     charLimit: 600,
     supportsRef: false,
     formatTemplate:
-      'Rich detailed description: character + action + environment + camera + lighting + mood. Longer is better. English. Tutup dengan [DIALOGUE: Bahasa Indonesia] "<narasi asli>" -- kutipan narasi WAJIB disertakan, bukan tag kosong.',
+      'Rich detailed description: character + action + environment + camera + lighting + mood. Longer is better. English. DIALOG/NON-DIALOG (tag [DIALOGUE: ...] atau SAMA SEKALI TIDAK ADA) WAJIB IKUTI PERSIS instruksi mode narasi per scene di bagian "INSTRUKSI PER SCENE" -- JANGAN tambahkan tag dialog sendiri di luar instruksi itu, khususnya untuk scene voiceover.',
   },
 };
 

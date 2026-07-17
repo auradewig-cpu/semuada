@@ -1,12 +1,19 @@
 import { Card, CardContent } from "@/components/ui/card";
-import type { PlatformTarget } from "@/hooks/useContentGenerator";
+import type { AspectRatio, PlatformTarget } from "@/hooks/useContentGenerator";
 
-const PLATFORMS: { id: PlatformTarget; label: string; blurb: string }[] = [
-  { id: 'shopee_video', label: 'Shopee Video', blurb: 'Penonton sudah niat beli -- tampilkan produk/harga cepat, tutup dengan klik keranjang kuning.' },
-  { id: 'instagram_reels', label: 'Instagram Reels', blurb: 'Save & share (DM ke teman) lebih penting dari like -- buat konten worth dikirim.' },
-  { id: 'facebook_reels', label: 'Facebook Reels', blurb: 'Audiens 30+ lebih dominan, tone lebih formal, social proof efektif.' },
-  { id: 'youtube_shorts', label: 'YouTube Shorts', blurb: 'Watch time & completion rate segalanya -- hook detik pertama menentukan.' },
+// defaultRatio mirrors lib/content-generator/platforms.ts's PlatformSpec --
+// keep both in sync if a platform's expected orientation changes (e.g. a
+// future "YouTube Long" entry would be "16:9", not "9:16").
+export const PLATFORMS: { id: PlatformTarget; label: string; blurb: string; defaultRatio: AspectRatio }[] = [
+  { id: 'shopee_video', label: 'Shopee Video', blurb: 'Penonton sudah niat beli -- tampilkan produk/harga cepat, tutup dengan klik keranjang kuning.', defaultRatio: '9:16' },
+  { id: 'instagram_reels', label: 'Instagram Reels', blurb: 'Save & share (DM ke teman) lebih penting dari like -- buat konten worth dikirim.', defaultRatio: '9:16' },
+  { id: 'facebook_reels', label: 'Facebook Reels', blurb: 'Audiens 30+ lebih dominan, tone lebih formal, social proof efektif.', defaultRatio: '9:16' },
+  { id: 'youtube_shorts', label: 'YouTube Shorts', blurb: 'Watch time & completion rate segalanya -- hook detik pertama menentukan.', defaultRatio: '9:16' },
 ];
+
+export function getPlatformDefaultRatio(id: PlatformTarget): AspectRatio {
+  return PLATFORMS.find((p) => p.id === id)?.defaultRatio ?? '9:16';
+}
 
 interface PlatformSelectorProps {
   value: PlatformTarget;

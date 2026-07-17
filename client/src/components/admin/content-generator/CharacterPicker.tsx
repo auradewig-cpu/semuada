@@ -2,7 +2,17 @@ import { useRef, useState } from 'react';
 import { Plus, Trash2, UserRound } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useCharacters, useAddCharacter, useDeleteCharacter } from "@/hooks/useContentGenerator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useCharacters, useAddCharacter, useDeleteCharacter, type Character } from "@/hooks/useContentGenerator";
 import { useToast } from "@/hooks/use-toast";
 
 interface CharacterPickerProps {
@@ -20,6 +30,24 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
   const [showUploadForm, setShowUploadForm] = useState(false);
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Character | null>(null);
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    deleteCharacter.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        // The deleted character may still be the one selected upstream --
+        // reset it, otherwise generate silently falls back to faceless
+        // without telling the user their selection just vanished.
+        if (characterId === deleteTarget.id) onSelect(null);
+        toast({ title: "Dihapus", description: `Karakter "${deleteTarget.name}" dihapus.` });
+        setDeleteTarget(null);
+      },
+      onError: (error) => {
+        toast({ variant: "destructive", title: "Gagal menghapus", description: error.message });
+      },
+    });
+  };
 
   const handleFileSelected = (file: File | undefined) => {
     if (!file) return;
@@ -80,7 +108,7 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
             </button>
             <button
               type="button"
-              onClick={() => deleteCharacter.mutate(character.id)}
+              onClick={() => setDeleteTarget(character)}
               className="absolute top-1 right-1 hidden group-hover:flex bg-destructive text-destructive-foreground rounded-full w-5 h-5 items-center justify-center"
             >
               <Trash2 className="h-3 w-3" />
@@ -129,6 +157,23 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
           )}
         </div>
       )}
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus karakter "{deleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tindakan ini tidak bisa dibatalkan. Kalau karakter ini sedang dipakai di scene manapun, generate berikutnya akan otomatis jadi faceless.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

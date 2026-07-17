@@ -183,6 +183,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Hard guard: even after the repair pass, the AI can still return the
+    // wrong scene count. Proceeding would let applyReferenceImages() index
+    // past selectedImageUrls and stamp reference_images.product = undefined
+    // on the extra scenes -- fail loudly instead of shipping broken scenes.
+    if (result.scenes.length !== selectedImageUrls.length) {
+      return NextResponse.json(
+        {
+          error: `AI mengembalikan ${result.scenes.length} scene, seharusnya tepat ${selectedImageUrls.length} -- gagal walau sudah diminta perbaikan. Coba generate ulang.`,
+        },
+        { status: 502 }
+      );
+    }
+
     let policyViolations = checkPolicyCompliance(result, contentGoal);
     if (policyViolations.length > 0) {
       await applyTargetedRephrase(result, policyViolations, providerOrder, keys);

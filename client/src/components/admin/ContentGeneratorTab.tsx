@@ -23,7 +23,7 @@ import { ProductPicker } from "@/components/admin/content-generator/ProductPicke
 import { ImagePicker } from "@/components/admin/content-generator/ImagePicker";
 import { ScenePlanner } from "@/components/admin/content-generator/ScenePlanner";
 import { CharacterPicker } from "@/components/admin/content-generator/CharacterPicker";
-import { PlatformSelector } from "@/components/admin/content-generator/PlatformSelector";
+import { PlatformSelector, getPlatformDefaultRatio } from "@/components/admin/content-generator/PlatformSelector";
 import { AspectRatioSelector } from "@/components/admin/content-generator/AspectRatioSelector";
 import { AiToolSelector } from "@/components/admin/content-generator/AiToolSelector";
 import { StyleSelector } from "@/components/admin/content-generator/StyleSelector";
@@ -83,6 +83,13 @@ export function ContentGeneratorTab() {
     acc[s.imageUrl] = (acc[s.imageUrl] ?? 0) + 1;
     return acc;
   }, {});
+
+  // Suggest the platform's expected orientation when it changes -- user can
+  // still override manually afterward via AspectRatioSelector.
+  const handlePlatformChange = (next: PlatformTarget) => {
+    setPlatform(next);
+    setAspectRatio(getPlatformDefaultRatio(next));
+  };
 
   const handleGenerate = () => {
     if (!product || scenes.length === 0) return;
@@ -189,7 +196,7 @@ export function ContentGeneratorTab() {
             <CardTitle>6. Platform &amp; Rasio</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <PlatformSelector value={platform} onChange={setPlatform} />
+            <PlatformSelector value={platform} onChange={handlePlatformChange} />
             <AspectRatioSelector value={aspectRatio} onChange={setAspectRatio} />
           </CardContent>
         </Card>

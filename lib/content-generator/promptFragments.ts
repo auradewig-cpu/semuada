@@ -28,7 +28,7 @@ export function buildCharacterBlock(characterName: string | null, characterDescr
 // appear at all -- only "lipsync" uses the tool-specific dialogue convention.
 export function buildDialogueRule(aiTool: AiToolId, narrationMode: NarrationMode): string {
   if (narrationMode === "voiceover") {
-    return `Mode narasi VOICEOVER (non-sync) -- karakter TIDAK berbicara dan mulutnya TIDAK bergerak mengucapkan kata apapun, hanya beraktivitas/memperagakan produk secara diam (silent demo/action). JANGAN sisipkan dialog terkutip atau tag [DIALOGUE: ...] apapun ke "ai_ready_prompt" -- audio HANYA voiceover narasi yang diputar terpisah di atas visual (narator tidak terlihat di frame).`;
+    return `Mode narasi VOICEOVER (non-sync) -- karakter TIDAK berbicara, MULUT TERTUTUP/DIAM sepanjang scene dan TIDAK bergerak mengucapkan kata apapun, hanya beraktivitas/memperagakan produk secara diam (silent demo/action, mis. memegang/menunjukkan/menggunakan produk sambil ekspresi natural tanpa bicara). JANGAN sisipkan dialog terkutip, tag [DIALOGUE: ...], frasa "says", atau kutipan ucapan apapun ke "ai_ready_prompt" -- ABAIKAN SEPENUHNYA instruksi konvensi dialog di bagian format AI video tool manapun untuk scene ini, itu HANYA berlaku untuk scene bermode lipsync. Audio HANYA voiceover narasi yang diputar terpisah di atas visual (narator tidak terlihat di frame, karakter di layar sama sekali tidak mengeluarkan suara/tidak lipsync).`;
   }
   const toolSpec = getAiToolSpec(aiTool);
   if (usesLiteralDialogueConvention(aiTool)) {
