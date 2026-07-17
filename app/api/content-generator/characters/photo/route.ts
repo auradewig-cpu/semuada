@@ -32,7 +32,13 @@ export async function GET(request: NextRequest) {
     headers: {
       "Content-Type": result.blob.contentType,
       "X-Content-Type-Options": "nosniff",
-      "Cache-Control": "private, no-cache",
+      // Each upload gets a fresh timestamped blob URL (see characters/route.ts),
+      // so the content behind a given `url` never changes -- safe to let the
+      // BROWSER cache it long-term (still "private" so no shared/CDN cache
+      // stores it). Previously "no-cache" forced a full re-fetch (auth check +
+      // DB scoping query + Blob read) on every single render, which is why
+      // the character grid felt slow to load every time it was revisited.
+      "Cache-Control": "private, max-age=31536000, immutable",
     },
   });
 }
