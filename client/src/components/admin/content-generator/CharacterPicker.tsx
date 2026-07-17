@@ -31,6 +31,7 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Character | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
   const confirmDelete = () => {
     if (!deleteTarget) return;
@@ -49,10 +50,43 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
     });
   };
 
-  const handleFileSelected = (file: File | undefined) => {
-    if (!file) return;
-    setPendingFile(file);
-    setPendingName(file.name);
+  const handleFileSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    // Single file: keep the review step so the auto-filled name can still
+    // be edited before upload. Multiple files: skip review entirely (that'd
+    // mean reviewing dozens one-by-one) and upload each with its filename
+    // as name, sequentially -- matches how single-file naming already works.
+    if (files.length === 1) {
+      setPendingFile(files[0]);
+      setPendingName(files[0].name);
+      return;
+    }
+
+    void uploadManyFiles(Array.from(files));
+  };
+
+  const uploadManyFiles = async (files: File[]) => {
+    setBulkProgress({ done: 0, total: files.length });
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const file of files) {
+      try {
+        await addCharacter.mutateAsync({ name: file.name, photo: file });
+        succeeded++;
+      } catch {
+        failed++;
+      }
+      setBulkProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev));
+    }
+
+    setBulkProgress(null);
+    toast({
+      variant: failed > 0 ? "destructive" : "default",
+      title: failed > 0 ? `Selesai dengan ${failed} gagal` : "Semua berhasil diupload",
+      description: `${succeeded} dari ${files.length} karakter berhasil diupload.`,
+    });
   };
 
   const handleConfirmUpload = () => {
@@ -134,12 +168,21 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
-            onChange={(e) => handleFileSelected(e.target.files?.[0])}
+            onChange={(e) => {
+              handleFileSelected(e.target.files);
+              e.target.value = '';
+            }}
           />
-          <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={addCharacter.isPending}>
-            {pendingFile ? 'Ganti Foto' : 'Pilih Foto'}
+          <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={addCharacter.isPending || bulkProgress !== null}>
+            {pendingFile ? 'Ganti Foto' : 'Pilih Foto (bisa lebih dari 1)'}
           </Button>
+          {bulkProgress && (
+            <span className="text-xs text-muted-foreground">
+              Mengupload {bulkProgress.done}/{bulkProgress.total}...
+            </span>
+          )}
           {pendingFile && (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
