@@ -118,7 +118,35 @@ export function ContentGeneratorTab() {
       {product && (
         <Card>
           <CardHeader>
-            <CardTitle>2. Scene: Foto Produk &amp; Durasi</CardTitle>
+            <CardTitle>2. Mode Narasi (default)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NarrationModeSelector value={narrationMode} onChange={setNarrationMode} />
+            <p className="text-xs text-muted-foreground mt-3">
+              Ini nilai default untuk semua scene. Tiap scene bisa override sendiri di Card 4 (mis. scene 1 voiceover, scene 2 lipsync).
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {product && (
+        <Card>
+          <CardHeader>
+            <CardTitle>3. Pola Kamera (default)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CameraPatternSelector value={cameraPattern} onChange={setCameraPattern} />
+            <p className="text-xs text-muted-foreground mt-3">
+              Teknik selang-seling shot (single angle vs A-roll/B-roll) -- beda dari "Gaya Video" di Card 9 yang mengatur nuansa keseluruhan. Ini juga nilai default, bisa di-override per scene di Card 4.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {product && (
+        <Card>
+          <CardHeader>
+            <CardTitle>4. Scene: Foto Produk &amp; Durasi</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <ImagePicker product={product} usageCounts={usageCounts} onAddScene={handleAddScene} />
@@ -132,7 +160,7 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>4. Karakter</CardTitle>
+            <CardTitle>5. Karakter</CardTitle>
           </CardHeader>
           <CardContent>
             <CharacterPicker characterId={characterId} onSelect={setCharacterId} />
@@ -143,7 +171,7 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>5. Platform &amp; Rasio</CardTitle>
+            <CardTitle>6. Platform &amp; Rasio</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <PlatformSelector value={platform} onChange={setPlatform} />
@@ -155,7 +183,7 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>6. AI Video Tool Tujuan</CardTitle>
+            <CardTitle>7. AI Video Tool Tujuan</CardTitle>
           </CardHeader>
           <CardContent>
             <AiToolSelector value={aiTool} onChange={setAiTool} />
@@ -166,7 +194,7 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>7. Pola Hook Scene 1</CardTitle>
+            <CardTitle>8. Pola Hook Scene 1</CardTitle>
           </CardHeader>
           <CardContent>
             <HookArchetypeSelector value={hookArchetype} onChange={setHookArchetype} />
@@ -177,10 +205,13 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>8. Gaya Video</CardTitle>
+            <CardTitle>9. Gaya Video</CardTitle>
           </CardHeader>
           <CardContent>
             <StyleSelector value={style} onChange={setStyle} />
+            <p className="text-xs text-muted-foreground mt-3">
+              Nuansa/tempo keseluruhan video (mis. santai vs persuasif) -- beda dari "Pola Kamera" di Card 3 yang mengatur teknik shot.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -188,38 +219,26 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>9. Tujuan Konten</CardTitle>
+            <CardTitle>10. Tujuan Konten</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <ContentGoalSelector value={contentGoal} onChange={setContentGoal} />
-            <div className="flex items-center gap-2 pt-2 border-t">
+          </CardContent>
+        </Card>
+      )}
+
+      {scenes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>11. Opsi Harga</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
               <Switch id="include-price" checked={includePrice} onCheckedChange={setIncludePrice} />
               <Label htmlFor="include-price" className="text-sm cursor-pointer">
                 Sertakan harga di narasi
               </Label>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {scenes.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>10. Mode Narasi</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <NarrationModeSelector value={narrationMode} onChange={setNarrationMode} />
-          </CardContent>
-        </Card>
-      )}
-
-      {scenes.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>11. Pola Kamera</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CameraPatternSelector value={cameraPattern} onChange={setCameraPattern} />
           </CardContent>
         </Card>
       )}

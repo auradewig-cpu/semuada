@@ -85,8 +85,9 @@ export function ScenePlanner({ scenes, onChange }: ScenePlannerProps) {
               className="text-xs border rounded px-2 py-1.5 bg-background"
               value={scene.narrationMode ?? ''}
               onChange={(e) => updateScene(index, { narrationMode: (e.target.value || null) as NarrationMode | null })}
+              title="Override mode narasi khusus scene ini. Kosongkan untuk ikut default di Card 2."
             >
-              <option value="">Narasi: ikuti global</option>
+              <option value="">Narasi: ikuti default (Card 2)</option>
               <option value="lipsync">Narasi: Lipsync</option>
               <option value="voiceover">Narasi: Voiceover</option>
             </select>
@@ -95,8 +96,9 @@ export function ScenePlanner({ scenes, onChange }: ScenePlannerProps) {
               className="text-xs border rounded px-2 py-1.5 bg-background"
               value={scene.cameraPattern ?? ''}
               onChange={(e) => updateScene(index, { cameraPattern: (e.target.value || null) as CameraPattern | null })}
+              title="Override pola kamera khusus scene ini. Kosongkan untuk ikut default di Card 3."
             >
-              <option value="">Kamera: ikuti global</option>
+              <option value="">Kamera: ikuti default (Card 3)</option>
               <option value="single_angle">Kamera: Single Angle</option>
               <option value="aroll_broll">Kamera: A-Roll/B-Roll</option>
             </select>
