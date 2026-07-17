@@ -26,6 +26,7 @@ const hookArchetypeSchema = z.enum([
   "curiosity_gap",
   "relatable",
   "emotional",
+  "mistake_warning",
 ]);
 const contentGoalSchema = z.enum(["conversion", "growth", "engagement"]);
 const ctaTypeSchema = z.enum([
@@ -47,27 +48,31 @@ const cameraPatternSchema = z.enum(["single_angle", "aroll_broll"]);
 // schema isn't worth the upkeep. Just require it to be an object when present.
 const sceneShapeSchema = z.record(z.string(), z.unknown());
 
-export const generateRequestSchema = z
-  .object({
-    productId: z.string().min(1, "productId wajib diisi."),
-    selectedImageUrls: z.array(z.string().url()).min(1, "Minimal 1 gambar produk wajib dipilih."),
-    characterId: z.string().nullable().default(null),
-    style: contentStyleSchema,
-    aiTool: aiToolSchema,
-    platform: platformSchema,
-    aspectRatio: aspectRatioSchema,
-    hookArchetype: hookArchetypeSchema,
-    contentGoal: contentGoalSchema,
-    ctaType: ctaTypeSchema,
-    sceneDurations: z.array(z.number().int().positive()).min(1),
-    includePrice: z.boolean().default(true),
-    narrationMode: narrationModeSchema.default("lipsync"),
-    cameraPattern: cameraPatternSchema.default("single_angle"),
-  })
-  .refine((data) => data.sceneDurations.length === data.selectedImageUrls.length, {
-    message: "Jumlah durasi scene harus sama dengan jumlah gambar yang dipilih.",
-    path: ["sceneDurations"],
-  });
+// One planned scene: product photo (same URL may repeat across scenes),
+// duration, and optional per-scene narration/camera override (null = inherit
+// the request-level global default below).
+const sceneInputSchema = z.object({
+  imageUrl: z.string().url(),
+  duration: z.number().int().positive(),
+  narrationMode: narrationModeSchema.nullable().default(null),
+  cameraPattern: cameraPatternSchema.nullable().default(null),
+});
+
+export const generateRequestSchema = z.object({
+  productId: z.string().min(1, "productId wajib diisi."),
+  scenes: z.array(sceneInputSchema).min(1, "Minimal 1 scene wajib diisi."),
+  characterId: z.string().nullable().default(null),
+  style: contentStyleSchema,
+  aiTool: aiToolSchema,
+  platform: platformSchema,
+  aspectRatio: aspectRatioSchema,
+  hookArchetype: hookArchetypeSchema,
+  contentGoal: contentGoalSchema,
+  ctaType: ctaTypeSchema,
+  includePrice: z.boolean().default(true),
+  narrationMode: narrationModeSchema.default("lipsync"),
+  cameraPattern: cameraPatternSchema.default("single_angle"),
+});
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>;
 

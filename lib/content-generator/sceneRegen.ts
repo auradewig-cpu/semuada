@@ -94,6 +94,7 @@ ${contextBlock}
 ATURAN:
 - scene_number HARUS PERSIS ${sceneNumber}, duration_seconds HARUS PERSIS ${input.sceneDuration}.
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris.
+- Target kecepatan bicara ${input.narrationWpm} kata per menit. WAJIB pakai kalimat PENDEK (di bawah 12 kata), HINDARI kalimat majemuk panjang -- pecah jadi beberapa kalimat pendek supaya AI voice tidak salah penekanan/terdengar blibet.
 - ${productAnchorRule}
 - ${priceRule}
 - ${cameraPatternRule}

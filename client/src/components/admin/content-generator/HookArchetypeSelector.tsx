@@ -8,6 +8,7 @@ const ARCHETYPES: { id: HookArchetype; label: string; blurb: string }[] = [
   { id: 'curiosity_gap', label: 'Curiosity Gap', blurb: 'Info sengaja belum lengkap, memancing rasa penasaran.' },
   { id: 'relatable', label: 'Relatable', blurb: 'Situasi/kebiasaan sehari-hari yang langsung terasa related.' },
   { id: 'emotional', label: 'Emotional', blurb: 'Momen yang menyentuh emosi spesifik.' },
+  { id: 'mistake_warning', label: 'Mistake Warning', blurb: 'Peringatan kesalahan umum seputar kategori produk ini.' },
 ];
 
 interface HookArchetypeSelectorProps {

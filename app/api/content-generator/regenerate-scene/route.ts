@@ -5,6 +5,7 @@ import { db } from "@root/lib/db";
 import { products, characters, aiSettings } from "@shared/schema";
 import { requireAuth } from "@root/lib/apiAuth";
 import { compileSceneRegenPrompt } from "@root/lib/content-generator/sceneRegen";
+import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
 import { parseSceneResponse, validateScene } from "@root/lib/content-generator/jsonParser";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
     ctaType,
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
-    narrationWpm: settingsRow.narrationWpm ?? 180,
+    narrationWpm: resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180),
     includePrice,
     narrationMode,
     cameraPattern,

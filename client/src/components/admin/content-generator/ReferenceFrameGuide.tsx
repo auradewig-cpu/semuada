@@ -100,6 +100,9 @@ export function ReferenceFrameGuide({ aiTool }: ReferenceFrameGuideProps) {
             <li key={i}>{step}</li>
           ))}
         </ol>
+        <p className="text-xs text-muted-foreground bg-muted rounded p-2 mt-2">
+          <span className="font-medium">Tip transisi mulus antar scene:</span> setelah scene 1 selesai di-generate, screenshot frame TERAKHIR videonya lalu upload sebagai reference tambahan saat generate scene berikutnya (fitur "Jump To"/"Frames to Video" di Flow) -- ini yang bikin perpindahan antar scene terasa menyambung, bukan cuma dari teks prompt.
+        </p>
       </CardContent>
     </Card>
   );

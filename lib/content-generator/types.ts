@@ -22,7 +22,8 @@ export type HookArchetype =
   | "specific_outcome"
   | "curiosity_gap"
   | "relatable"
-  | "emotional";
+  | "emotional"
+  | "mistake_warning";
 
 export type ContentGoal = "conversion" | "growth" | "engagement";
 
@@ -49,6 +50,18 @@ export type NarrationMode = "lipsync" | "voiceover";
 // single_angle = one consistent shot style per scene. aroll_broll = intercut
 // between character shots (A-roll) and product cutaways (B-roll) within scenes.
 export type CameraPattern = "single_angle" | "aroll_broll";
+
+// One planned scene: which product photo, how long, and optional per-scene
+// overrides for narration/camera. null override = inherit the request-level
+// global default -- lets e.g. scene 1 be voiceover B-roll while scene 2 is
+// lipsync talking head, a real pattern that a single global value can't
+// express (same photo can also appear in more than one scene).
+export interface SceneInput {
+  imageUrl: string;
+  duration: number;
+  narrationMode: NarrationMode | null;
+  cameraPattern: CameraPattern | null;
+}
 
 export interface SceneOutput {
   scene_number: number;

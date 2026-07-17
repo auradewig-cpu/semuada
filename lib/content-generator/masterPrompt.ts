@@ -12,13 +12,13 @@ import {
   buildPriceRule,
   buildCameraPatternRule,
 } from "./promptFragments";
-import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, NarrationMode, PlatformTarget } from "./types";
+import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, NarrationMode, PlatformTarget, SceneInput } from "./types";
 
 interface MasterPromptInput {
   productName: string;
   category: string;
   price: string;
-  sceneDurations: number[];
+  scenes: SceneInput[];
   style: ContentStyleId;
   aiTool: AiToolId;
   platform: PlatformTarget;
@@ -30,6 +30,7 @@ interface MasterPromptInput {
   characterDescription: string | null;
   narrationWpm: number;
   includePrice: boolean;
+  // Request-level defaults, used for any scene that didn't set its own override.
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
 }
@@ -38,24 +39,33 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
   const style = getContentStyle(input.style);
   const toolSpec = getAiToolSpec(input.aiTool);
   const platformSpec = getPlatformSpec(input.platform);
-  const sceneCount = input.sceneDurations.length;
-  const hookInstruction = buildHookInstruction(input.hookArchetype, input.platform, input.sceneDurations[0]);
+  const sceneCount = input.scenes.length;
+  const hookInstruction = buildHookInstruction(input.hookArchetype, input.platform, input.scenes[0].duration);
   const effectiveCta = resolveCtaForGoal(input.ctaType, input.contentGoal);
   const ctaSpec = getCtaType(effectiveCta);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
-  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   const priceRule = buildPriceRule(input.includePrice);
-  const cameraPatternRule = buildCameraPatternRule(input.cameraPattern);
+
+  // Per-scene narration/camera instructions -- each scene resolves its own
+  // override (or falls back to the request-level default), so e.g. scene 1
+  // can be voiceover B-roll while scene 2 is lipsync talking head.
+  const perSceneDirection = input.scenes
+    .map((scene, i) => {
+      const narrationMode = scene.narrationMode ?? input.narrationMode;
+      const cameraPattern = scene.cameraPattern ?? input.cameraPattern;
+      return `Scene ${i + 1} (${scene.duration}s): ${buildDialogueRule(input.aiTool, narrationMode)} ${buildCameraPatternRule(cameraPattern)}`;
+    })
+    .join("\n");
 
   const ctaGoalNote =
     input.contentGoal === "growth"
       ? "TUJUAN KONTEN: Growth akun -- TANPA bahasa jualan sama sekali, hook & CTA murni ke follow/save/share/comment."
       : input.contentGoal === "engagement"
         ? "TUJUAN KONTEN: Engagement -- pancing komentar/interaksi, CTA soft."
-        : "TUJUAN KONTEN: Konversi -- CTA sesuai gaya konten standar.";
+        : `TUJUAN KONTEN: Konversi -- WAJIB ikuti struktur "Hook -> Problem -> Solution -> CTA" (terbukti convert paling tinggi di riset UGC affiliate 2026): scene 1 = Hook + sebutkan masalah/pain point yang relevan dengan produk, scene tengah = Solution (produk sebagai solusi, tunjukkan produk beraksi/demo dalam 3 detik pertama kemunculannya), scene terakhir = CTA sesuai gaya konten standar.`;
 
   const loopEndingRule =
     style.ctaIntensity !== "hard"
@@ -82,7 +92,7 @@ Struktur: ${style.structureDescription}
 - Instruksi kamera: ${style.cameraInstruction}
 - Instruksi nada bicara: ${style.narrativeVoiceGuidance}
 
-PLATFORM TUJUAN: ${platformSpec.label} (rasio ${input.aspectRatio}, durasi total ${input.sceneDurations.reduce((a, b) => a + b, 0)}s)
+PLATFORM TUJUAN: ${platformSpec.label} (rasio ${input.aspectRatio}, durasi total ${input.scenes.reduce((a, s) => a + s.duration, 0)}s)
 ${platformSpec.behavior}
 
 AI VIDEO TOOL TUJUAN: ${toolSpec.label} (batas karakter ai_ready_prompt: ${toolSpec.charLimit})
@@ -95,21 +105,23 @@ CTA: ${ctaSpec.instruction}
 ${loopEndingRule}
 ${captionShareNote}
 
+INSTRUKSI PER SCENE (mode narasi & pola kamera BISA BERBEDA antar scene, WAJIB ikuti persis per scene):
+${perSceneDirection}
+
 ATURAN WAJIB (SANGAT PENTING):
-1. Buat TEPAT ${sceneCount} scene, satu scene untuk setiap foto produk yang dilampirkan berurutan (scene 1 = foto pertama, scene 2 = foto kedua, dst).
-2. Durasi tiap scene SUDAH DITENTUKAN dan TIDAK BOLEH diubah: ${input.sceneDurations.map((d, i) => `scene ${i + 1} = ${d}s`).join(", ")}.
+1. Buat TEPAT ${sceneCount} scene, satu scene untuk setiap foto produk yang dilampirkan berurutan (scene 1 = foto pertama, scene 2 = foto kedua, dst -- foto yang sama boleh muncul di lebih dari satu scene).
+2. Durasi tiap scene SUDAH DITENTUKAN dan TIDAK BOLEH diubah: ${input.scenes.map((s, i) => `scene ${i + 1} = ${s.duration}s`).join(", ")}.
 3. BAHASA PER FIELD (WAJIB DIPATUHI PERSIS): "script_narration" WAJIB Bahasa Indonesia. "visual_description", "camera_direction", dan "ai_ready_prompt" WAJIB Bahasa Inggris (English) -- field-field ini dibaca oleh AI video tool, bukan manusia Indonesia.
 4. ${productAnchorRule}
 5. ${priceRule}
-6. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit.
+6. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit. WAJIB pakai kalimat PENDEK (idealnya di bawah 12 kata) -- HINDARI kalimat majemuk panjang bersambung dengan "dan"/"yang"/"karena" berkali-kali, itu bikin AI voice salah penekanan dan terdengar "blibet". Pecah jadi beberapa kalimat pendek terpisah tanda titik, masing-masing 1 ide saja.
 7. JANGAN gunakan kata "sempurna", "flawless", "studio quality", "dijamin", "terbukti ampuh 100%" -- hindari klaim berlebihan dan bahasa yang terdengar buatan AI.
 8. Instruksi kamera harus terasa seperti rekaman HP asli: sedikit tidak simetris, pencahayaan ruangan natural (bukan studio), ada momen kecil yang tidak sempurna supaya tidak terlihat "AI banget".
-9. ${cameraPatternRule}
-10. ${dialogueRule}
-11. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
-12. ${SPOKEN_NUMBER_RULE}
-13. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
-14. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
+9. Mode narasi dan pola kamera tiap scene WAJIB ikuti persis "INSTRUKSI PER SCENE" di atas -- JANGAN disamaratakan kalau ada scene yang berbeda mode.
+10. Tutup ai_ready_prompt dengan penanda "[Xs, ${input.aspectRatio} frame]" (ganti X dengan durasi scene tersebut dalam detik).
+11. ${SPOKEN_NUMBER_RULE}
+12. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
+13. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
 
 ${NEGATIVE_PROMPT_BLOCK}
 

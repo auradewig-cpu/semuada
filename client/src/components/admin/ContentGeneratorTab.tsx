@@ -17,6 +17,7 @@ import {
   type CtaTypeId,
   type NarrationMode,
   type CameraPattern,
+  type SceneInput,
 } from "@/hooks/useContentGenerator";
 import { ProductPicker } from "@/components/admin/content-generator/ProductPicker";
 import { ImagePicker } from "@/components/admin/content-generator/ImagePicker";
@@ -36,8 +37,7 @@ import type { Product } from "@/types";
 
 export function ContentGeneratorTab() {
   const [product, setProduct] = useState<Product | null>(null);
-  const [selectedImageUrls, setSelectedImageUrls] = useState<string[]>([]);
-  const [sceneDurations, setSceneDurations] = useState<number[]>([]);
+  const [scenes, setScenes] = useState<SceneInput[]>([]);
   const [characterId, setCharacterId] = useState<string | null>(null);
   const [platform, setPlatform] = useState<PlatformTarget>('shopee_video');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
@@ -57,22 +57,25 @@ export function ContentGeneratorTab() {
 
   const handleSelectProduct = (p: Product) => {
     setProduct(p);
-    setSelectedImageUrls([]);
-    setSceneDurations([]);
+    setScenes([]);
     setResult(null);
   };
 
-  const handleImagesChange = (urls: string[]) => {
-    setSelectedImageUrls(urls);
-    setSceneDurations(urls.map((_, i) => sceneDurations[i] ?? 8));
+  const handleAddScene = (url: string) => {
+    setScenes((prev) => [...prev, { imageUrl: url, duration: 8, narrationMode: null, cameraPattern: null }]);
   };
 
+  const usageCounts = scenes.reduce<Record<string, number>>((acc, s) => {
+    acc[s.imageUrl] = (acc[s.imageUrl] ?? 0) + 1;
+    return acc;
+  }, {});
+
   const handleGenerate = () => {
-    if (!product || selectedImageUrls.length === 0) return;
+    if (!product || scenes.length === 0) return;
     generateContent.mutate(
       {
         productId: product.id,
-        selectedImageUrls,
+        scenes,
         characterId,
         style,
         aiTool,
@@ -81,7 +84,6 @@ export function ContentGeneratorTab() {
         hookArchetype,
         contentGoal,
         ctaType,
-        sceneDurations,
         includePrice,
         narrationMode,
         cameraPattern,
@@ -116,26 +118,18 @@ export function ContentGeneratorTab() {
       {product && (
         <Card>
           <CardHeader>
-            <CardTitle>2. Pilih Foto Produk (urutan = nomor scene)</CardTitle>
+            <CardTitle>2. Scene: Foto Produk &amp; Durasi</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ImagePicker product={product} selectedImageUrls={selectedImageUrls} onChange={handleImagesChange} />
+          <CardContent className="space-y-4">
+            <ImagePicker product={product} usageCounts={usageCounts} onAddScene={handleAddScene} />
+            <div className="pt-2 border-t">
+              <ScenePlanner scenes={scenes} onChange={setScenes} />
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {selectedImageUrls.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>3. Durasi per Scene</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ScenePlanner sceneDurations={sceneDurations} onChange={setSceneDurations} />
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedImageUrls.length > 0 && (
+      {scenes.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>4. Karakter</CardTitle>
@@ -146,7 +140,7 @@ export function ContentGeneratorTab() {
         </Card>
       )}
 
-      {selectedImageUrls.length > 0 && (
+      {scenes.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>5. Platform &amp; Rasio</CardTitle>
@@ -158,7 +152,7 @@ export function ContentGeneratorTab() {
         </Card>
       )}
 
-      {selectedImageUrls.length > 0 && (
+      {scenes.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>6. AI Video Tool Tujuan</CardTitle>
@@ -169,13 +163,34 @@ export function ContentGeneratorTab() {
         </Card>
       )}
 
-      {selectedImageUrls.length > 0 && (
+      {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>7. Gaya Video &amp; Tujuan Konten</CardTitle>
+            <CardTitle>7. Pola Hook Scene 1</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <HookArchetypeSelector value={hookArchetype} onChange={setHookArchetype} />
+          </CardContent>
+        </Card>
+      )}
+
+      {scenes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>8. Gaya Video</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StyleSelector value={style} onChange={setStyle} />
+          </CardContent>
+        </Card>
+      )}
+
+      {scenes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>9. Tujuan Konten</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <StyleSelector value={style} onChange={setStyle} />
             <ContentGoalSelector value={contentGoal} onChange={setContentGoal} />
             <div className="flex items-center gap-2 pt-2 border-t">
               <Switch id="include-price" checked={includePrice} onCheckedChange={setIncludePrice} />
@@ -187,33 +202,42 @@ export function ContentGeneratorTab() {
         </Card>
       )}
 
-      {selectedImageUrls.length > 0 && (
+      {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>8. Mode Narasi &amp; Pola Kamera</CardTitle>
+            <CardTitle>10. Mode Narasi</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <NarrationModeSelector value={narrationMode} onChange={setNarrationMode} />
+          </CardContent>
+        </Card>
+      )}
+
+      {scenes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>11. Pola Kamera</CardTitle>
+          </CardHeader>
+          <CardContent>
             <CameraPatternSelector value={cameraPattern} onChange={setCameraPattern} />
           </CardContent>
         </Card>
       )}
 
-      {selectedImageUrls.length > 0 && (
+      {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>9. CTA &amp; Pola Hook Scene 1</CardTitle>
+            <CardTitle>12. CTA</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <CtaTypeSelector value={ctaType} onChange={setCtaType} contentGoal={contentGoal} platform={platform} />
-            <HookArchetypeSelector value={hookArchetype} onChange={setHookArchetype} />
           </CardContent>
         </Card>
       )}
 
-      {selectedImageUrls.length > 0 && (
+      {scenes.length > 0 && (
         <Button onClick={handleGenerate} disabled={generateContent.isPending} size="lg">
-          {generateContent.isPending ? 'Generating...' : `Generate ${selectedImageUrls.length} Scene`}
+          {generateContent.isPending ? 'Generating...' : `Generate ${scenes.length} Scene`}
         </Button>
       )}
 

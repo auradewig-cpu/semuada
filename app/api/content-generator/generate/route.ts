@@ -5,6 +5,7 @@ import { db } from "@root/lib/db";
 import { products, characters, aiSettings, contentGenerations } from "@shared/schema";
 import { requireAuth } from "@root/lib/apiAuth";
 import { compileMasterPrompt } from "@root/lib/content-generator/masterPrompt";
+import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
 import { parseAiResponse, parseSceneResponse, validateOutput, buildRepairPrompt } from "@root/lib/content-generator/jsonParser";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
   }
   const {
     productId,
-    selectedImageUrls,
+    scenes,
     characterId,
     style,
     aiTool,
@@ -95,11 +96,11 @@ export async function POST(request: NextRequest) {
     hookArchetype,
     contentGoal,
     ctaType,
-    sceneDurations,
     includePrice,
     narrationMode,
     cameraPattern,
   } = parsed.data;
+  const selectedImageUrls = scenes.map((s) => s.imageUrl);
 
   const [product] = await db.select().from(products).where(eq(products.id, productId));
   if (!product) {
@@ -123,13 +124,13 @@ export async function POST(request: NextRequest) {
     openrouterApiKey: settingsRow.openrouterApiKey,
     deepseekApiKey: settingsRow.deepseekApiKey,
   };
-  const narrationWpm = settingsRow.narrationWpm ?? 180;
+  const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180);
 
   const prompt = compileMasterPrompt({
     productName: product.productName,
     category: product.category,
     price: product.price,
-    sceneDurations,
+    scenes,
     style,
     aiTool,
     platform,
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
   ];
 
   const validationContext = {
-    sceneDurations,
+    sceneDurations: scenes.map((s) => s.duration),
     aiTool,
     characterName: character?.name ?? null,
     productName: product.productName,

@@ -12,7 +12,7 @@ export function buildCharacterBlock(characterName: string | null, characterDescr
   }
   return `KARAKTER (WAJIB KONSISTEN DI SETIAP SCENE): "${characterName}". ${
     characterDescription ?? "Gunakan foto referensi karakter yang dilampirkan sebagai acuan wajah, gaya rambut, dan pakaian -- jangan ubah ciri-ciri ini antar scene."
-  } SETIAP "ai_ready_prompt" WAJIB dimulai dengan deskripsi anchor karakter ini persis kata per kata, baru diikuti deskripsi aksi scene -- tanpa anchor identik, karakter akan terlihat berbeda antar scene.`;
+  } SETIAP "ai_ready_prompt" WAJIB dimulai dengan deskripsi anchor karakter ini persis kata per kata (continuity token) -- pakai kata kunci fisik/pakaian yang SAMA PERSIS di semua scene (jangan diparafrase jadi sinonim berbeda tiap scene, mis. "kemeja linen biru" jangan berubah jadi "baju biru" di scene lain), baru diikuti deskripsi aksi scene -- tanpa anchor identik, karakter akan terlihat berbeda antar scene saat di-generate ke video tool.`;
 }
 
 // The actual bug this fixes: for non-literal-dialogue tools (Kling, Runway,

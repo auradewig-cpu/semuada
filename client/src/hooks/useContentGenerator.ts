@@ -22,7 +22,7 @@ export type ContentStyleId =
 export type AiToolId = 'google_flow' | 'veo3' | 'kling_ai' | 'runway_gen4' | 'luma_dream' | 'pika_labs' | 'sora';
 export type PlatformTarget = 'shopee_video' | 'instagram_reels' | 'facebook_reels' | 'youtube_shorts';
 export type AspectRatio = '9:16' | '16:9' | '1:1' | '4:5' | '3:4';
-export type HookArchetype = 'unpopular_opinion' | 'pov_realism' | 'specific_outcome' | 'curiosity_gap' | 'relatable' | 'emotional';
+export type HookArchetype = 'unpopular_opinion' | 'pov_realism' | 'specific_outcome' | 'curiosity_gap' | 'relatable' | 'emotional' | 'mistake_warning';
 export type ContentGoal = 'conversion' | 'growth' | 'engagement';
 export type CtaTypeId =
   | 'link_bio'
@@ -64,9 +64,19 @@ export interface GenerationResult {
   hashtags: string[];
 }
 
+// One planned scene: which product photo (may repeat across scenes), how
+// long, and optional per-scene override for narration/camera (null = inherit
+// the request-level global default).
+export interface SceneInput {
+  imageUrl: string;
+  duration: number;
+  narrationMode: NarrationMode | null;
+  cameraPattern: CameraPattern | null;
+}
+
 export interface GenerateContentInput {
   productId: string;
-  selectedImageUrls: string[];
+  scenes: SceneInput[];
   characterId: string | null;
   style: ContentStyleId;
   aiTool: AiToolId;
@@ -75,7 +85,6 @@ export interface GenerateContentInput {
   hookArchetype: HookArchetype;
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
-  sceneDurations: number[];
   includePrice: boolean;
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;

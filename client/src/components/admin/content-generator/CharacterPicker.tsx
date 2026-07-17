@@ -19,18 +19,27 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
   const [pendingName, setPendingName] = useState('');
   const [showUploadForm, setShowUploadForm] = useState(false);
 
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
   const handleFileSelected = (file: File | undefined) => {
     if (!file) return;
+    setPendingFile(file);
+    setPendingName(file.name);
+  };
+
+  const handleConfirmUpload = () => {
+    if (!pendingFile) return;
     if (!pendingName.trim()) {
-      toast({ variant: "destructive", title: "Error", description: "Isi nama karakter dulu." });
+      toast({ variant: "destructive", title: "Error", description: "Nama karakter tidak boleh kosong." });
       return;
     }
     addCharacter.mutate(
-      { name: pendingName.trim(), photo: file },
+      { name: pendingName.trim(), photo: pendingFile },
       {
         onSuccess: () => {
           toast({ title: "Tersimpan", description: "Karakter berhasil diupload." });
           setPendingName('');
+          setPendingFile(null);
           setShowUploadForm(false);
         },
         onError: (error) => {
@@ -42,7 +51,7 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-4 gap-3 max-h-72 overflow-y-auto p-1">
         <button
           type="button"
           onClick={() => onSelect(null)}
@@ -61,7 +70,7 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
             <button
               type="button"
               onClick={() => onSelect(character.id)}
-              className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 ${
+              className={`flex flex-col items-center gap-1 p-2 rounded-lg border-2 w-full ${
                 characterId === character.id ? 'border-primary' : 'border-transparent'
               }`}
             >
@@ -92,13 +101,7 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
       </div>
 
       {showUploadForm && (
-        <div className="flex gap-2 items-center">
-          <Input
-            placeholder="Nama karakter"
-            value={pendingName}
-            onChange={(e) => setPendingName(e.target.value)}
-            className="max-w-xs"
-          />
+        <div className="flex flex-wrap gap-2 items-center">
           <input
             ref={fileInputRef}
             type="file"
@@ -107,8 +110,23 @@ export function CharacterPicker({ characterId, onSelect }: CharacterPickerProps)
             onChange={(e) => handleFileSelected(e.target.files?.[0])}
           />
           <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={addCharacter.isPending}>
-            {addCharacter.isPending ? 'Mengupload...' : 'Pilih Foto'}
+            {pendingFile ? 'Ganti Foto' : 'Pilih Foto'}
           </Button>
+          {pendingFile && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={URL.createObjectURL(pendingFile)} alt="" className="w-10 h-10 rounded-full object-cover" />
+              <Input
+                placeholder="Nama karakter"
+                value={pendingName}
+                onChange={(e) => setPendingName(e.target.value)}
+                className="max-w-xs"
+              />
+              <Button type="button" onClick={handleConfirmUpload} disabled={addCharacter.isPending}>
+                {addCharacter.isPending ? 'Mengupload...' : 'Upload'}
+              </Button>
+            </>
+          )}
         </div>
       )}
     </div>

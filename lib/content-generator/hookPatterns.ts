@@ -41,6 +41,11 @@ export const HOOK_ARCHETYPES: Record<HookArchetype, HookArchetypeSpec> = {
     label: "Emotional",
     instruction: "Buka dengan momen yang menyentuh emosi spesifik (lega, kaget, frustrasi) yang relevan dengan masalah yang diselesaikan produk.",
   },
+  mistake_warning: {
+    id: "mistake_warning",
+    label: "Mistake Warning",
+    instruction: 'Buka dengan peringatan kesalahan umum yang sering dilakukan orang seputar kategori produk ini (mis. "Jangan beli [kategori] sebelum tahu ini" atau "Kesalahan ini yang bikin [masalah] tidak selesai-selesai") -- salah satu dari 3 formula hook terkuat di riset 2026.',
+  },
 };
 
 export function getHookArchetype(id: HookArchetype): HookArchetypeSpec {
