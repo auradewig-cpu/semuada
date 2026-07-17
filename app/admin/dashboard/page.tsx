@@ -31,6 +31,7 @@ import { FeaturedManagementTab } from "@/components/admin/FeaturedManagementTab"
 import { SettingsTab } from "@/components/admin/SettingsTab";
 import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
 import { ContentGeneratorTab } from "@/components/admin/ContentGeneratorTab";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 const NAV_ITEMS = [
@@ -101,6 +102,7 @@ export default function AdminDashboard() {
                   </h1>
                 </div>
                 <div className="flex items-center space-x-4">
+                  <ThemeToggle />
                   <Button variant="outline" onClick={() => router.push("/")}><Home className="h-4 w-4 mr-2" />View Site</Button>
                   <Button variant="outline" onClick={handleLogout}><LogOut className="h-4 w-4 mr-2" />Logout</Button>
                 </div>

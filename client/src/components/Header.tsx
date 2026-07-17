@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { Search, Menu, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useTheme } from '@/hooks/useTheme';
 import SearchBar from '@/components/SearchBar';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 interface HeaderProps {
   searchQuery: string;
@@ -13,8 +13,6 @@ interface HeaderProps {
 }
 
 export function Header({ searchQuery, onSearchChange, onMenuToggle }: HeaderProps) {
-  const { theme } = useTheme();
-
   return (
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md border-b border-border shadow-sm">
       <div className="container mx-auto px-4 py-4">
@@ -39,6 +37,8 @@ export function Header({ searchQuery, onSearchChange, onMenuToggle }: HeaderProp
           
           {/* Header Actions */}
           <div className="flex items-center space-x-3">
+            <ThemeToggle />
+
             {/* Mobile Menu Toggle */}
             <Button
               variant="ghost"
