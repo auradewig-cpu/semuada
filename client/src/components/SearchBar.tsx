@@ -83,7 +83,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
           className="w-full px-4 py-3 pr-12 bg-background rounded-xl border-2 border-emerald focus:outline-none focus:ring-2 focus:ring-emerald focus:border-emerald transition-all"
           aria-label="Search products"
         />
-        <button className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-emerald transition-colors">
+        <button
+          type="button"
+          aria-label="Cari"
+          className="absolute right-1.5 top-1/2 transform -translate-y-1/2 h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-emerald transition-colors"
+        >
           <Search className="h-5 w-5" />
         </button>
         {!value && (

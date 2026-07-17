@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { ChevronLeft, ChevronRight, TrendingUp, Award } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFeaturedProducts } from '@/hooks/useProductQueries';
@@ -80,14 +81,8 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
             : 0;
           const rating = parseFloat(product.rating?.toString() || '0');
 
-          // Construct optimized image URLs
-          const optimizedBgUrl = product.image_url
-            ? `${product.image_url}?width=1200&quality=80`
-            : 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=1200&h=600&fit=crop&crop=center';
-
-          const optimizedImageUrl = product.image_url
-            ? `${product.image_url}?width=600&quality=85`
-            : 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=600&h=600&fit=crop&crop=center';
+          const bgUrl = product.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=1200&h=600&fit=crop&crop=center';
+          const companionImageUrl = product.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=600&h=600&fit=crop&crop=center';
 
           return (
             <div
@@ -102,14 +97,16 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
               data-testid={`carousel-slide-${index}`}
             >
               {/* Background image with overlay */}
-              <img
-                src={optimizedBgUrl}
+              <Image
+                src={bgUrl}
                 alt=""
                 aria-hidden="true"
-                className="absolute inset-0 w-full h-full object-cover"
-                fetchPriority={index === 0 ? 'high' : 'low'}
+                fill
+                sizes="100vw"
+                quality={70}
+                className="object-cover"
+                priority={index === 0}
                 loading={index === 0 ? 'eager' : 'lazy'}
-                decoding="async"
               />
               <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-black/60" />
 
@@ -184,11 +181,15 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                     </Button>
                   </div>
                   
-                  <div className="hidden md:block">
-                    <img
-                      src={optimizedImageUrl}
+                  <div className="hidden md:block relative w-full max-w-md mx-auto aspect-square">
+                    <Image
+                      src={companionImageUrl}
                       alt={product.product_name}
-                      className="w-full max-w-md mx-auto rounded-2xl shadow-2xl transform hover:scale-105 transition-transform duration-300"
+                      fill
+                      sizes="448px"
+                      quality={70}
+                      priority={index === 0}
+                      className="rounded-2xl shadow-2xl object-cover transform hover:scale-105 transition-transform duration-300"
                     />
                   </div>
                 </div>

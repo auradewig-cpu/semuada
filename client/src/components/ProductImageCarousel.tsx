@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import useEmblaCarousel from 'embla-carousel-react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -10,7 +11,7 @@ interface ProductImageCarouselProps {
 }
 
 const FALLBACK_IMAGE = 'https://via.placeholder.com/300';
-const IMAGE_CLASS = 'w-full h-full object-cover group-hover:scale-110 transition-transform duration-300';
+const IMAGE_CLASS = 'object-cover group-hover:scale-110 transition-transform duration-300';
 
 function handleImageError(e: React.SyntheticEvent<HTMLImageElement>) {
   e.currentTarget.src = FALLBACK_IMAGE;
@@ -45,7 +46,15 @@ export function ProductImageCarousel({ images, alt, className }: ProductImageCar
   if (slides.length <= 1) {
     return (
       <div className={`relative overflow-hidden ${className ?? ''}`}>
-        <img src={slides[0]} alt={alt} className={IMAGE_CLASS} onError={handleImageError} />
+        <Image
+          src={slides[0]}
+          alt={alt}
+          fill
+          sizes="(max-width: 640px) 45vw, 220px"
+          quality={70}
+          className={IMAGE_CLASS}
+          onError={handleImageError}
+        />
       </div>
     );
   }
@@ -56,9 +65,12 @@ export function ProductImageCarousel({ images, alt, className }: ProductImageCar
         <div className="flex h-full">
           {slides.map((src, i) => (
             <div key={i} className="relative min-w-0 shrink-0 grow-0 basis-full h-full">
-              <img
+              <Image
                 src={src}
                 alt={`${alt} - foto ${i + 1}`}
+                fill
+                sizes="(max-width: 640px) 45vw, 220px"
+                quality={70}
                 className={IMAGE_CLASS}
                 onError={handleImageError}
               />

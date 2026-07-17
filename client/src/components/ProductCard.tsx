@@ -54,9 +54,7 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
           </div>
         )}
         <ProductImageCarousel
-          images={[product.image_url, ...(product.image_urls ?? [])]
-            .filter((url): url is string => !!url)
-            .map((url) => `${url}?width=400&quality=75`)}
+          images={[product.image_url, ...(product.image_urls ?? [])].filter((url): url is string => !!url)}
           alt={product.product_name}
           className="w-full h-48"
         />

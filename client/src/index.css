@@ -16,7 +16,7 @@
   --secondary: hsl(217 91% 60%);
   --secondary-foreground: hsl(0 0% 100%);
   --muted: hsl(210 40% 96%);
-  --muted-foreground: hsl(215 16% 47%);
+  --muted-foreground: hsl(215 16% 42%);
   --accent: hsl(271 76% 53%);
   --accent-foreground: hsl(0 0% 100%);
   --destructive: hsl(0 84% 60%);
@@ -26,7 +26,7 @@
   --ring: hsl(158 64% 52%);
   --emerald: hsl(158 64% 30%);
   --emerald-foreground: hsl(0 0% 100%);
-  --metallic: hsl(217 91% 60%);
+  --metallic: hsl(217 91% 40%);
   --metallic-foreground: hsl(0 0% 100%);
   --violet: hsl(271 76% 53%);
   --violet-foreground: hsl(0 0% 100%);
