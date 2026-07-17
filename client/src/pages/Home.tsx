@@ -23,7 +23,7 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
     search: '',
     priceMin: 0,
     priceMax: 20000000,
-    sortBy: 'popular',
+    sortBy: 'newest',
     dikirim_dari: undefined,
     item: undefined
   });
@@ -74,7 +74,7 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
       search: '',
       priceMin: 0,
       priceMax: 20000000,
-      sortBy: 'popular',
+      sortBy: 'newest',
       category: undefined,
       subcategory: undefined,
       dikirim_dari: undefined,

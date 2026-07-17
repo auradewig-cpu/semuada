@@ -90,6 +90,26 @@ def append_output_row(output_path: Path, row: dict) -> None:
 CHROME_PROFILE_DIR = Path(__file__).parent / "chrome_profile"
 
 
+def _detect_installed_chrome_major_version() -> Optional[int]:
+    """Reads the ACTUALLY installed Chrome version from the registry.
+
+    undetected-chromedriver defaults to downloading the latest chromedriver
+    release, assuming Chrome auto-updates in lockstep -- but Chrome doesn't
+    always update immediately, so "latest driver" can end up newer than the
+    browser that's actually installed and refuse to attach (SessionNotCreated:
+    "This version of ChromeDriver only supports Chrome version X"). Pinning to
+    the real installed version avoids that mismatch.
+    """
+    try:
+        import winreg
+
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\BLBeacon")
+        version, _ = winreg.QueryValueEx(key, "version")
+        return int(version.split(".")[0])
+    except Exception:  # noqa: BLE001 - best-effort, fall back to uc's own auto-detect
+        return None
+
+
 def build_driver() -> uc.Chrome:
     options = uc.ChromeOptions()
     # Persistent profile: cookies/login survive between runs, so you only
@@ -105,7 +125,7 @@ def build_driver() -> uc.Chrome:
     # last background request to finish.
     options.page_load_strategy = "eager"
     # Headed on purpose -- headless is far more likely to be flagged by Shopee.
-    driver = uc.Chrome(options=options)
+    driver = uc.Chrome(options=options, version_main=_detect_installed_chrome_major_version())
     # Extra safety net in case "eager" still isn't enough on some page.
     driver.set_page_load_timeout(30)
     # Selenium's default HTTP timeout to chromedriver is 120s PER ATTEMPT,

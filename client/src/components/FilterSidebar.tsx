@@ -80,7 +80,7 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
       search: '',
       priceMin: 0,
       priceMax: 20000000,
-      sortBy: 'popular',
+      sortBy: 'newest',
       category: undefined,
       subcategory: undefined,
       dikirim_dari: undefined,
@@ -398,6 +398,7 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
                 <SelectValue placeholder="Pilih urutan" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="newest">Terbaru</SelectItem>
                 <SelectItem value="popular">Populer</SelectItem>
                 <SelectItem value="terlaris">Terlaris</SelectItem>
                 <SelectItem value="harga_termurah">Harga Termurah</SelectItem>
