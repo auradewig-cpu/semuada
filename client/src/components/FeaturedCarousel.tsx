@@ -102,12 +102,16 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
               data-testid={`carousel-slide-${index}`}
             >
               {/* Background image with overlay */}
-              <div
-                className="absolute inset-0 bg-cover bg-center"
-                style={{
-                  backgroundImage: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), url('${optimizedBgUrl}')`
-                }}
+              <img
+                src={optimizedBgUrl}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full object-cover"
+                fetchPriority={index === 0 ? 'high' : 'low'}
+                loading={index === 0 ? 'eager' : 'lazy'}
+                decoding="async"
               />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-black/60" />
 
               <div className="relative z-10 container mx-auto px-4 h-full flex items-center pb-20 md:pb-0">
                 <div className="grid md:grid-cols-2 gap-8 items-center w-full">
@@ -201,11 +205,17 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
             <button
               key={index}
               onClick={() => setCurrentSlide(index)}
-              className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                currentSlide === index ? 'bg-white' : 'bg-white/50'
-              }`}
+              className="h-6 w-6 flex items-center justify-center"
+              aria-label={`Ke slide ${index + 1}`}
+              aria-current={currentSlide === index}
               data-testid={`button-carousel-indicator-${index}`}
-            />
+            >
+              <span
+                className={`block w-3 h-3 rounded-full transition-all duration-200 ${
+                  currentSlide === index ? 'bg-white' : 'bg-white/50'
+                }`}
+              />
+            </button>
           ))}
         </div>
       )}
@@ -217,6 +227,7 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
             variant="ghost"
             size="icon"
             onClick={prevSlide}
+            aria-label="Slide sebelumnya"
             className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/20 text-white hover:bg-black/40 rounded-full z-20"
             data-testid="button-carousel-prev"
           >
@@ -226,6 +237,7 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
             variant="ghost"
             size="icon"
             onClick={nextSlide}
+            aria-label="Slide berikutnya"
             className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/20 text-white hover:bg-black/40 rounded-full z-20"
             data-testid="button-carousel-next"
           >

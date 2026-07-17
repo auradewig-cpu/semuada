@@ -54,7 +54,9 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
           </div>
         )}
         <ProductImageCarousel
-          images={[product.image_url, ...(product.image_urls ?? [])].filter((url): url is string => !!url)}
+          images={[product.image_url, ...(product.image_urls ?? [])]
+            .filter((url): url is string => !!url)
+            .map((url) => `${url}?width=400&quality=75`)}
           alt={product.product_name}
           className="w-full h-48"
         />
@@ -97,6 +99,7 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
               <Button
                 variant="secondary"
                 size="icon"
+                aria-label="Bagikan produk"
                 className="h-8 w-8 rounded-full bg-black/30 text-white hover:bg-black/50 backdrop-blur-sm"
                 onClick={(e) => e.stopPropagation()} // Prevent card click
               >

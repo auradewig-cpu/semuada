@@ -24,7 +24,7 @@
   --border: hsl(214 32% 91%);
   --input: hsl(214 32% 91%);
   --ring: hsl(158 64% 52%);
-  --emerald: hsl(158 64% 52%);
+  --emerald: hsl(158 64% 30%);
   --emerald-foreground: hsl(0 0% 100%);
   --metallic: hsl(217 91% 60%);
   --metallic-foreground: hsl(0 0% 100%);
@@ -32,7 +32,6 @@
   --violet-foreground: hsl(0 0% 100%);
   --yellow: hsl(48 96% 53%);
   --yellow-foreground: hsl(222 84% 5%);
-  --font-sans: 'Inter', system-ui, sans-serif;
 }
 
 .dark {
@@ -56,7 +55,7 @@
   --border: hsl(222 84% 12%);
   --input: hsl(222 84% 12%);
   --ring: hsl(158 64% 45%);
-  --emerald: hsl(158 64% 45%);
+  --emerald: hsl(158 64% 32%);
   --emerald-foreground: hsl(0 0% 100%);
   --metallic: hsl(217 91% 55%);
   --metallic-foreground: hsl(0 0% 100%);
