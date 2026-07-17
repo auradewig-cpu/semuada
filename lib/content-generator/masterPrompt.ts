@@ -122,6 +122,7 @@ ATURAN WAJIB (SANGAT PENTING):
 11. ${SPOKEN_NUMBER_RULE}
 12. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
 13. Hitung sendiri jumlah kata narasi tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.
+14. Isi "text_overlay" tiap scene: teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in di video saat editing -- BUKAN salinan penuh "script_narration", tapi inti pesan scene itu dalam bentuk singkat/punchy (mis. hook scene 1 = potongan kalimat hook, scene CTA = ajakan singkat). Ini WAJIB diisi karena mayoritas penonton short-form video menonton tanpa suara.
 
 ${NEGATIVE_PROMPT_BLOCK}
 
@@ -136,6 +137,7 @@ FORMAT OUTPUT -- HANYA JSON valid, TIDAK ADA teks lain di luar JSON, dengan stru
       "script_word_count": number,
       "visual_description": string,
       "camera_direction": string,
+      "text_overlay": string,
       "transition_to_next": string,
       "reference_images": { "character": string|null, "product": string },
       "ai_ready_prompt": string

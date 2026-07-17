@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Download, RefreshCw, Sparkles, TriangleAlert } from 'lucide-react';
+import { Captions, Copy, Download, RefreshCw, Sparkles, TriangleAlert } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -206,6 +206,11 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, sc
             <p><span className="font-medium">Narasi:</span> {scene.script_narration}</p>
             <p className="text-xs text-muted-foreground">{scene.script_word_count} kata &middot; {scene.speech_pace} &middot; {scene.duration_seconds}s</p>
             <p><span className="font-medium">Kamera:</span> {scene.camera_direction}</p>
+            {scene.text_overlay && (
+              <p className="bg-muted rounded px-2 py-1 inline-flex items-center gap-1.5 text-xs font-medium">
+                <Captions className="h-3.5 w-3.5 shrink-0" /> Text overlay (burn-in): "{scene.text_overlay}"
+              </p>
+            )}
 
             <div className="flex flex-wrap gap-2">
               {scene.reference_images.character && (

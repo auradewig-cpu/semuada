@@ -48,6 +48,7 @@ export interface SceneOutput {
   script_word_count: number;
   visual_description: string;
   camera_direction: string;
+  text_overlay: string;
   reference_images: {
     character: string | null;
     character_filename: string | null;

@@ -94,6 +94,12 @@ export function validateOutput(result: GenerationResult, context: ValidationCont
     if (scene.ai_ready_prompt && !mentionsProduct(scene.ai_ready_prompt, productName, category)) {
       problems.push(`Scene ${index + 1}: ai_ready_prompt sepertinya TIDAK tentang produk "${productName}" -- kontennya melenceng, tulis ulang supaya jelas tentang produk ini.`);
     }
+
+    if (!scene.text_overlay || !scene.text_overlay.trim()) {
+      problems.push(`Scene ${index + 1}: text_overlay kosong -- wajib diisi supaya pesan tetap tersampaikan ke penonton yang menonton tanpa suara.`);
+    } else if (countWords(scene.text_overlay) > 8) {
+      problems.push(`Scene ${index + 1}: text_overlay terlalu panjang (${countWords(scene.text_overlay)} kata) -- persingkat jadi maksimal 8 kata supaya pas untuk caption burn-in.`);
+    }
   });
 
   if (!result.caption || result.caption.trim().length === 0) {
@@ -173,6 +179,11 @@ export function validateScene(
   }
   if (scene.ai_ready_prompt && !mentionsProduct(scene.ai_ready_prompt, productName, category)) {
     problems.push(`ai_ready_prompt sepertinya TIDAK tentang produk "${productName}" -- kontennya melenceng.`);
+  }
+  if (!scene.text_overlay || !scene.text_overlay.trim()) {
+    problems.push("text_overlay kosong -- wajib diisi supaya pesan tetap tersampaikan ke penonton yang menonton tanpa suara.");
+  } else if (countWords(scene.text_overlay) > 8) {
+    problems.push(`text_overlay terlalu panjang (${countWords(scene.text_overlay)} kata) -- persingkat jadi maksimal 8 kata.`);
   }
 
   return problems;

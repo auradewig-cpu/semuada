@@ -85,9 +85,11 @@ ATURAN WAJIB:
 - ${cameraPatternRule}
 - ${dialogueRule}
 - ${SPOKEN_NUMBER_RULE}
+- Isi "text_overlay" tiap varian: teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in saat editing -- inti hook varian itu, BUKAN salinan "script_narration".
+- Isi "hook_archetype_used" tiap varian dengan PERSIS salah satu id dari daftar teknik di atas (mis. "curiosity_gap") sesuai teknik yang benar-benar dipakai varian itu -- WAJIB berbeda antar varian, jangan ulangi id yang sama.
 
 ${NEGATIVE_PROMPT_BLOCK}
 
-OUTPUT -- HANYA objek JSON: { "variants": [ <scene1>, <scene2>, ... ${variantCount} scene objects, struktur sama seperti SceneOutput ] }. Mulai {, akhiri }. Tidak ada teks lain.
+OUTPUT -- HANYA objek JSON: { "variants": [ <scene1>, <scene2>, ... ${variantCount} scene objects (struktur sama seperti SceneOutput, ditambah field "hook_archetype_used") ] }. Mulai {, akhiri }. Tidak ada teks lain.
 `.trim();
 }

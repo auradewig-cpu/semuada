@@ -95,9 +95,24 @@ export async function POST(request: NextRequest) {
 
     const characterProxyUrl = character ? toCharacterPhotoProxyUrl(character.photoUrl) : null;
     const warnings: string[] = [];
+    const usedArchetypes: string[] = [];
     const variants = result.variants.map((scene, i) => {
       const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
       warnings.push(...problems.map((p) => `Varian ${i + 1}: ${p}`));
+
+      const archetypeUsed = (scene as SceneOutput & { hook_archetype_used?: string }).hook_archetype_used ?? null;
+      if (!archetypeUsed) {
+        warnings.push(`Varian ${i + 1}: tidak melaporkan teknik hook yang dipakai -- tidak bisa diverifikasi bedanya dengan varian lain.`);
+      } else {
+        if (archetypeUsed === currentArchetype) {
+          warnings.push(`Varian ${i + 1}: pakai teknik hook yang sama dengan scene saat ini ("${archetypeUsed}") -- seharusnya berbeda.`);
+        }
+        if (usedArchetypes.includes(archetypeUsed)) {
+          warnings.push(`Varian ${i + 1}: pakai teknik hook yang sama dengan varian lain ("${archetypeUsed}") -- seharusnya semua varian beda teknik.`);
+        }
+        usedArchetypes.push(archetypeUsed);
+      }
+
       scene.scene_number = 1;
       scene.reference_images = {
         character: characterProxyUrl,

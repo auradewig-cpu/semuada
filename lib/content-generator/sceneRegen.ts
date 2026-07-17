@@ -100,6 +100,7 @@ ATURAN:
 - ${cameraPatternRule}
 - ${dialogueRule}
 - ${SPOKEN_NUMBER_RULE}
+- Isi "text_overlay": teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in saat editing -- BUKAN salinan "script_narration", inti pesan scene ini saja.
 
 ${NEGATIVE_PROMPT_BLOCK}
 
@@ -112,6 +113,7 @@ OUTPUT -- HANYA SATU OBJEK JSON scene tunggal (bukan array, bukan dibungkus obje
   "script_word_count": number,
   "visual_description": string,
   "camera_direction": string,
+  "text_overlay": string,
   "transition_to_next": string,
   "reference_images": { "character": null, "product": "" },
   "ai_ready_prompt": string
