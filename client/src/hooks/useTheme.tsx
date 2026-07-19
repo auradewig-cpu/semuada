@@ -11,8 +11,6 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 function getInitialTheme(storageKey: string): Theme {
-  if (typeof window === 'undefined') return 'light';
-
   const stored = localStorage.getItem(storageKey);
   if (stored === 'light' || stored === 'dark') return stored;
 
@@ -20,7 +18,14 @@ function getInitialTheme(storageKey: string): Theme {
 }
 
 export function ThemeProvider({ children, storageKey = 'theme' }: { children: React.ReactNode; storageKey?: string }) {
-  const [theme, setTheme] = useState<Theme>(() => getInitialTheme(storageKey));
+  // Initial value must match the server-rendered markup ('light') so hydration
+  // doesn't mismatch; the real theme is synced right after mount below.
+  const [theme, setTheme] = useState<Theme>('light');
+
+  useLayoutEffect(() => {
+    setTheme(getInitialTheme(storageKey));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useLayoutEffect(() => {
     const root = window.document.documentElement;
