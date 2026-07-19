@@ -29,7 +29,7 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
   const categorySlug = params.category;
   const subcategorySlug = params.subcategory;
   const router = useRouter();
-  const navigate = (path: string) => router.push(path);
+  const navigate = (path: string) => router.push(path, { scroll: false });
 
   // Get item options for the currently active subcategory
   const activeCategoryName = categorySlug ? categorySlugMap.get(categorySlug) : undefined;

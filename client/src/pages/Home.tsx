@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect } from "react";
 import Link from "next/link";
 import { Search, Loader2 } from 'lucide-react';
 import { Header } from '@/components/Header';
@@ -27,8 +27,17 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
     dikirim_dari: undefined,
     item: undefined
   });
+  // Starts false to match server-rendered markup; restored from sessionStorage
+  // right after mount so the mobile filter panel survives the route change
+  // (category clicks navigate to /[category], which remounts this component).
   const [showFilters, setShowFilters] = useState(false);
   const { hierarchy, isLoading: isCategoryLoading, categorySlugMap, subcategorySlugMap } = useCategoryContext();
+
+  useLayoutEffect(() => {
+    if (sessionStorage.getItem('showMobileFilters') === '1') {
+      setShowFilters(true);
+    }
+  }, []);
 
   useEffect(() => {
     const categoryName = categorySlug ? categorySlugMap.get(categorySlug) : undefined;
@@ -62,7 +71,11 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
   };
 
   const toggleFilters = () => {
-    setShowFilters(!showFilters);
+    setShowFilters(prev => {
+      const next = !prev;
+      sessionStorage.setItem('showMobileFilters', next ? '1' : '0');
+      return next;
+    });
   };
 
   const handleProductClick = (productId: string) => {
