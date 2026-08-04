@@ -34,6 +34,21 @@ export function toApiSettings(row: DbSettings) {
     updated_at: row.updatedAt,
     facebook_pixel_id: row.facebookPixelId,
     google_analytics_id: row.googleAnalyticsId,
+    site_name: row.siteName,
+    site_tagline: row.siteTagline,
+    logo_url: row.logoUrl,
+    favicon_url: row.faviconUrl,
+    contact_email: row.contactEmail,
+    contact_phone: row.contactPhone,
+    contact_address: row.contactAddress,
+    whatsapp_number: row.whatsappNumber,
+    social_facebook_url: row.socialFacebookUrl,
+    social_twitter_url: row.socialTwitterUrl,
+    social_instagram_url: row.socialInstagramUrl,
+    seo_meta_description: row.seoMetaDescription,
+    og_image_url: row.ogImageUrl,
+    maintenance_mode: row.maintenanceMode,
+    maintenance_message: row.maintenanceMessage,
   };
 }
 

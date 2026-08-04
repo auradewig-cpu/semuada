@@ -10,6 +10,7 @@ import { FilterSidebar } from '@/components/FilterSidebar';
 import { Button } from '@/components/ui/button';
 import { slugify } from '@/lib/utils';
 import { useCategoryContext } from "@/context/CategoryContext";
+import { useSettings } from "@/hooks/useSettings";
 import { useInfiniteProducts, useTrackProductClick } from "@/hooks/useProductQueries";
 import type { FilterState } from '@/types';
 
@@ -32,6 +33,8 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
   // (category clicks navigate to /[category], which remounts this component).
   const [showFilters, setShowFilters] = useState(false);
   const { hierarchy, isLoading: isCategoryLoading, categorySlugMap, subcategorySlugMap } = useCategoryContext();
+  const { data: settings } = useSettings();
+  const siteName = settings?.site_name || 'SEMUADA';
 
   useLayoutEffect(() => {
     if (sessionStorage.getItem('showMobileFilters') === '1') {
@@ -197,25 +200,40 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center space-x-3 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-br from-emerald to-metallic rounded-lg flex items-center justify-center">
-                  <i className="fas fa-store text-white text-sm"></i>
-                </div>
+                {settings?.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={settings.logo_url} alt={siteName} className="w-8 h-8 rounded-lg object-contain" />
+                ) : (
+                  <div className="w-8 h-8 bg-gradient-to-br from-emerald to-metallic rounded-lg flex items-center justify-center">
+                    <i className="fas fa-store text-white text-sm"></i>
+                  </div>
+                )}
                 <h3 className="text-lg font-bold bg-gradient-to-r from-emerald to-metallic bg-clip-text text-transparent">
-                  SEMUADA
+                  {siteName}
                 </h3>
               </div>
-              <p className="text-muted-foreground text-sm mb-4">Platform untuk mencari dan menemukan produk-produk terbaik dari berbagai kategori.</p>
-              <div className="flex space-x-3">
-                <a href="#" aria-label="Facebook" className="w-8 h-8 bg-emerald text-white rounded-lg flex items-center justify-center hover:bg-emerald/80 transition-colors">
-                  <i className="fab fa-facebook-f text-sm"></i>
-                </a>
-                <a href="#" aria-label="Twitter" className="w-8 h-8 bg-metallic text-white rounded-lg flex items-center justify-center hover:bg-metallic/80 transition-colors">
-                  <i className="fab fa-twitter text-sm"></i>
-                </a>
-                <a href="#" aria-label="Instagram" className="w-8 h-8 bg-violet text-white rounded-lg flex items-center justify-center hover:bg-violet/80 transition-colors">
-                  <i className="fab fa-instagram text-sm"></i>
-                </a>
-              </div>
+              <p className="text-muted-foreground text-sm mb-4">
+                {settings?.site_tagline || 'Platform untuk mencari dan menemukan produk-produk terbaik dari berbagai kategori.'}
+              </p>
+              {(settings?.social_facebook_url || settings?.social_twitter_url || settings?.social_instagram_url) && (
+                <div className="flex space-x-3">
+                  {settings?.social_facebook_url && (
+                    <a href={settings.social_facebook_url} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="w-8 h-8 bg-emerald text-white rounded-lg flex items-center justify-center hover:bg-emerald/80 transition-colors">
+                      <i className="fab fa-facebook-f text-sm"></i>
+                    </a>
+                  )}
+                  {settings?.social_twitter_url && (
+                    <a href={settings.social_twitter_url} target="_blank" rel="noopener noreferrer" aria-label="Twitter" className="w-8 h-8 bg-metallic text-white rounded-lg flex items-center justify-center hover:bg-metallic/80 transition-colors">
+                      <i className="fab fa-twitter text-sm"></i>
+                    </a>
+                  )}
+                  {settings?.social_instagram_url && (
+                    <a href={settings.social_instagram_url} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="w-8 h-8 bg-violet text-white rounded-lg flex items-center justify-center hover:bg-violet/80 transition-colors">
+                      <i className="fab fa-instagram text-sm"></i>
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
             
             <div>
@@ -247,19 +265,27 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
               </ul>
             </div>
             
-            <div>
-              <h4 className="font-semibold mb-4">Kontak</h4>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <p className="flex items-center"><i className="fas fa-envelope text-emerald mr-2"></i> support@semuada.com</p>
-                <p className="flex items-center"><i className="fas fa-phone text-emerald mr-2"></i> +62 21 1234 5678</p>
-                <p className="flex items-center"><i className="fas fa-map-marker-alt text-emerald mr-2"></i> Jakarta, Indonesia</p>
+            {(settings?.contact_email || settings?.contact_phone || settings?.contact_address) && (
+              <div>
+                <h4 className="font-semibold mb-4">Kontak</h4>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  {settings?.contact_email && (
+                    <p className="flex items-center"><i className="fas fa-envelope text-emerald mr-2"></i> {settings.contact_email}</p>
+                  )}
+                  {settings?.contact_phone && (
+                    <p className="flex items-center"><i className="fas fa-phone text-emerald mr-2"></i> {settings.contact_phone}</p>
+                  )}
+                  {settings?.contact_address && (
+                    <p className="flex items-center"><i className="fas fa-map-marker-alt text-emerald mr-2"></i> {settings.contact_address}</p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
           
           <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between">
             <p className="text-muted-foreground text-sm">
-              © 2024 SEMUADA. All rights reserved.
+              © {new Date().getFullYear()} {siteName}. All rights reserved.
             </p>
             <div className="flex items-center space-x-4 mt-4 md:mt-0">
               <span className="text-xs text-muted-foreground">Powered by</span>

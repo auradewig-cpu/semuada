@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Providers } from "./providers";
+import { getSiteSettings } from "@root/lib/site-settings";
 import "@/index.css";
 
 const inter = Inter({
@@ -10,10 +11,25 @@ const inter = Inter({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "SEMUADA - Temukan Produk Terbaik",
-  description: "Platform untuk mencari dan menemukan produk-produk terbaik dari berbagai kategori, dilengkapi dengan filter dan fitur admin.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { siteName, siteTagline, faviconUrl, seoMetaDescription, ogImageUrl } = await getSiteSettings();
+  const description =
+    seoMetaDescription ||
+    (siteTagline
+      ? `${siteTagline} — ${siteName}`
+      : "Platform untuk mencari dan menemukan produk-produk terbaik dari berbagai kategori, dilengkapi dengan filter dan fitur admin.");
+
+  return {
+    title: `${siteName} - Temukan Produk Terbaik`,
+    description,
+    icons: faviconUrl ? { icon: faviconUrl } : undefined,
+    openGraph: {
+      title: `${siteName} - Temukan Produk Terbaik`,
+      description,
+      images: ogImageUrl ? [{ url: ogImageUrl }] : undefined,
+    },
+  };
+}
 
 const FONT_AWESOME_URL =
   "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css";

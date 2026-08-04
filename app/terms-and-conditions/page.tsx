@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getSiteSettings } from "@root/lib/site-settings";
 
-export const metadata: Metadata = {
-  title: "Syarat & Ketentuan - SEMUADA",
-  description: "Syarat dan ketentuan penggunaan SEMUADA.",
-};
+export const revalidate = 60;
 
-export default function TermsAndConditionsPage() {
+export async function generateMetadata(): Promise<Metadata> {
+  const { siteName } = await getSiteSettings();
+  return {
+    title: `Syarat & Ketentuan - ${siteName}`,
+    description: `Syarat dan ketentuan penggunaan ${siteName}.`,
+  };
+}
+
+export default async function TermsAndConditionsPage() {
+  const { siteName } = await getSiteSettings();
+
   return (
     <div className="min-h-screen bg-background py-12">
       <div className="container mx-auto px-4">
@@ -17,12 +25,12 @@ export default function TermsAndConditionsPage() {
           <CardContent className="prose dark:prose-invert max-w-none">
             <h2>1. Penerimaan Persyaratan</h2>
             <p>
-              Dengan mengakses dan menggunakan website SEMUADA, Anda setuju untuk mematuhi syarat dan ketentuan yang tercantum di halaman ini.
+              Dengan mengakses dan menggunakan website {siteName}, Anda setuju untuk mematuhi syarat dan ketentuan yang tercantum di halaman ini.
             </p>
 
             <h2>2. Peran Website</h2>
             <p>
-              SEMUADA adalah platform direktori produk afiliasi. Kami tidak menjual produk secara langsung. Semua transaksi, termasuk pembayaran, pengiriman, dan layanan purna jual, adalah tanggung jawab penuh platform e-commerce partner.
+              {siteName} adalah platform direktori produk afiliasi. Kami tidak menjual produk secara langsung. Semua transaksi, termasuk pembayaran, pengiriman, dan layanan purna jual, adalah tanggung jawab penuh platform e-commerce partner.
             </p>
 
             <h2>3. Akurasi Informasi</h2>

@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getSiteSettings } from "@root/lib/site-settings";
 
-export const metadata: Metadata = {
-  title: "Kebijakan Privasi - SEMUADA",
-  description: "Kebijakan privasi SEMUADA.",
-};
+export const revalidate = 60;
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { siteName } = await getSiteSettings();
+  return {
+    title: `Kebijakan Privasi - ${siteName}`,
+    description: `Kebijakan privasi ${siteName}.`,
+  };
+}
 
 export default function PrivacyPolicyPage() {
   return (

@@ -1,11 +1,17 @@
 import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { getSiteSettings } from "@root/lib/site-settings";
 
-export const metadata: Metadata = {
-  title: "FAQ - SEMUADA",
-  description: "Pertanyaan yang sering diajukan seputar SEMUADA.",
-};
+export const revalidate = 60;
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { siteName } = await getSiteSettings();
+  return {
+    title: `FAQ - ${siteName}`,
+    description: `Pertanyaan yang sering diajukan seputar ${siteName}.`,
+  };
+}
 
 const faqs = [
   {

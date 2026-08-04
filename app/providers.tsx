@@ -6,6 +6,7 @@ import { queryClient } from "@/lib/queryClient";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { CategoryProvider } from "@/context/CategoryContext";
 import { TrackingScripts } from "@/components/TrackingScripts";
+import { WhatsAppButton } from "@/components/WhatsAppButton";
 import { Toaster } from "@/components/ui/toaster";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -18,6 +19,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <CategoryProvider>
               <TrackingScripts />
               {children}
+              <WhatsAppButton />
               <Toaster />
             </CategoryProvider>
           </ThemeProvider>

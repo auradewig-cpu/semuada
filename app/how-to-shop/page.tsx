@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getSiteSettings } from "@root/lib/site-settings";
 
-export const metadata: Metadata = {
-  title: "Cara Berbelanja - SEMUADA",
-  description: "Panduan langkah demi langkah berbelanja melalui SEMUADA.",
-};
+export const revalidate = 60;
 
-export default function HowToShopPage() {
+export async function generateMetadata(): Promise<Metadata> {
+  const { siteName } = await getSiteSettings();
+  return {
+    title: `Cara Berbelanja - ${siteName}`,
+    description: `Panduan langkah demi langkah berbelanja melalui ${siteName}.`,
+  };
+}
+
+export default async function HowToShopPage() {
+  const { siteName } = await getSiteSettings();
+
   return (
     <div className="min-h-screen bg-background py-12">
       <div className="container mx-auto px-4">
@@ -16,7 +24,7 @@ export default function HowToShopPage() {
           </CardHeader>
           <CardContent className="prose dark:prose-invert max-w-none">
             <p>
-              Selamat datang di SEMUADA! Kami memudahkan Anda menemukan produk-produk terbaik dari berbagai platform e-commerce. Berikut adalah langkah-langkah sederhana untuk berbelanja melalui website kami:
+              Selamat datang di {siteName}! Kami memudahkan Anda menemukan produk-produk terbaik dari berbagai platform e-commerce. Berikut adalah langkah-langkah sederhana untuk berbelanja melalui website kami:
             </p>
             <ol>
               <li>
