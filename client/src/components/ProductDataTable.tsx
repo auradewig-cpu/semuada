@@ -1,5 +1,5 @@
 import * as React from "react";
-import { MoreHorizontal, Pencil, Trash2, Star } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, Star, Copy, Download, ImageOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -19,7 +19,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Product } from "@/types";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, slugify } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProductDataTableProps {
   products: Product[];
@@ -38,6 +40,8 @@ export function ProductDataTable({
   onDelete,
   onGenerateRating,
 }: ProductDataTableProps) {
+  const { toast } = useToast();
+  const [downloadingProductId, setDownloadingProductId] = React.useState<string | null>(null);
 
   const handleSelectAll = (checked: boolean) => {
     onSelectionChange(checked ? products.map(p => p.id) : []);
@@ -48,6 +52,43 @@ export function ProductDataTable({
       ? [...selectedProductIds, id]
       : selectedProductIds.filter(selectedId => selectedId !== id);
     onSelectionChange(newSelection);
+  };
+
+  const handleCopyName = (product: Product) => {
+    navigator.clipboard.writeText(product.product_name);
+    toast({ title: "Disalin", description: "Nama produk disalin ke clipboard." });
+  };
+
+  const handleDownloadImages = async (product: Product) => {
+    const urls = [product.image_url, ...(product.image_urls ?? [])].filter((url): url is string => !!url);
+    if (urls.length === 0) {
+      toast({ variant: "destructive", title: "Tidak ada gambar", description: "Produk ini tidak punya gambar." });
+      return;
+    }
+
+    setDownloadingProductId(product.id);
+    const filename = `${slugify(product.product_name)}-images.zip`;
+    try {
+      const res = await apiRequest("POST", "/api/products/images-zip", { urls, filename });
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+      toast({ title: "Berhasil", description: `${urls.length} gambar berhasil didownload.` });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Gagal download",
+        description: error instanceof Error ? error.message : "Terjadi kesalahan.",
+      });
+    } finally {
+      setDownloadingProductId(null);
+    }
   };
 
   return (
@@ -62,6 +103,7 @@ export function ProductDataTable({
                 aria-label="Select all"
               />
             </TableHead>
+            <TableHead>Foto</TableHead>
             <TableHead>Product ID</TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Category</TableHead>
@@ -87,6 +129,16 @@ export function ProductDataTable({
                     onCheckedChange={(checked) => handleRowSelect(product.id, !!checked)}
                     aria-label={`Select row ${product.id}`}
                   />
+                </TableCell>
+                <TableCell>
+                  {product.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={product.image_url} alt={product.product_name} className="w-10 h-10 object-cover rounded" />
+                  ) : (
+                    <div className="w-10 h-10 bg-muted rounded flex items-center justify-center">
+                      <ImageOff className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
                 </TableCell>
                 <TableCell className="font-mono text-xs">{product.product_id || 'N/A'}</TableCell>
                 <TableCell className="font-medium">{product.product_name}</TableCell>
@@ -116,6 +168,21 @@ export function ProductDataTable({
                         <Star className="mr-2 h-4 w-4" />
                         Generate Rating
                       </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => handleCopyName(product)}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Salin Nama Produk
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => handleDownloadImages(product)}
+                        disabled={downloadingProductId === product.id}
+                      >
+                        {downloadingProductId === product.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="mr-2 h-4 w-4" />
+                        )}
+                        Download Semua Gambar
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onSelect={() => onDelete(product)} className="text-destructive">
                         <Trash2 className="mr-2 h-4 w-4" />
@@ -128,7 +195,7 @@ export function ProductDataTable({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={12} className="h-24 text-center">
+              <TableCell colSpan={13} className="h-24 text-center">
                 No results.
               </TableCell>
             </TableRow>
