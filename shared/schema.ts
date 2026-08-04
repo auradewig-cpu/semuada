@@ -93,6 +93,25 @@ export const contentGenerations = pgTable("content_generations", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
+// Uploaded final-render videos (from Google Flow etc.), organized by the
+// product's category at upload time. Deliberately its own table rather than
+// hung off `content_generations` -- that table is write-only/orphaned (no id
+// ever returned to the client, no update path), so this is a clean slate
+// purpose-built for the video library + future social scheduling feature.
+export const videoContents = pgTable("video_contents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  productId: uuid("product_id").notNull(),
+  category: text("category").notNull(),
+  subcategory: text("subcategory"),
+  caption: text("caption"),
+  hashtags: text("hashtags").array(),
+  promptSnapshot: text("prompt_snapshot"),
+  videoUrl: text("video_url").notNull(),
+  cloudinaryPublicId: text("cloudinary_public_id").notNull(),
+  status: text("status").default("uploaded"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
 export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
   createdAt: true,
@@ -128,6 +147,11 @@ export const insertContentGenerationSchema = createInsertSchema(contentGeneratio
   createdAt: true,
 });
 
+export const insertVideoContentSchema = createInsertSchema(videoContents).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type ProductAnalytics = typeof productAnalytics.$inferSelect;
@@ -142,3 +166,5 @@ export type AiSettings = typeof aiSettings.$inferSelect;
 export type InsertAiSettings = z.infer<typeof insertAiSettingsSchema>;
 export type ContentGeneration = typeof contentGenerations.$inferSelect;
 export type InsertContentGeneration = z.infer<typeof insertContentGenerationSchema>;
+export type VideoContent = typeof videoContents.$inferSelect;
+export type InsertVideoContent = z.infer<typeof insertVideoContentSchema>;

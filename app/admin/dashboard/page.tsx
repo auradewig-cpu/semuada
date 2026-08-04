@@ -11,6 +11,7 @@ import {
   Star,
   Sparkles,
   BarChart3,
+  Film,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,7 @@ import { FeaturedManagementTab } from "@/components/admin/FeaturedManagementTab"
 import { SettingsTab } from "@/components/admin/SettingsTab";
 import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
 import { ContentGeneratorTab } from "@/components/admin/ContentGeneratorTab";
+import { VideoLibraryTab } from "@/components/admin/VideoLibraryTab";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -38,6 +40,7 @@ const NAV_ITEMS = [
   { value: "products", label: "Products", icon: Package },
   { value: "featured", label: "Featured", icon: Star },
   { value: "content-generator", label: "Content Generator", icon: Sparkles },
+  { value: "video-library", label: "Video Library", icon: Film },
   { value: "analytics", label: "Analytics", icon: BarChart3 },
   { value: "settings", label: "Settings", icon: Settings },
 ] as const;
@@ -126,6 +129,12 @@ export default function AdminDashboard() {
             {activeTab === "content-generator" && (
               <ErrorBoundary>
                 <ContentGeneratorTab />
+              </ErrorBoundary>
+            )}
+
+            {activeTab === "video-library" && (
+              <ErrorBoundary>
+                <VideoLibraryTab />
               </ErrorBoundary>
             )}
 

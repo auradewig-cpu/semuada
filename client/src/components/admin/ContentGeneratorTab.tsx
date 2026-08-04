@@ -289,6 +289,8 @@ export function ContentGeneratorTab() {
           warnings={warnings}
           scenePlan={generatedScenePlan}
           affiliateUrl={product.affiliate_url}
+          productCategory={product.category}
+          productSubcategory={product.subcategory}
           context={{
             productId: product.id,
             characterId,

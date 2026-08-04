@@ -1,4 +1,4 @@
-import type { Product as DbProduct, Settings as DbSettings, AiSettings as DbAiSettings, Character as DbCharacter } from "@shared/schema";
+import type { Product as DbProduct, Settings as DbSettings, AiSettings as DbAiSettings, Character as DbCharacter, VideoContent as DbVideoContent } from "@shared/schema";
 
 export function toApiProduct(row: DbProduct) {
   return {
@@ -84,5 +84,21 @@ export function toApiCharacter(row: DbCharacter) {
     photoUrl: toCharacterPhotoProxyUrl(row.photoUrl),
     description: row.description,
     createdAt: row.createdAt,
+  };
+}
+
+export function toApiVideoContent(row: DbVideoContent) {
+  return {
+    id: row.id,
+    product_id: row.productId,
+    category: row.category,
+    subcategory: row.subcategory,
+    caption: row.caption,
+    hashtags: row.hashtags,
+    prompt_snapshot: row.promptSnapshot,
+    video_url: row.videoUrl,
+    cloudinary_public_id: row.cloudinaryPublicId,
+    status: row.status,
+    created_at: row.createdAt,
   };
 }

@@ -20,6 +20,7 @@ import {
   type SceneInput,
 } from "@/hooks/useContentGenerator";
 import { ReferenceFrameGuide } from "@/components/admin/content-generator/ReferenceFrameGuide";
+import { VideoUploadPanel } from "@/components/admin/content-generator/VideoUploadPanel";
 
 export interface SceneGenerationContext {
   productId: string;
@@ -46,6 +47,8 @@ interface SceneOutputPanelProps {
   // original generate, instead of silently falling back to the global default.
   scenePlan: SceneInput[];
   affiliateUrl: string | null;
+  productCategory: string;
+  productSubcategory: string | null;
 }
 
 // Defensive cleanup for display/copy -- the prompt instructs the AI to keep
@@ -67,7 +70,7 @@ async function downloadAs(url: string, filename: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function SceneOutputPanel({ result, onResultChange, warnings, context, scenePlan, affiliateUrl }: SceneOutputPanelProps) {
+export function SceneOutputPanel({ result, onResultChange, warnings, context, scenePlan, affiliateUrl, productCategory, productSubcategory }: SceneOutputPanelProps) {
   const { toast } = useToast();
   const regenerateScene = useRegenerateScene();
   const hookVariants = useHookVariants();
@@ -275,6 +278,15 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, sc
           )}
         </CardContent>
       </Card>
+
+      <VideoUploadPanel
+        productId={context.productId}
+        category={productCategory}
+        subcategory={productSubcategory}
+        caption={result.caption}
+        hashtags={result.hashtags}
+        promptSnapshot={result.scenes.map((s) => `Scene ${s.scene_number}:\n${s.ai_ready_prompt}`).join('\n\n')}
+      />
     </div>
   );
 }
