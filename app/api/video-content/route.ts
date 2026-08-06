@@ -27,9 +27,8 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
 
-  if (typeof body?.product_id !== "string" || !body.product_id) {
-    return NextResponse.json({ error: "product_id wajib diisi." }, { status: 400 });
-  }
+  // product_id is optional -- manual uploads (not routed through Content
+  // Generator) are tied to a category only, not a specific product row.
   if (typeof body?.category !== "string" || !body.category) {
     return NextResponse.json({ error: "category wajib diisi." }, { status: 400 });
   }
@@ -43,7 +42,7 @@ export async function POST(request: NextRequest) {
   const [row] = await db
     .insert(videoContents)
     .values({
-      productId: body.product_id,
+      productId: typeof body.product_id === "string" && body.product_id ? body.product_id : undefined,
       category: body.category,
       subcategory: typeof body.subcategory === "string" ? body.subcategory : undefined,
       caption: typeof body.caption === "string" ? body.caption : undefined,

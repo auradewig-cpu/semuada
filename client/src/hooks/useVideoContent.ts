@@ -3,7 +3,7 @@ import { apiRequest } from '@/lib/queryClient';
 
 export interface VideoContent {
   id: string;
-  product_id: string;
+  product_id: string | null;
   category: string;
   subcategory: string | null;
   caption: string | null;
@@ -40,16 +40,29 @@ export function useDeleteVideoContent() {
   });
 }
 
+export function useUpdateVideoContent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string; caption?: string; hashtags?: string[] }) => {
+      const res = await apiRequest('PATCH', `/api/video-content/${id}`, payload);
+      return res.json() as Promise<VideoContent>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-content'] });
+    },
+  });
+}
+
 export function useCreateVideoContent() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: {
-      product_id: string;
+      product_id?: string | null;
       category: string;
       subcategory: string | null;
       caption: string;
       hashtags: string[];
-      prompt_snapshot: string;
+      prompt_snapshot?: string;
       video_url: string;
       cloudinary_public_id: string;
     }) => {

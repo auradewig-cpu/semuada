@@ -100,7 +100,9 @@ export const contentGenerations = pgTable("content_generations", {
 // purpose-built for the video library + future social scheduling feature.
 export const videoContents = pgTable("video_contents", {
   id: uuid("id").defaultRandom().primaryKey(),
-  productId: uuid("product_id").notNull(),
+  // Nullable: videos uploaded manually (not through Content Generator) are
+  // tied to a category only, not necessarily a specific product row.
+  productId: uuid("product_id"),
   category: text("category").notNull(),
   subcategory: text("subcategory"),
   caption: text("caption"),

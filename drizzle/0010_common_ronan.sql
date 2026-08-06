@@ -1,0 +1,1 @@
+ALTER TABLE "video_contents" ALTER COLUMN "product_id" DROP NOT NULL;
