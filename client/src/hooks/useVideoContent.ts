@@ -27,6 +27,22 @@ export function useVideoContents(category?: string) {
   });
 }
 
+export interface VideoContentStats {
+  total: number;
+  byCategory: { category: string; count: number }[];
+}
+
+export function useVideoContentStats() {
+  return useQuery<VideoContentStats>({
+    queryKey: ['video-content-stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/video-content/stats', { credentials: 'include' });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+  });
+}
+
 export function useDeleteVideoContent() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -36,6 +52,7 @@ export function useDeleteVideoContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['video-content'] });
+      queryClient.invalidateQueries({ queryKey: ['video-content-stats'] });
     },
   });
 }
@@ -71,6 +88,7 @@ export function useCreateVideoContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['video-content'] });
+      queryClient.invalidateQueries({ queryKey: ['video-content-stats'] });
     },
   });
 }

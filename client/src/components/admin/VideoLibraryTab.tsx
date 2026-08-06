@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useVideoContents, useDeleteVideoContent, useUpdateVideoContent, type VideoContent } from "@/hooks/useVideoContent";
+import { useVideoContents, useVideoContentStats, useDeleteVideoContent, useUpdateVideoContent, type VideoContent } from "@/hooks/useVideoContent";
 import { useCategoryContext } from "@/context/CategoryContext";
 import { ManualVideoUploadDialog } from "@/components/admin/content-generator/ManualVideoUploadDialog";
 
@@ -48,6 +48,7 @@ const SIZE_LABELS: { value: VideoSize; label: string }[] = [
 export function VideoLibraryTab() {
   const [category, setCategory] = useState<string | undefined>(undefined);
   const { data, isLoading } = useVideoContents(category);
+  const { data: stats } = useVideoContentStats();
   const { hierarchy, isLoading: isCategoryLoading } = useCategoryContext();
   const deleteVideoContent = useDeleteVideoContent();
   const updateVideoContent = useUpdateVideoContent();
@@ -118,7 +119,7 @@ export function VideoLibraryTab() {
           <CardTitle className="flex items-center justify-between flex-wrap gap-3">
             <span className="flex items-center">
               <Film className="h-5 w-5 mr-2" />
-              Video Library
+              Video Library{stats ? ` · ${stats.total} video` : ''}
             </span>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center rounded-md border">
@@ -152,6 +153,22 @@ export function VideoLibraryTab() {
               </Button>
             </div>
           </CardTitle>
+          {stats && stats.byCategory.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {stats.byCategory.map(({ category: c, count: n }) => (
+                <Button
+                  key={c}
+                  type="button"
+                  size="sm"
+                  variant={category === c ? 'secondary' : 'ghost'}
+                  className="h-7 text-xs"
+                  onClick={() => setCategory(category === c ? undefined : c)}
+                >
+                  {c} ({n})
+                </Button>
+              ))}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
