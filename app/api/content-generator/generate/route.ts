@@ -7,7 +7,7 @@ import { requireAuth } from "@root/lib/apiAuth";
 import { compileMasterPrompt } from "@root/lib/content-generator/masterPrompt";
 import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
-import { parseAiResponse, parseSceneResponse, validateOutput, buildRepairPrompt } from "@root/lib/content-generator/jsonParser";
+import { parseAiResponse, parseSceneResponse, parseCaptionResponse, validateOutput, buildRepairPrompt } from "@root/lib/content-generator/jsonParser";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
 import { buildSceneRephrasePrompt, buildCaptionRephrasePrompt } from "@root/lib/content-generator/autoRephrase";
 import type { PolicyViolation } from "@root/lib/content-generator/policyCheck";
@@ -56,7 +56,7 @@ async function applyTargetedRephrase(
     try {
       const rephrasePrompt = buildCaptionRephrasePrompt(result.caption, captionViolations);
       const response = await generateWithFallback(providerOrder, keys, rephrasePrompt, []);
-      const newCaption = response.text.trim().replace(/^["']|["']$/g, "");
+      const newCaption = parseCaptionResponse(response.text);
       if (newCaption) result.caption = newCaption;
     } catch {
       // leave caption as-is

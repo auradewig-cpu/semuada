@@ -213,3 +213,32 @@ export function parseHookVariantsResponse(rawText: string): HookVariantsResult |
 
   return tryVariantsParse(rawText.slice(firstBrace, lastBrace + 1));
 }
+
+function tryCaptionParse(text: string): string | null {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed.caption === "string" ? parsed.caption : null;
+  } catch {
+    return null;
+  }
+}
+
+// The provider layer forces JSON mode on every call (see providers.ts), so
+// even a "reply with plain text" rephrase prompt comes back wrapped as
+// {"caption": "..."} -- parse that properly instead of only trimming quote
+// characters off raw text, which used to leave the JSON wrapper itself
+// stuck in the caption. Plain-text fallback stays for defensiveness only.
+export function parseCaptionResponse(rawText: string): string | null {
+  const direct = tryCaptionParse(rawText);
+  if (direct) return direct;
+
+  const firstBrace = rawText.indexOf("{");
+  const lastBrace = rawText.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const extracted = tryCaptionParse(rawText.slice(firstBrace, lastBrace + 1));
+    if (extracted) return extracted;
+  }
+
+  const trimmed = rawText.trim().replace(/^["']|["']$/g, "");
+  return trimmed || null;
+}

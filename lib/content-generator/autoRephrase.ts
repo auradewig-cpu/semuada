@@ -36,6 +36,6 @@ Caption berikut punya frasa yang melanggar kebijakan compliance:
 PELANGGARAN YANG WAJIB DIPERBAIKI:
 ${formatViolations(violations)}
 
-Tulis ulang caption ini, perbaiki HANYA frasa yang melanggar, pertahankan nada dan pesan lain apa adanya. Balas HANYA teks caption baru, tanpa tanda kutip, tanpa hashtag, tanpa teks lain.
+Tulis ulang caption ini, perbaiki HANYA frasa yang melanggar, pertahankan nada dan pesan lain apa adanya. Jangan sertakan hashtag di dalamnya. Balas HANYA dengan JSON berbentuk {"caption": "..."} berisi caption baru, tidak ada teks lain di luar JSON itu.
 `.trim();
 }
