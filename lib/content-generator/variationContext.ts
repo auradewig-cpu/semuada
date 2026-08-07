@@ -49,5 +49,5 @@ export function buildAvoidRepetitionBlock(recent: RecentGeneration[]): string {
       return `- Hook: ${archetypeLabel} | Caption: "${r.caption ?? "-"}" | Hashtag: ${hashtags || "-"}`;
     })
     .join("\n");
-  return `\nRIWAYAT KONTEN SEBELUMNYA UNTUK PRODUK INI (WAJIB DIHINDARI PENGULANGANNYA -- buat hook, caption, dan gaya bahasa yang BERBEDA dari daftar berikut, jangan pakai frasa/struktur kalimat yang mirip):\n${lines}\n`;
+  return `\nRIWAYAT KONTEN SEBELUMNYA UNTUK PRODUK INI (WAJIB DIHINDARI PENGULANGANNYA -- buat hook, caption, gaya bahasa, DAN kombinasi hashtag yang BERBEDA dari daftar berikut, jangan pakai frasa/struktur kalimat yang mirip; hashtag boleh overlap 1-2 kata paling relevan kalau memang wajib, tapi JANGAN salin ulang 5 hashtag yang sama persis):\n${lines}\n`;
 }

@@ -114,7 +114,9 @@ export async function POST(request: NextRequest) {
     const warnings: string[] = [];
     const usedArchetypes: string[] = [];
     const variants = result.variants.map((scene, i) => {
-      const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
+      // priceRequired=false: scene 1 is the hook, never the price beat --
+      // matches buildPriceRule(false, ...) in hookVariants.ts.
+      const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, false);
       warnings.push(...problems.map((p) => `Varian ${i + 1}: ${p}`));
 
       // Detection only (no auto-rephrase): rephrasing all 3 variants would

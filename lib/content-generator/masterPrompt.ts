@@ -175,7 +175,7 @@ ATURAN WAJIB (SANGAT PENTING):
 7. ${buildBannedClaimsRule()}
 8. ${buildRealismRule()}
 9. ${buildSpokenNumberRule(input.seed)}
-10. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
+10. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda) -- kalau ada RIWAYAT KONTEN SEBELUMNYA di atas, kombinasi hashtag WAJIB berbeda dari riwayat itu (boleh overlap 1-2 hashtag paling relevan, tapi JANGAN salin ulang 5 hashtag yang sama persis). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
 11. ${buildWordCountSelfCheckRule()}
 12. Isi "text_overlay" tiap scene: teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in di video saat editing -- BUKAN salinan penuh "script_narration", tapi inti pesan scene itu dalam bentuk singkat/punchy. Ini WAJIB diisi karena mayoritas penonton short-form video menonton tanpa suara.
 

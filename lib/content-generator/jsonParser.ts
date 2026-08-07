@@ -222,6 +222,22 @@ Perbaiki HANYA bagian yang bermasalah di atas, pertahankan bagian lain yang suda
 `.trim();
 }
 
+// Single-scene counterpart of buildRepairPrompt() -- regenerate-scene/route.ts
+// works with one SceneOutput object, not the {scenes, caption, hashtags}
+// envelope, so the repaired response must stay a single JSON object or
+// parseSceneResponse() won't recognize it.
+export function buildSceneRepairPrompt(scene: SceneOutput, problems: string[]): string {
+  return `
+Output JSON scene sebelumnya punya masalah berikut:
+${problems.map((p) => `- ${p}`).join("\n")}
+
+Ini output sebelumnya:
+${JSON.stringify(scene)}
+
+Perbaiki HANYA bagian yang bermasalah di atas, pertahankan bagian lain yang sudah benar. Balas HANYA dengan SATU objek JSON scene (bukan array, bukan dibungkus objek lain), struktur sama seperti sebelumnya, tanpa teks lain.
+`.trim();
+}
+
 function trySceneParse(text: string): SceneOutput | null {
   try {
     const parsed = JSON.parse(text);
@@ -252,6 +268,11 @@ export function validateScene(
   characterName: string | null,
   productName: string,
   category: string,
+  // True only when this specific scene is the one carrying the price mandate
+  // (regenerate-scene: includePrice && this is the last scene; hook-variants:
+  // always false, scene 1 is the hook, not the price beat -- see
+  // buildPriceRule() in sceneRegen.ts/hookVariants.ts, which this mirrors).
+  priceRequired: boolean,
   // Optional -- hook-variants doesn't resolve a WPM today (variants are
   // short hook fragments, not full-pace scenes), so it's omitted there and
   // this check is simply skipped rather than forcing an artificial value.
@@ -259,6 +280,10 @@ export function validateScene(
 ): string[] {
   const problems: string[] = [];
   const charLimit = getAiToolSpec(aiTool).charLimit;
+
+  if (priceRequired && !mentionsPrice(scene.script_narration || "")) {
+    problems.push(`Fitur "Sertakan harga" aktif dan scene ini WAJIB menyebut harga (scene terakhir) -- tapi tidak ada harga di narasinya, wajib disisipkan.`);
+  }
 
   const actualWordCount = countWords(scene.script_narration || "");
   scene.script_word_count = actualWordCount;

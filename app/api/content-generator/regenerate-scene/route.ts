@@ -7,7 +7,7 @@ import { requireAuth } from "@root/lib/apiAuth";
 import { compileSceneRegenPrompt } from "@root/lib/content-generator/sceneRegen";
 import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
-import { parseSceneResponse, validateScene, checkToolDurationLimits } from "@root/lib/content-generator/jsonParser";
+import { parseSceneResponse, validateScene, checkToolDurationLimits, buildSceneRepairPrompt } from "@root/lib/content-generator/jsonParser";
 import { makeSeed } from "@root/lib/content-generator/exampleBank";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
 import { rephraseSceneViolations } from "@root/lib/content-generator/autoRephrase";
@@ -104,11 +104,33 @@ export async function POST(request: NextRequest) {
     { url: productImageUrl, mimeType: "image/jpeg" },
   ];
 
+  // Only the last scene carries the price mandate (mirrors buildPriceRule's
+  // isLastScene gate in sceneRegen.ts) -- forcing it on a middle scene while
+  // the last scene (shown as context) may already state it would duplicate
+  // the price across the video.
+  const isLastScene = sceneIndex + 1 === totalScenes;
+  const priceRequired = includePrice && isLastScene;
+
   try {
     const response = await generateWithFallback(providerOrder, keys, prompt, images, 0.65);
     let scene = parseSceneResponse(response.text);
     if (!scene) {
       return NextResponse.json({ error: "AI mengembalikan format scene yang tidak bisa dibaca." }, { status: 502 });
+    }
+
+    // Structural repair pass FIRST (mirrors generate/route.ts) -- catches
+    // things the AI can actually fix given a pointed correction (missing
+    // price, empty narration, wrong duration, etc). Previously this endpoint
+    // had no repair loop at all, so e.g. a dropped mandatory price on the
+    // last scene shipped completely undetected.
+    let problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, priceRequired, narrationWpm);
+    if (problems.length > 0) {
+      const repairPrompt = buildSceneRepairPrompt(scene, problems);
+      const repaired = await generateWithFallback(providerOrder, keys, repairPrompt, images, 0.65);
+      const repairedScene = parseSceneResponse(repaired.text);
+      if (repairedScene) {
+        scene = repairedScene;
+      }
     }
 
     // Unlike the main "Generate" flow, this endpoint previously skipped
@@ -121,11 +143,10 @@ export async function POST(request: NextRequest) {
       policyViolations = checkPolicyCompliance({ scenes: [scene], caption: "", hashtags: [] }, contentGoal);
     }
 
-    // Validated AFTER the rephrase, not before. Previously `problems` was
-    // computed against the original scene and then the scene was wholly
-    // replaced, so the user was shown warnings describing a scene they never
-    // received -- and received a scene nobody had validated.
-    const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, narrationWpm);
+    // Re-validated on the FINAL scene (after both repair and rephrase), not
+    // before -- so warnings shown to the user always describe the scene they
+    // actually received, never a stale intermediate one.
+    problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, priceRequired, narrationWpm);
 
     scene.scene_number = sceneIndex + 1;
     scene.reference_images = {
