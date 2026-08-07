@@ -16,9 +16,9 @@ import {
   buildCameraPatternRule,
   buildDeliveryTechniqueRule,
   buildPromptBudgetRule,
+  buildAiReadyPromptStructureRule,
   buildRealismRule,
   buildBannedClaimsRule,
-  buildDurationMarkerRule,
   buildWordCountSelfCheckRule,
 } from "./promptFragments";
 import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, LanguageTone, NarrationMode, PlatformTarget, SceneInput } from "./types";
@@ -149,6 +149,8 @@ Format ai_ready_prompt: ${toolSpec.formatTemplate}
 
 ${buildPromptBudgetRule(input.aiTool, hasCharacter)}
 
+${buildAiReadyPromptStructureRule(hasCharacter, input.aspectRatio, toneSpec.genreAnchor)}
+
 ${buildCinematographyRule(input.aiTool)}
 
 ${buildSingleTakeRule()}
@@ -172,11 +174,10 @@ ATURAN WAJIB (SANGAT PENTING):
 6. Narasi harus terdengar natural, TIDAK monoton: intonasi hidup, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit. Kalimat maksimal sekitar ${toneSpec.maxWordsPerSentence} kata (sesuai GAYA BAHASA yang dipilih) -- HINDARI kalimat majemuk yang jauh melebihi batas itu bersambung dengan "dan"/"yang"/"karena" berkali-kali, itu bikin AI voice salah penekanan dan terdengar "blibet". Pecah jadi beberapa kalimat terpisah kalau lebih panjang dari itu, masing-masing 1 ide saja.
 7. ${buildBannedClaimsRule()}
 8. ${buildRealismRule()}
-9. ${buildDurationMarkerRule(input.aspectRatio)}
-10. ${buildSpokenNumberRule(input.seed)}
-11. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
-12. ${buildWordCountSelfCheckRule()}
-13. Isi "text_overlay" tiap scene: teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in di video saat editing -- BUKAN salinan penuh "script_narration", tapi inti pesan scene itu dalam bentuk singkat/punchy. Ini WAJIB diisi karena mayoritas penonton short-form video menonton tanpa suara.
+9. ${buildSpokenNumberRule(input.seed)}
+10. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
+11. ${buildWordCountSelfCheckRule()}
+12. Isi "text_overlay" tiap scene: teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in di video saat editing -- BUKAN salinan penuh "script_narration", tapi inti pesan scene itu dalam bentuk singkat/punchy. Ini WAJIB diisi karena mayoritas penonton short-form video menonton tanpa suara.
 
 ${negativeBlock}
 

@@ -14,9 +14,9 @@ import {
   buildCameraPatternRule,
   buildDeliveryTechniqueRule,
   buildPromptBudgetRule,
+  buildAiReadyPromptStructureRule,
   buildRealismRule,
   buildBannedClaimsRule,
-  buildDurationMarkerRule,
   buildWordCountSelfCheckRule,
 } from "./promptFragments";
 import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, HookArchetype, LanguageTone, NarrationMode, PlatformTarget, SceneOutput } from "./types";
@@ -110,6 +110,8 @@ AI VIDEO TOOL: ${toolSpec.label} (satu scene maksimal ~${toolSpec.maxDurationSec
 
 ${buildPromptBudgetRule(input.aiTool, hasCharacter)}
 
+${buildAiReadyPromptStructureRule(hasCharacter, input.aspectRatio, toneSpec.genreAnchor)}
+
 ${buildCinematographyRule(input.aiTool)}
 
 ${buildSingleTakeRule()}
@@ -133,7 +135,6 @@ ATURAN WAJIB:
 - ${dialogueRule}
 - ${buildBannedClaimsRule()}
 - ${buildRealismRule()}
-- ${buildDurationMarkerRule(input.aspectRatio)}
 - ${buildWordCountSelfCheckRule()}
 - ${buildSpokenNumberRule(input.seed)}
 - Isi "text_overlay" tiap varian: teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in saat editing -- inti hook varian itu, BUKAN salinan "script_narration".

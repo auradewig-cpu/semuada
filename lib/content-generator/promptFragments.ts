@@ -140,31 +140,42 @@ export function buildRealismRule(): string {
   return `Instruksi kamera dan pencahayaan harus terasa seperti rekaman HP asli: framing sedikit tidak simetris, pencahayaan ruangan natural (bukan studio lighting), dan ada satu detail kecil yang tidak rapi supaya tidak terlihat seperti render AI.`;
 }
 
-export function buildDurationMarkerRule(aspectRatio: string): string {
-  return `Tutup "ai_ready_prompt" dengan penanda durasi "[Xs, ${aspectRatio} frame]" (ganti X dengan durasi scene itu dalam detik).`;
-}
-
 export function buildWordCountSelfCheckRule(): string {
   return `Hitung sendiri jumlah kata "script_narration" tiap scene dan isi ke "script_word_count" -- pastikan akurat, jangan asal tebak.`;
 }
 
-// The char budget was previously mentioned in three uncoordinated places with
-// no arithmetic and no priority order, while the mandatory contents of
-// ai_ready_prompt exceed the limit outright on the tighter tools (Pika 250,
-// Runway/Luma 300). Without a stated priority the model drops whichever part it
-// likes -- often the character anchor, which is the one thing that must never
-// vary between scenes.
+// The generated prompt is copy-pasted manually into each tool's web UI, not
+// sent through an API call -- so charLimit is a readability TARGET, not a hard
+// ceiling (confirmed with the user; see aiTools.ts). Kept as a soft target with
+// a fallback priority order for the rare case a scene genuinely runs long, but
+// the urgency is much lower than when these were the old 250-600 char values.
 export function buildPromptBudgetRule(aiTool: AiToolId, hasCharacter: boolean): string {
   const { charLimit, label } = getAiToolSpec(aiTool);
   const anchorNote = hasCharacter
     ? "anchor karakter (frasa identik antar scene)"
     : "format faceless yang dipilih (tangan/flat-lay)";
-  return `BATAS KARAKTER "ai_ready_prompt": maksimal ${charLimit} karakter untuk ${label}. Ini batas KERAS -- hitung sendiri dan pastikan tidak lewat.
-Kalau ruang tidak cukup, potong mengikuti urutan prioritas ini dari yang PALING BOLEH dibuang ke yang TIDAK BOLEH dibuang:
-1. Kata sifat mood/gaya (dibuang duluan)
-2. Detail lingkungan/latar
-3. Detail pencahayaan
-4. Detail gerakan kamera
-5. Deskripsi aksi
-6. ${anchorNote} dan identitas produk -- DUA INI TIDAK BOLEH DIBUANG dalam kondisi apapun; kalau harus, persingkat bagian lain sampai habis dulu.`;
+  return `PANJANG TARGET "ai_ready_prompt" untuk ${label}: sekitar ${charLimit} karakter -- ini target keterbacaan, bukan batas keras (prompt ini ditempel manual ke tool, bukan lewat API). Kalau butuh lebih panjang untuk kejelasan, boleh, tapi jangan bertele-tele tanpa menambah informasi visual baru.
+Kalau harus memangkas, urutan prioritas dari yang PALING BOLEH dibuang ke yang TIDAK BOLEH dibuang: (1) kata sifat mood/gaya, (2) detail lingkungan/latar, (3) detail pencahayaan, (4) detail gerakan kamera, (5) deskripsi aksi, (6) ${anchorNote} dan identitas produk -- DUA INI TIDAK BOLEH DIBUANG dalam kondisi apapun.`;
+}
+
+// The labeled multi-line format below is what real-world prompts that get good
+// results from these tools actually look like -- a single dense paragraph
+// (the old approach) reads worse to both the video model and the human
+// re-reading it before pasting. The closing "Important:" line is a deliberate
+// "state critical constraints twice" technique: buildProductAnchorRule/
+// buildCharacterBlock already state product/character identity once earlier in
+// the prompt -- this asks the model to restate it, in its own words, at the
+// very end of ai_ready_prompt itself (the text that actually reaches the video
+// tool), which is where a reference-image tool's attention to constraints
+// matters most.
+export function buildAiReadyPromptStructureRule(hasCharacter: boolean, aspectRatio: string, genreAnchor: string): string {
+  const anchorLabel = hasCharacter ? "anchor karakter" : "format faceless yang dipilih";
+  return `STRUKTUR "ai_ready_prompt" (WAJIB): tulis sebagai teks BERLABEL MULTI-BARIS (pakai newline antar baris), BUKAN satu paragraf padat. Format:
+Scene: [dimulai dengan ${anchorLabel} persis seperti yang sudah ditentukan, lalu aksi + latar]
+Camera: [shot size + gerakan kamera, pakai istilah dari KOSAKATA SINEMATOGRAFI di atas]
+Lighting: [kualitas + arah cahaya]
+Style: ${genreAnchor}
+Duration: [X]s, ${aspectRatio} frame.
+Important: [dengan kata-katamu sendiri, tegaskan ulang singkat bahwa produk/karakter harus identik dengan referensi -- jangan ubah bentuk/warna/logo, jangan tambah aksesori yang tidak diminta]
+Baris "Audio:" (kalau mode voiceover, lihat instruksi MODE NARASI) masuk di antara Style dan Duration.`;
 }

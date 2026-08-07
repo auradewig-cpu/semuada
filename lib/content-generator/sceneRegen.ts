@@ -15,9 +15,9 @@ import {
   buildCameraPatternRule,
   buildDeliveryTechniqueRule,
   buildPromptBudgetRule,
+  buildAiReadyPromptStructureRule,
   buildRealismRule,
   buildBannedClaimsRule,
-  buildDurationMarkerRule,
   buildWordCountSelfCheckRule,
 } from "./promptFragments";
 import type {
@@ -127,6 +127,8 @@ AI VIDEO TOOL: ${toolSpec.label} (satu scene maksimal ~${toolSpec.maxDurationSec
 
 ${buildPromptBudgetRule(input.aiTool, hasCharacter)}
 
+${buildAiReadyPromptStructureRule(hasCharacter, input.aspectRatio, toneSpec.genreAnchor)}
+
 ${buildCinematographyRule(input.aiTool)}
 
 ${buildSingleTakeRule()}
@@ -145,7 +147,6 @@ ATURAN:
 - ${dialogueRule}
 - ${buildBannedClaimsRule()}
 - ${buildRealismRule()}
-- ${buildDurationMarkerRule(input.aspectRatio)}
 - ${buildWordCountSelfCheckRule()}
 - ${buildSpokenNumberRule(input.seed)}
 - Isi "text_overlay": teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in saat editing -- BUKAN salinan "script_narration", inti pesan scene ini saja.
