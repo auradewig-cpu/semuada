@@ -100,6 +100,16 @@ export interface SceneOutput {
   };
   ai_ready_prompt: string;
   transition_to_next: string;
+  // Only requested for tools with a dedicated negative-prompt input (Kling,
+  // Runway -- see aiTools.ts supportsNegativePrompt). For the other tools the
+  // negatives are handled by writing the positive prompt precisely instead,
+  // so this stays undefined rather than being faked.
+  negative_prompt?: string;
+  // Set only by the hook-variants flow, where each variant must report which
+  // archetype it actually used so the route can verify they differ. The prompt
+  // has always required this field; the type just never declared it, forcing
+  // an inline cast at the call site.
+  hook_archetype_used?: string;
 }
 
 export interface GenerationResult {

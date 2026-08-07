@@ -10,6 +10,9 @@ import { parseHookVariantsResponse, validateScene } from "@root/lib/content-gene
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
 import { hookVariantsRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
+import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
+import { getRecentGenerations, buildAvoidRepetitionBlock } from "@root/lib/content-generator/variationContext";
+import { makeSeed } from "@root/lib/content-generator/exampleBank";
 import type { AiProvider, SceneOutput } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
@@ -30,6 +33,7 @@ export async function POST(request: NextRequest) {
     platform,
     aspectRatio,
     currentArchetype,
+    contentGoal,
     languageTone,
     sceneDuration,
     productImageUrl,
@@ -62,6 +66,12 @@ export async function POST(request: NextRequest) {
     deepseekApiKey: settingsRow.deepseekApiKey,
   };
 
+  const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180, languageTone);
+  // Variants are alternate scene 1s for the SAME video, so they get the same
+  // anti-repetition history the main generate flow uses -- novelty is the whole
+  // point of this endpoint, and it previously had no history at all.
+  const avoidRepetitionBlock = buildAvoidRepetitionBlock(await getRecentGenerations(productId));
+
   const variantCount = 3;
   const prompt = compileHookVariantsPrompt({
     productName: product.productName,
@@ -71,6 +81,7 @@ export async function POST(request: NextRequest) {
     productImageUrl,
     currentScene,
     currentArchetype,
+    contentGoal,
     languageTone,
     style,
     aiTool,
@@ -78,10 +89,13 @@ export async function POST(request: NextRequest) {
     aspectRatio,
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
+    narrationWpm,
     includePrice,
     narrationMode,
     cameraPattern,
     variantCount,
+    seed: makeSeed(),
+    avoidRepetitionBlock,
   });
 
   const images = [
@@ -103,17 +117,18 @@ export async function POST(request: NextRequest) {
       const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
       warnings.push(...problems.map((p) => `Varian ${i + 1}: ${p}`));
 
-      // Detection only (no auto-rephrase) -- this endpoint previously had no
-      // compliance screening at all. Rephrasing all 3 variants would triple
-      // AI cost for a feature whose point is picking just one; the admin
-      // sees the warning here and "Regenerate" on the picked variant does
-      // get the full rephrase treatment. No contentGoal on this request
-      // schema, so growth-mode's extra commercial-language rule doesn't
-      // apply here specifically -- base compliance rules still do.
-      const policyViolations = checkPolicyCompliance({ scenes: [scene], caption: "", hashtags: [] }, "conversion");
+      // Detection only (no auto-rephrase): rephrasing all 3 variants would
+      // triple AI cost for a feature whose point is picking just one. The
+      // admin sees the warning here, and "Regenerate" on the picked variant
+      // does get the full rephrase treatment. contentGoal is now threaded
+      // through the request schema, so growth-mode's extra commercial-language
+      // rules finally apply here too -- previously hardcoded to "conversion",
+      // which meant a growth video's variants were never screened for
+      // hard-sell language before "Pakai" installed one.
+      const policyViolations = checkPolicyCompliance({ scenes: [scene], caption: "", hashtags: [] }, contentGoal);
       warnings.push(...formatPolicyViolations(policyViolations).map((w) => `Varian ${i + 1}: ${w}`));
 
-      const archetypeUsed = (scene as SceneOutput & { hook_archetype_used?: string }).hook_archetype_used ?? null;
+      const archetypeUsed = scene.hook_archetype_used ?? null;
       if (!archetypeUsed) {
         warnings.push(`Varian ${i + 1}: tidak melaporkan teknik hook yang dipakai -- tidak bisa diverifikasi bedanya dengan varian lain.`);
       } else {

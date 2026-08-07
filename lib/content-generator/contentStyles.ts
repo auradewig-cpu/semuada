@@ -12,6 +12,16 @@ interface ContentStyleDefinition {
   // admin hasn't manually overridden the global AI Settings WPM (2026 research:
   // hard-sell ~170-190, soft-sell ~145, documentary/vlog pacing ~110-130).
   defaultWpm: number;
+  // True when the style's whole premise REQUIRES the visuals to change between
+  // scenes. The cross-scene consistency block (negativePrompt.ts) locks
+  // setting/lighting/wardrobe/grading, which makes a "dramatic after reveal" or
+  // a "visual style changes drastically at the twist" structurally impossible
+  // to satisfy -- so for these styles only identity + product design stay locked.
+  allowsVisualChange: boolean;
+  // How the final scene should land. The loop-back-to-scene-1 nudge is good for
+  // most styles but actively undoes the payoff for before/after (scene 1 IS the
+  // "before") and fights the deliberately-unresolved ending of a series.
+  endingSemantics: "loop_friendly" | "resolve_payoff" | "open_loop";
 }
 
 // Ported from ViralFrame Studio's contentStyles.ts (field-tested), adapted for
@@ -27,6 +37,8 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
       "Gaya persuasif direct-response, USP ditegaskan minimal 2x, nada percaya diri MEREKOMENDASIKAN -- seperti endorsement jujur dari orang yang benar-benar pakai produknya, BUKAN skrip iklan generik.",
     ctaIntensity: "hard",
     defaultWpm: 170,
+    allowsVisualChange: false,
+    endingSemantics: "resolve_payoff",
   },
   vlog_daily: {
     id: "vlog_daily",
@@ -35,9 +47,13 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
       "Scene 1 = Opening (perkenalan momen) -> Scene tengah = Momen berurutan (aktivitas natural) -> Scene terakhir = Refleksi/Penutup santai (BUKAN CTA keras)",
     cameraInstruction: "Kamera handheld, sedikit goyang natural, talent bicara sambil beraktivitas.",
     narrativeVoiceGuidance:
-      'Gaya cerita personal seperti diary/vlog -- "aku hari ini...", "jadi tadi...". Natural, tidak scripted, tanpa nada menjual.',
+      "Gaya cerita personal seperti diary/vlog: ceritakan momen yang baru saja terjadi dengan urutan waktu yang jelas. Natural, tidak scripted, tanpa nada menjual.",
     ctaIntensity: "none",
     defaultWpm: 120,
+    // A day-in-life that never changes room, outfit, or time of day isn't a
+    // day-in-life.
+    allowsVisualChange: true,
+    endingSemantics: "loop_friendly",
   },
   tutorial_howto: {
     id: "tutorial_howto",
@@ -46,9 +62,11 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
       "Scene 1 = Hook Masalah (sebut masalah/keyword) -> Scene tengah = Langkah 1..N (instruksional bernomor) -> Scene terakhir = Hasil/Recap + ajakan follow",
     cameraInstruction: "Kamera stabil, angle jelas memperlihatkan langkah demi langkah.",
     narrativeVoiceGuidance:
-      'Gaya instruksional jelas, sebutkan keyword/topik di awal. Tiap langkah dijelaskan singkat dan actionable -- "Langkah pertama, ...". Nada membantu, bukan menjual.',
+      "Gaya instruksional jelas, sebutkan keyword/topik di awal. Tiap langkah dijelaskan singkat dan actionable, dengan penanda urutan yang natural. Nada membantu, bukan menjual.",
     ctaIntensity: "soft",
     defaultWpm: 135,
+    allowsVisualChange: false,
+    endingSemantics: "resolve_payoff",
   },
   storytime: {
     id: "storytime",
@@ -60,6 +78,8 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
       "WAJIB gunakan detail SANGAT SPESIFIK (bukan generic) -- nama, waktu, tempat, angka konkret. Nada storytelling natural, seperti cerita ke teman.",
     ctaIntensity: "none",
     defaultWpm: 130,
+    allowsVisualChange: true,
+    endingSemantics: "resolve_payoff",
   },
   listicle_countdown: {
     id: "listicle_countdown",
@@ -68,9 +88,11 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
       "Scene 1 = Intro (sebutkan total jumlah poin & topik) -> Scene tengah = Poin 1..N (1 scene = 1 poin) -> Scene terakhir = Penutup/rangkuman",
     cameraInstruction: "Kamera stabil, cutaway ke detail tiap poin.",
     narrativeVoiceGuidance:
-      'Sebutkan NOMOR poin secara eksplisit di setiap scene ("Nomor 1...", "yang kedua..."). Tiap poin harus punya value/insight jelas, bukan filler.',
+      "Sebutkan NOMOR poin secara eksplisit di setiap scene, dengan penomoran yang terdengar natural saat diucapkan. Tiap poin harus punya value/insight jelas, bukan filler.",
     ctaIntensity: "soft",
     defaultWpm: 150,
+    allowsVisualChange: false,
+    endingSemantics: "loop_friendly",
   },
   before_after: {
     id: "before_after",
@@ -82,6 +104,12 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
       "Fokus pada KONTRAS visual antara sebelum dan sesudah. Nada membangun antisipasi menuju reveal. HINDARI klaim before/after yang melanggar aturan kepatuhan (terutama fisik/kesehatan) -- gunakan observasi netral.",
     ctaIntensity: "soft",
     defaultWpm: 140,
+    // The contrast IS the format -- locking the visuals identical would make
+    // the reveal impossible.
+    allowsVisualChange: true,
+    // Looping back to scene 1 here means ending on the "before" state, which
+    // literally undoes the payoff.
+    endingSemantics: "resolve_payoff",
   },
   pattern_break_twist: {
     id: "pattern_break_twist",
@@ -93,6 +121,8 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
       "Scene pembuka WAJIB terasa seperti genre/format lain -- kejutannya di STRUKTUR cerita, bukan cuma visual. Nada berubah drastis dari sebelum ke sesudah twist.",
     ctaIntensity: "soft",
     defaultWpm: 145,
+    allowsVisualChange: true,
+    endingSemantics: "resolve_payoff",
   },
   series_episodic: {
     id: "series_episodic",
@@ -101,9 +131,11 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
       "Scene 1 = Recap singkat/Hook -> Scene tengah = Konten inti -> Scene terakhir = Open Loop (menggantung sengaja, tease part berikutnya)",
     cameraInstruction: "Kamera konsisten dengan identitas visual seri.",
     narrativeVoiceGuidance:
-      'Scene terakhir WAJIB diakhiri dengan open loop yang genuinely earned -- beri alasan kuat untuk follow/nunggu part berikutnya. Sebutkan eksplisit "part 1 dari beberapa" kalau relevan.',
+      "Scene terakhir WAJIB diakhiri dengan open loop yang genuinely earned -- beri alasan kuat untuk follow/nunggu part berikutnya. Kalau memang ada kelanjutannya, boleh disinggung bahwa ini bagian pertama dari beberapa; kalau tidak, JANGAN mengarang kelanjutan yang tidak ada.",
     ctaIntensity: "soft",
     defaultWpm: 135,
+    allowsVisualChange: false,
+    endingSemantics: "open_loop",
   },
 };
 

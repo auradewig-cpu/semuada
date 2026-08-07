@@ -59,6 +59,10 @@ export function ContentGeneratorTab() {
   // must reuse the per-scene overrides that actually produced the result,
   // even if the user has since edited the scene list above.
   const [generatedScenePlan, setGeneratedScenePlan] = useState<SceneInput[]>([]);
+  // Bumped on every successful generate and used as SceneOutputPanel's key, so
+  // the panel remounts instead of carrying its internal state (hook variants in
+  // particular) across into an unrelated result.
+  const [generationId, setGenerationId] = useState(0);
   // Set from fetchHookSuggestion() when a product is picked -- shown as a
   // hint under HookArchetypeSelector so the "rotation" is a visible default
   // change the admin can override, never a silent server-side substitution.
@@ -134,6 +138,7 @@ export function ContentGeneratorTab() {
           setResult(data.result);
           setWarnings(data.warnings);
           setGeneratedScenePlan(scenes);
+          setGenerationId((n) => n + 1);
           toast({ title: "Berhasil", description: "Konten berhasil digenerate." });
         },
         onError: (error) => {
@@ -193,7 +198,7 @@ export function ContentGeneratorTab() {
           <CardContent className="space-y-4">
             <ImagePicker product={product} usageCounts={usageCounts} onAddScene={handleAddScene} />
             <div className="pt-2 border-t">
-              <ScenePlanner scenes={scenes} onChange={setScenes} />
+              <ScenePlanner scenes={scenes} onChange={setScenes} aiTool={aiTool} />
             </div>
           </CardContent>
         </Card>
@@ -228,7 +233,7 @@ export function ContentGeneratorTab() {
             <CardTitle>7. AI Video Tool Tujuan</CardTitle>
           </CardHeader>
           <CardContent>
-            <AiToolSelector value={aiTool} onChange={setAiTool} />
+            <AiToolSelector value={aiTool} onChange={setAiTool} hasCharacter={characterId !== null} />
           </CardContent>
         </Card>
       )}
@@ -321,9 +326,14 @@ export function ContentGeneratorTab() {
 
       {result && product && (
         <SceneOutputPanel
+          // Remounts on a new generation so panel-local state (hook variants,
+          // in-flight regenerate index) can't survive into a result it was
+          // never derived from.
+          key={generationId}
           result={result}
           onResultChange={setResult}
           warnings={warnings}
+          onWarningsChange={setWarnings}
           scenePlan={generatedScenePlan}
           affiliateUrl={product.affiliate_url}
           productCategory={product.category}

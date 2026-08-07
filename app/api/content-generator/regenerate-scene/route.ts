@@ -7,7 +7,8 @@ import { requireAuth } from "@root/lib/apiAuth";
 import { compileSceneRegenPrompt } from "@root/lib/content-generator/sceneRegen";
 import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
-import { parseSceneResponse, validateScene } from "@root/lib/content-generator/jsonParser";
+import { parseSceneResponse, validateScene, checkToolDurationLimits } from "@root/lib/content-generator/jsonParser";
+import { makeSeed } from "@root/lib/content-generator/exampleBank";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
 import { rephraseSceneViolations } from "@root/lib/content-generator/autoRephrase";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
     includePrice,
     narrationMode,
     cameraPattern,
+    seed: makeSeed(),
   });
 
   const images = [
@@ -109,8 +111,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "AI mengembalikan format scene yang tidak bisa dibaca." }, { status: 502 });
     }
 
-    const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, narrationWpm);
-
     // Unlike the main "Generate" flow, this endpoint previously skipped
     // compliance checking entirely -- a regenerated scene could reintroduce
     // a banned claim with zero screening. Mirror generate/route.ts's
@@ -121,6 +121,12 @@ export async function POST(request: NextRequest) {
       policyViolations = checkPolicyCompliance({ scenes: [scene], caption: "", hashtags: [] }, contentGoal);
     }
 
+    // Validated AFTER the rephrase, not before. Previously `problems` was
+    // computed against the original scene and then the scene was wholly
+    // replaced, so the user was shown warnings describing a scene they never
+    // received -- and received a scene nobody had validated.
+    const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, narrationWpm);
+
     scene.scene_number = sceneIndex + 1;
     scene.reference_images = {
       character: character ? toCharacterPhotoProxyUrl(character.photoUrl) : null,
@@ -129,7 +135,12 @@ export async function POST(request: NextRequest) {
       product_filename: `gambar${sceneIndex + 1}.jpg`,
     };
 
-    return NextResponse.json({ scene, warnings: [...problems, ...formatPolicyViolations(policyViolations)] });
+    const warnings = [
+      ...problems,
+      ...formatPolicyViolations(policyViolations),
+      ...checkToolDurationLimits([sceneDuration], aiTool),
+    ];
+    return NextResponse.json({ scene, warnings });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Gagal regenerate scene." },

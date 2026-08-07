@@ -7,7 +7,9 @@ import { requireAuth } from "@root/lib/apiAuth";
 import { compileMasterPrompt } from "@root/lib/content-generator/masterPrompt";
 import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
-import { parseAiResponse, parseCaptionResponse, validateOutput, buildRepairPrompt } from "@root/lib/content-generator/jsonParser";
+import { parseAiResponse, parseCaptionResponse, validateOutput, buildRepairPrompt, checkToolDurationLimits } from "@root/lib/content-generator/jsonParser";
+import { narrationModeWasCoerced } from "@root/lib/content-generator/promptFragments";
+import { makeSeed } from "@root/lib/content-generator/exampleBank";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
 import { buildCaptionRephrasePrompt, rephraseSceneViolations } from "@root/lib/content-generator/autoRephrase";
 import type { PolicyViolation } from "@root/lib/content-generator/policyCheck";
@@ -145,6 +147,7 @@ export async function POST(request: NextRequest) {
     narrationMode,
     cameraPattern,
     avoidRepetitionBlock,
+    seed: makeSeed(),
   });
 
   const images = [
@@ -213,7 +216,22 @@ export async function POST(request: NextRequest) {
     // correct regardless of whether the rephrase step touched that field.
     applyReferenceImages(result, selectedImageUrls, character?.photoUrl ?? null);
 
-    const warnings = [...problems, ...formatPolicyViolations(policyViolations)];
+    // Advisory warnings kept out of `problems` on purpose -- neither is
+    // something the AI can fix, so routing them into the repair loop would
+    // burn a call per generate and change nothing.
+    const advisoryWarnings = [
+      ...checkToolDurationLimits(scenes.map((s) => s.duration), aiTool),
+      // buildDialogueRule reinterprets faceless+lipsync as voiceover (there is
+      // no mouth to sync). That reinterpretation is correct but must never be
+      // silent -- the user picked lipsync explicitly.
+      ...(scenes.some((s) => narrationModeWasCoerced(s.narrationMode ?? narrationMode, character !== undefined))
+        ? [
+            `Tidak ada karakter yang dipilih (mode faceless) tapi ada scene bermode "lipsync" -- tidak ada wajah/mulut untuk lipsync, jadi narasinya diperlakukan sebagai voiceover. Pilih karakter kalau memang ingin lipsync.`,
+          ]
+        : []),
+    ];
+
+    const warnings = [...problems, ...formatPolicyViolations(policyViolations), ...advisoryWarnings];
 
     // Isolated from the main try/catch on purpose: a transient DB error here
     // must not turn an already-successful generation into a 502 for the user

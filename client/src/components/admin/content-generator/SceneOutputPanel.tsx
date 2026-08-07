@@ -43,6 +43,7 @@ interface SceneOutputPanelProps {
   result: GenerationResult;
   onResultChange: (result: GenerationResult) => void;
   warnings: string[];
+  onWarningsChange: (warnings: string[]) => void;
   context: SceneGenerationContext;
   // Scene plan used at generate time -- carries the per-scene narration/camera
   // overrides so Regenerate/Hook Variants reuse the SAME effective mode as the
@@ -72,7 +73,7 @@ async function downloadAs(url: string, filename: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function SceneOutputPanel({ result, onResultChange, warnings, context, scenePlan, affiliateUrl, productCategory, productSubcategory }: SceneOutputPanelProps) {
+export function SceneOutputPanel({ result, onResultChange, warnings, onWarningsChange, context, scenePlan, affiliateUrl, productCategory, productSubcategory }: SceneOutputPanelProps) {
   const { toast } = useToast();
   const regenerateScene = useRegenerateScene();
   const hookVariants = useHookVariants();
@@ -86,15 +87,33 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, sc
   const effectiveCameraPattern = (index: number): CameraPattern =>
     scenePlan[index]?.cameraPattern ?? context.cameraPattern;
 
-  const copyText = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: "Disalin", description: `${label} disalin ke clipboard.` });
+  // The promise was previously neither awaited nor caught, so a denied
+  // clipboard permission (or a non-secure context) showed a confident
+  // "Disalin" toast with an empty clipboard.
+  const copyText = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Disalin", description: `${label} disalin ke clipboard.` });
+    } catch {
+      toast({ variant: "destructive", title: "Gagal menyalin", description: "Browser menolak akses clipboard. Salin manual dari teks di bawah." });
+    }
   };
+
+  // Same concatenation the video library already receives -- surfaced as a
+  // button so a 10-scene result doesn't need 10 separate copy round-trips.
+  const allPromptsText = result.scenes
+    .map((s) => `Scene ${s.scene_number} (${s.duration_seconds}s):\n${s.ai_ready_prompt}${s.negative_prompt ? `\nNegative: ${s.negative_prompt}` : ""}`)
+    .join("\n\n");
 
   const replaceScene = (index: number, scene: SceneOutput) => {
     const nextScenes = [...result.scenes];
     nextScenes[index] = scene;
     onResultChange({ ...result, scenes: nextScenes });
+    // Hook variants are derived from the scene 1 that existed when they were
+    // generated. Leaving them on screen after that scene is replaced lets the
+    // user pick a "variant" built from a scene that no longer exists, silently
+    // discarding the regeneration they just paid for.
+    setVariants(null);
   };
 
   const handleRegenerate = (index: number) => {
@@ -115,6 +134,15 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, sc
       {
         onSuccess: (data) => {
           replaceScene(index, data.scene);
+          // The regenerate route returns its own warnings, which used to be
+          // dropped entirely -- so the warning card kept showing complaints
+          // about the scene that was just replaced, and any NEW problem in the
+          // regenerated scene was never shown at all.
+          onWarningsChange(
+            warnings
+              .filter((w) => !w.startsWith(`Scene ${index + 1}:`) && !w.includes(`Scene ${index + 1} (`))
+              .concat(data.warnings.map((w) => (w.startsWith("Scene") || w.startsWith("POLICY") ? w : `Scene ${index + 1}: ${w}`)))
+          );
           toast({ title: "Scene diperbarui", description: `Scene ${index + 1} berhasil diregenerate.` });
         },
         onError: (error) => toast({ variant: "destructive", title: "Gagal regenerate", description: error.message }),
@@ -134,6 +162,7 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, sc
         platform: context.platform,
         aspectRatio: context.aspectRatio,
         currentArchetype: context.hookArchetype,
+        contentGoal: context.contentGoal,
         languageTone: context.languageTone,
         sceneDuration: scene.duration_seconds,
         productImageUrl: scene.reference_images.product,
@@ -166,6 +195,16 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, sc
   return (
     <div className="space-y-4">
       <ReferenceFrameGuide aiTool={context.aiTool} />
+
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => copyText(allPromptsText, `Semua prompt (${result.scenes.length} scene)`)}
+        >
+          <Copy className="h-3.5 w-3.5 mr-1" /> Copy Semua Prompt ({result.scenes.length})
+        </Button>
+      </div>
 
       {warnings.length > 0 && (
         <Card className="border-amber-400">
@@ -216,6 +255,18 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, sc
               <p className="bg-muted rounded px-2 py-1 inline-flex items-center gap-1.5 text-xs font-medium">
                 <Captions className="h-3.5 w-3.5 shrink-0" /> Text overlay (burn-in): "{scene.text_overlay}"
               </p>
+            )}
+            {/* Only produced for tools with a dedicated negative-prompt input
+                (Kling, Runway) -- see aiTools.ts supportsNegativePrompt. */}
+            {scene.negative_prompt && (
+              <div className="flex items-start justify-between gap-2 border rounded px-2 py-1.5">
+                <p className="text-xs">
+                  <span className="font-medium">Negative prompt:</span> {scene.negative_prompt}
+                </p>
+                <Button size="sm" variant="ghost" className="shrink-0 h-6 px-2" onClick={() => copyText(scene.negative_prompt!, `Negative prompt scene ${scene.scene_number}`)}>
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </div>
             )}
 
             <div className="flex flex-wrap gap-2">

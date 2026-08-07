@@ -83,6 +83,11 @@ export interface SceneOutput {
   };
   ai_ready_prompt: string;
   transition_to_next: string;
+  // Only present for tools with a dedicated negative-prompt input (Kling,
+  // Runway) -- for the other tools the negatives are handled by writing the
+  // positive prompt precisely instead.
+  negative_prompt?: string;
+  hook_archetype_used?: string;
 }
 
 export interface GenerationResult {
@@ -228,6 +233,9 @@ export interface HookVariantsInput {
   platform: PlatformTarget;
   aspectRatio: AspectRatio;
   currentArchetype: HookArchetype;
+  // Required so the variants get screened under the same compliance rules as
+  // the rest of the video -- the server used to hardcode "conversion" here.
+  contentGoal: ContentGoal;
   languageTone: LanguageTone;
   sceneDuration: number;
   productImageUrl: string;

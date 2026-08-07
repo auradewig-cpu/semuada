@@ -66,6 +66,26 @@ function mentionsPrice(text: string): boolean {
   return /\b(rupiah|ribu|ratus|juta|rp)\b/i.test(text);
 }
 
+// Fields the AI is asked to produce that nothing ever checked -- all four are
+// displayed to the user (or fed to the video tool) and could arrive empty or
+// undefined while validateOutput reported zero problems.
+function checkRequiredTextFields(scene: SceneOutput, label: string): string[] {
+  const problems: string[] = [];
+  if (!scene.visual_description || !scene.visual_description.trim()) {
+    problems.push(`${label}: visual_description kosong -- wajib diisi (Bahasa Inggris) karena ini deskripsi visual utama scene.`);
+  }
+  if (!scene.camera_direction || !scene.camera_direction.trim()) {
+    problems.push(`${label}: camera_direction kosong -- wajib diisi dengan shot size dan gerakan kamera yang konkret.`);
+  }
+  if (!scene.transition_to_next || !scene.transition_to_next.trim()) {
+    problems.push(`${label}: transition_to_next kosong -- wajib diisi supaya sambungan antar scene jelas.`);
+  }
+  if (!scene.speech_pace || !scene.speech_pace.trim()) {
+    problems.push(`${label}: speech_pace kosong -- wajib diisi.`);
+  }
+  return problems;
+}
+
 export interface ValidationContext {
   sceneDurations: number[];
   aiTool: AiToolId;
@@ -74,6 +94,23 @@ export interface ValidationContext {
   category: string;
   includePrice: boolean;
   narrationWpm: number;
+}
+
+// Scene duration exceeding the target tool's real per-clip ceiling. Returned
+// SEPARATELY from `problems` on purpose: the AI cannot fix a duration the user
+// chose, so feeding this into the repair loop would burn an AI call on every
+// generate and change nothing. Warn-only, per the agreed design.
+export function checkToolDurationLimits(sceneDurations: number[], aiTool: AiToolId): string[] {
+  const spec = getAiToolSpec(aiTool);
+  const warnings: string[] = [];
+  sceneDurations.forEach((duration, index) => {
+    if (duration > spec.maxDurationSeconds) {
+      warnings.push(
+        `Scene ${index + 1}: durasi ${duration}s melebihi batas klip ${spec.label} (~${spec.maxDurationSeconds}s per generate) -- kemungkinan besar harus dipecah atau digenerate beberapa kali di tool tersebut.`
+      );
+    }
+  });
+  return warnings;
 }
 
 export function validateOutput(result: GenerationResult, context: ValidationContext): string[] {
@@ -125,6 +162,8 @@ export function validateOutput(result: GenerationResult, context: ValidationCont
       problems.push(`Scene ${index + 1}: text_overlay terlalu panjang (${countWords(scene.text_overlay)} kata) -- persingkat jadi maksimal 8 kata supaya pas untuk caption burn-in.`);
     }
 
+    problems.push(...checkRequiredTextFields(scene, `Scene ${index + 1}`));
+
     if (expectedDuration !== undefined && !wordCountInRange(actualWordCount, expectedWordCount(expectedDuration, narrationWpm))) {
       const expected = expectedWordCount(expectedDuration, narrationWpm);
       problems.push(`Scene ${index + 1}: narasi ${actualWordCount} kata untuk durasi ${expectedDuration}s terasa ${actualWordCount < expected ? "terlalu sedikit (buru-buru/kosong)" : "terlalu banyak (kepotong saat diucapkan)"} untuk target ${narrationWpm} kata/menit (idealnya sekitar ${expected} kata) -- sesuaikan panjang narasi.`);
@@ -146,9 +185,26 @@ export function validateOutput(result: GenerationResult, context: ValidationCont
     problems.push('Field "caption" mengandung hashtag di dalam teksnya -- hashtag HARUS hanya di field "hashtags", hapus dari teks caption.');
   }
 
-  const uniqueHashtags = new Set(result.hashtags.map((h) => h.replace(/^#+/, "").toLowerCase()));
-  if (uniqueHashtags.size !== 5) {
-    problems.push(`Harus tepat 5 hashtag unik, ditemukan ${uniqueHashtags.size}.`);
+  // Normalize in place, not just count. Previously the deduped Set was used
+  // only for the count check and thrown away, so a list of 7 tags containing 2
+  // duplicates passed (size === 5) and all 7 shipped to the user and the DB.
+  // The typeof guard matters too: the parser only checks Array.isArray, so a
+  // numeric hashtag array used to throw "h.replace is not a function" and
+  // surface as a raw JS error in a 502.
+  const seen = new Set<string>();
+  const normalizedHashtags: string[] = [];
+  for (const raw of result.hashtags) {
+    if (typeof raw !== "string") continue;
+    const cleaned = raw.replace(/^#+/, "").replace(/\s+/g, "").trim();
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalizedHashtags.push(cleaned);
+  }
+  result.hashtags = normalizedHashtags;
+  if (normalizedHashtags.length !== 5) {
+    problems.push(`Harus tepat 5 hashtag unik dan tidak kosong, ditemukan ${normalizedHashtags.length}.`);
   }
 
   return problems;
@@ -234,6 +290,8 @@ export function validateScene(
   } else if (countWords(scene.text_overlay) > 8) {
     problems.push(`text_overlay terlalu panjang (${countWords(scene.text_overlay)} kata) -- persingkat jadi maksimal 8 kata.`);
   }
+
+  problems.push(...checkRequiredTextFields(scene, "Scene"));
 
   return problems;
 }

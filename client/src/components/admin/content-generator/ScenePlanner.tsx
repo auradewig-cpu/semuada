@@ -1,22 +1,39 @@
 import { TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { SceneInput, NarrationMode, CameraPattern } from "@/hooks/useContentGenerator";
+import type { SceneInput, NarrationMode, CameraPattern, AiToolId } from "@/hooks/useContentGenerator";
 
 const QUICK_PICKS = [5, 6, 8, 10];
+
+// Real per-clip ceiling of each AI video tool. Mirrors aiTools.ts's
+// maxDurationSeconds server-side -- kept here so the warning appears BEFORE
+// the user spends an AI call, not only in the post-generate warning list.
+const TOOL_MAX_SECONDS: Record<AiToolId, { label: string; max: number }> = {
+  google_flow: { label: 'Google Flow', max: 8 },
+  veo3: { label: 'Google Veo 3', max: 8 },
+  kling_ai: { label: 'Kling AI 2.0', max: 10 },
+  runway_gen4: { label: 'Runway Gen-4', max: 10 },
+  luma_dream: { label: 'Luma Dream Machine', max: 9 },
+  pika_labs: { label: 'Pika Labs 2.0', max: 5 },
+  sora: { label: 'OpenAI Sora', max: 20 },
+};
 
 // Non-blocking nudges, not hard limits -- most short-form platforms perform
 // best under these thresholds, but nothing stops the user from ignoring them.
 const MAX_RECOMMENDED_SCENE_SECONDS = 20;
 const MAX_RECOMMENDED_TOTAL_SECONDS = 90;
 
-function getDurationWarnings(scenes: SceneInput[]): string[] {
+function getDurationWarnings(scenes: SceneInput[], aiTool: AiToolId): string[] {
   const warnings: string[] = [];
   const total = scenes.reduce((a, s) => a + s.duration, 0);
+  const tool = TOOL_MAX_SECONDS[aiTool];
 
   scenes.forEach((s, i) => {
     if (s.duration > MAX_RECOMMENDED_SCENE_SECONDS) {
       warnings.push(`Scene ${i + 1} (${s.duration}s) cukup panjang -- scene di atas ${MAX_RECOMMENDED_SCENE_SECONDS}s berisiko bikin penonton bosan sebelum cut berikutnya.`);
+    }
+    if (tool && s.duration > tool.max) {
+      warnings.push(`Scene ${i + 1} (${s.duration}s) melebihi batas klip ${tool.label} (~${tool.max}s per generate) -- di tool itu scene ini harus dipecah atau digenerate beberapa kali.`);
     }
   });
 
@@ -30,9 +47,10 @@ function getDurationWarnings(scenes: SceneInput[]): string[] {
 interface ScenePlannerProps {
   scenes: SceneInput[];
   onChange: (scenes: SceneInput[]) => void;
+  aiTool: AiToolId;
 }
 
-export function ScenePlanner({ scenes, onChange }: ScenePlannerProps) {
+export function ScenePlanner({ scenes, onChange, aiTool }: ScenePlannerProps) {
   const updateScene = (index: number, patch: Partial<SceneInput>) => {
     const next = [...scenes];
     next[index] = { ...next[index], ...patch };
@@ -47,7 +65,8 @@ export function ScenePlanner({ scenes, onChange }: ScenePlannerProps) {
     onChange(scenes.map((s) => ({ ...s, duration: value })));
   };
 
-  const warnings = getDurationWarnings(scenes);
+  const warnings = getDurationWarnings(scenes, aiTool);
+  const totalSeconds = scenes.reduce((a, s) => a + s.duration, 0);
 
   if (scenes.length === 0) {
     return <p className="text-sm text-muted-foreground">Klik foto produk di atas untuk menambahkan scene.</p>;
@@ -62,6 +81,12 @@ export function ScenePlanner({ scenes, onChange }: ScenePlannerProps) {
             {s}s
           </Button>
         ))}
+        {/* Total was previously computed only to feed the >90s warning string,
+            so below that threshold the user had no idea how long their video
+            actually was. */}
+        <span className="text-sm text-muted-foreground ml-auto">
+          Total: <span className="font-medium text-foreground">{totalSeconds}s</span> &middot; {scenes.length} scene
+        </span>
       </div>
 
       <div className="space-y-2">

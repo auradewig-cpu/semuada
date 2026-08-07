@@ -114,6 +114,10 @@ export const regenerateSceneRequestSchema = z.object({
   previousScene: sceneShapeSchema.nullable().default(null),
   nextScene: sceneShapeSchema.nullable().default(null),
   includePrice: z.boolean().default(true),
+  // These carry the EFFECTIVE per-scene mode (the scene's own override, or the
+  // request-level default) resolved by the client from its scene-plan snapshot.
+  // Before this, a regenerated scene always fell back to the global default and
+  // silently discarded a deliberate per-scene override.
   narrationMode: narrationModeSchema.default("lipsync"),
   cameraPattern: cameraPatternSchema.default("single_angle"),
 });
@@ -126,6 +130,10 @@ export const hookVariantsRequestSchema = z.object({
   platform: platformSchema,
   aspectRatio: aspectRatioSchema,
   currentArchetype: hookArchetypeSchema,
+  // Without this the hook-variants route had to hardcode "conversion" for its
+  // policy check, so growth-mode variants were never screened for hard-sell
+  // language -- and clicking "Pakai" installed it straight into the video.
+  contentGoal: contentGoalSchema.default("conversion"),
   languageTone: languageToneSchema.default("formal_netral"),
   sceneDuration: z.number().int().positive(),
   productImageUrl: z.string().url(),

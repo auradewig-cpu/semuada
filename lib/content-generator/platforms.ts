@@ -19,7 +19,7 @@ export const PLATFORMS: Record<PlatformTarget, PlatformSpec> = {
     defaultRatio: "9:16",
     durationHint: "15-60 detik",
     behavior:
-      "Video ditonton di dalam app belanja -- penonton sudah punya niat beli. Tampilkan produk & harga/promo secepat mungkin di hook, gaya UGC-review yang jujur lebih efektif daripada sinematik berlebihan. Akhiri dengan ajakan eksplisit klik keranjang kuning, bukan link eksternal.",
+      "Video ditonton di dalam app belanja -- penonton sudah punya niat beli. Tampilkan produknya secepat mungkin di hook, gaya UGC-review yang jujur lebih efektif daripada sinematik berlebihan. Akhiri dengan ajakan eksplisit klik keranjang kuning, bukan link eksternal.",
   },
   instagram_reels: {
     id: "instagram_reels",
@@ -49,4 +49,16 @@ export const PLATFORMS: Record<PlatformTarget, PlatformSpec> = {
 
 export function getPlatformSpec(id: PlatformTarget): PlatformSpec {
   return PLATFORMS[id];
+}
+
+// Shopee's behaviour text used to say "tampilkan produk & harga/promo secepat
+// mungkin" unconditionally -- directly contradicting the price rule when the
+// user turns the price toggle OFF, which bans price in any form. The base text
+// is now price-neutral and the price nudge is appended only when allowed.
+export function buildPlatformBehavior(id: PlatformTarget, includePrice: boolean): string {
+  const spec = PLATFORMS[id];
+  if (id === "shopee_video" && includePrice) {
+    return `${spec.behavior} Menyebut harga lebih awal juga efektif di platform ini.`;
+  }
+  return spec.behavior;
 }
