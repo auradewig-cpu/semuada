@@ -23,7 +23,8 @@ export const CONTENT_STYLES: Record<ContentStyleId, ContentStyleDefinition> = {
     structureDescription:
       "Scene 1 = Hook (pancing perhatian) -> Scene tengah = Body (bangun minat & USP) -> Scene terakhir = CTA (ajakan bertindak keras)",
     cameraInstruction: "Kamera stabil, framing medium shot talent + produk, sesekali cutaway ke detail produk.",
-    narrativeVoiceGuidance: "Gaya persuasif direct-response, USP ditegaskan minimal 2x, nada percaya diri menjual.",
+    narrativeVoiceGuidance:
+      "Gaya persuasif direct-response, USP ditegaskan minimal 2x, nada percaya diri MEREKOMENDASIKAN -- seperti endorsement jujur dari orang yang benar-benar pakai produknya, BUKAN skrip iklan generik.",
     ctaIntensity: "hard",
     defaultWpm: 170,
   },

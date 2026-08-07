@@ -12,6 +12,7 @@ import {
   buildProductPriceLine,
   buildPriceRule,
   buildCameraPatternRule,
+  buildDeliveryTechniqueRule,
 } from "./promptFragments";
 import type {
   AiToolId,
@@ -70,7 +71,7 @@ export function compileSceneRegenPrompt(input: SceneRegenInput): string {
   const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
-  const priceRule = buildPriceRule(input.includePrice);
+  const priceRule = buildPriceRule(input.includePrice, input.totalScenes);
   const cameraPatternRule = buildCameraPatternRule(input.cameraPattern);
 
   const hookBlock = isFirstScene
@@ -89,6 +90,7 @@ ${characterBlock}
 
 GAYA VIDEO: ${style.label} -- ${style.narrativeVoiceGuidance}
 ${buildLanguageToneRule(input.languageTone)}
+${buildDeliveryTechniqueRule()}
 PLATFORM: ${platformSpec.label} (rasio ${input.aspectRatio}) -- ${platformSpec.behavior}
 AI VIDEO TOOL: ${toolSpec.label} (batas ai_ready_prompt: ${toolSpec.charLimit} karakter). Format: ${toolSpec.formatTemplate}
 ${hookBlock}

@@ -158,6 +158,8 @@ export async function POST(request: NextRequest) {
     characterName: character?.name ?? null,
     productName: product.productName,
     category: product.category,
+    includePrice,
+    narrationWpm,
   };
 
   try {

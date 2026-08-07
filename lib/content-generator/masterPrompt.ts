@@ -12,6 +12,7 @@ import {
   buildProductPriceLine,
   buildPriceRule,
   buildCameraPatternRule,
+  buildDeliveryTechniqueRule,
 } from "./promptFragments";
 import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, LanguageTone, NarrationMode, PlatformTarget, SceneInput } from "./types";
 
@@ -54,7 +55,7 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
-  const priceRule = buildPriceRule(input.includePrice);
+  const priceRule = buildPriceRule(input.includePrice, sceneCount);
 
   // Per-scene narration/camera instructions -- each scene resolves its own
   // override (or falls back to the request-level default), so e.g. scene 1
@@ -74,10 +75,20 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
         ? "TUJUAN KONTEN: Engagement -- pancing komentar/interaksi, CTA soft."
         : `TUJUAN KONTEN: Konversi -- WAJIB ikuti struktur "Hook -> Problem -> Solution -> CTA" (terbukti convert paling tinggi di riset UGC affiliate 2026): scene 1 = Hook + sebutkan masalah/pain point yang relevan dengan produk, scene tengah = Solution (produk sebagai solusi, tunjukkan produk beraksi/demo dalam 3 detik pertama kemunculannya), scene terakhir = CTA sesuai gaya konten standar.`;
 
+  // Previously this only looked at style.ctaIntensity, independent of
+  // contentGoal -- for the 7/8 styles that aren't "hard" (soft/none), it told
+  // the AI to end with a pure loop-back gesture, while ctaGoalNote above
+  // (when contentGoal="conversion", the UI default) separately demands
+  // "scene terakhir = CTA". Two WAJIB instructions pointed opposite
+  // directions for the closing beat, which is exactly where price/CTA
+  // content needs to land -- the conflict diluted both. Now contentGoal is
+  // factored in so the two blocks never disagree.
   const loopEndingRule =
-    style.ctaIntensity !== "hard"
-      ? `Scene terakhir ("transition_to_next") sebaiknya menggestur balik ke visual/tema scene 1 (loop-friendly) -- endingan yang mengundang tonton ulang dihitung sebagai engagement tinggi oleh algoritma, khususnya di Reels.`
-      : `Scene terakhir WAJIB ditutup dengan CTA yang jelas dan tegas sesuai gaya konten ini.`;
+    style.ctaIntensity === "hard"
+      ? `Scene terakhir WAJIB ditutup dengan CTA yang jelas dan tegas sesuai gaya konten ini.`
+      : input.contentGoal === "conversion"
+        ? `Scene terakhir WAJIB tetap menyisipkan CTA ringan (selaras instruksi CTA di atas) meski gaya video ini biasanya soft-sell -- selipkan secara natural, BOLEH sekaligus menggestur balik ke visual scene 1 (loop-friendly) supaya tidak terasa hard-sell.`
+        : `Scene terakhir ("transition_to_next") sebaiknya menggestur balik ke visual/tema scene 1 (loop-friendly) -- endingan yang mengundang tonton ulang dihitung sebagai engagement tinggi oleh algoritma, khususnya di Reels.`;
 
   const captionShareNote =
     input.platform === "instagram_reels" || input.platform === "facebook_reels"
@@ -100,6 +111,8 @@ Struktur: ${style.structureDescription}
 - Instruksi nada bicara: ${style.narrativeVoiceGuidance}
 
 ${buildLanguageToneRule(input.languageTone)}
+
+${buildDeliveryTechniqueRule()}
 
 PLATFORM TUJUAN: ${platformSpec.label} (rasio ${input.aspectRatio}, durasi total ${input.scenes.reduce((a, s) => a + s.duration, 0)}s)
 ${platformSpec.behavior}

@@ -28,6 +28,19 @@ export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+// Ties the "target kecepatan bicara X kata/menit" prompt instruction to an
+// actual check -- previously that instruction was never verified, so pacing
+// (rushed or sparse narration) could ship without the repair-loop ever
+// noticing. +/-40% tolerance: natural speech rate varies a lot by sentence
+// structure/punctuation, a tight band would cause false-positive repairs.
+function expectedWordCount(durationSeconds: number, wpm: number): number {
+  return Math.round((wpm / 60) * durationSeconds);
+}
+
+function wordCountInRange(actual: number, expected: number): boolean {
+  return actual >= expected * 0.6 && actual <= expected * 1.4;
+}
+
 const STOPWORDS = new Set(["dengan", "untuk", "yang", "dari", "original", "terbaru", "resmi", "official", "store", "premium"]);
 
 // Drift detector: if ai_ready_prompt/visual_description don't share ANY
@@ -44,17 +57,28 @@ function mentionsProduct(text: string, productName: string, category: string): b
   return keywords.some((k) => lowerText.includes(k));
 }
 
+// Prices are rendered as spoken-word numbers per SPOKEN_NUMBER_RULE (e.g.
+// "sembilan ratus ribuan"), not raw digits -- so this checks for either a
+// literal digit sequence (AI sometimes still writes "99 ribu") or the
+// magnitude words that virtually always accompany a spoken-out price.
+function mentionsPrice(text: string): boolean {
+  if (/\d/.test(text)) return true;
+  return /\b(rupiah|ribu|ratus|juta|rp)\b/i.test(text);
+}
+
 export interface ValidationContext {
   sceneDurations: number[];
   aiTool: AiToolId;
   characterName: string | null;
   productName: string;
   category: string;
+  includePrice: boolean;
+  narrationWpm: number;
 }
 
 export function validateOutput(result: GenerationResult, context: ValidationContext): string[] {
   const problems: string[] = [];
-  const { sceneDurations, aiTool, characterName, productName, category } = context;
+  const { sceneDurations, aiTool, characterName, productName, category, includePrice, narrationWpm } = context;
   const charLimit = getAiToolSpec(aiTool).charLimit;
 
   if (result.scenes.length !== sceneDurations.length) {
@@ -100,7 +124,21 @@ export function validateOutput(result: GenerationResult, context: ValidationCont
     } else if (countWords(scene.text_overlay) > 8) {
       problems.push(`Scene ${index + 1}: text_overlay terlalu panjang (${countWords(scene.text_overlay)} kata) -- persingkat jadi maksimal 8 kata supaya pas untuk caption burn-in.`);
     }
+
+    if (expectedDuration !== undefined && !wordCountInRange(actualWordCount, expectedWordCount(expectedDuration, narrationWpm))) {
+      const expected = expectedWordCount(expectedDuration, narrationWpm);
+      problems.push(`Scene ${index + 1}: narasi ${actualWordCount} kata untuk durasi ${expectedDuration}s terasa ${actualWordCount < expected ? "terlalu sedikit (buru-buru/kosong)" : "terlalu banyak (kepotong saat diucapkan)"} untuk target ${narrationWpm} kata/menit (idealnya sekitar ${expected} kata) -- sesuaikan panjang narasi.`);
+    }
   });
+
+  // Price is allowed to land in any one scene (e.g. near the CTA), not every
+  // scene -- so this is checked once across the whole result, not per-scene.
+  if (includePrice) {
+    const allNarration = result.scenes.map((s) => s.script_narration || "").join(" ");
+    if (!mentionsPrice(allNarration)) {
+      problems.push(`Fitur "Sertakan harga" aktif tapi TIDAK ADA scene yang menyebutkan harga -- wajib disisipkan di salah satu scene (idealnya dekat hook/CTA).`);
+    }
+  }
 
   if (!result.caption || result.caption.trim().length === 0) {
     problems.push("Caption kosong.");
@@ -157,13 +195,24 @@ export function validateScene(
   aiTool: AiToolId,
   characterName: string | null,
   productName: string,
-  category: string
+  category: string,
+  // Optional -- hook-variants doesn't resolve a WPM today (variants are
+  // short hook fragments, not full-pace scenes), so it's omitted there and
+  // this check is simply skipped rather than forcing an artificial value.
+  narrationWpm?: number
 ): string[] {
   const problems: string[] = [];
   const charLimit = getAiToolSpec(aiTool).charLimit;
 
   const actualWordCount = countWords(scene.script_narration || "");
   scene.script_word_count = actualWordCount;
+
+  if (narrationWpm !== undefined) {
+    const expectedWords = expectedWordCount(expectedDuration, narrationWpm);
+    if (!wordCountInRange(actualWordCount, expectedWords)) {
+      problems.push(`Narasi ${actualWordCount} kata untuk durasi ${expectedDuration}s terasa ${actualWordCount < expectedWords ? "terlalu sedikit (buru-buru/kosong)" : "terlalu banyak (kepotong saat diucapkan)"} untuk target ${narrationWpm} kata/menit (idealnya sekitar ${expectedWords} kata) -- sesuaikan panjang narasi.`);
+    }
+  }
 
   if (!scene.script_narration || actualWordCount === 0) problems.push("Narasi kosong.");
   if (!scene.ai_ready_prompt) {

@@ -69,6 +69,8 @@ export async function POST(request: NextRequest) {
     deepseekApiKey: settingsRow.deepseekApiKey,
   };
 
+  const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180, languageTone);
+
   const prompt = compileSceneRegenPrompt({
     productName: product.productName,
     category: product.category,
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
     languageTone,
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
-    narrationWpm: resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180, languageTone),
+    narrationWpm,
     includePrice,
     narrationMode,
     cameraPattern,
@@ -107,7 +109,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "AI mengembalikan format scene yang tidak bisa dibaca." }, { status: 502 });
     }
 
-    const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
+    const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, narrationWpm);
 
     // Unlike the main "Generate" flow, this endpoint previously skipped
     // compliance checking entirely -- a regenerated scene could reintroduce

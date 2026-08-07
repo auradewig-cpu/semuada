@@ -68,8 +68,30 @@ export function buildProductPriceLine(price: string, includePrice: boolean): str
 
 // Explicit rule so the AI doesn't invent or infer a price from context
 // (style/CTA text can still imply "murah"/"affordable" without a number).
-export function buildPriceRule(includePrice: boolean): string {
-  return includePrice
-    ? `Harga produk BOLEH disebut di narasi jika mendukung hook/CTA, sebutkan dalam bentuk lisan natural (lihat aturan angka di bawah).`
-    : `DILARANG menyebutkan harga produk dalam bentuk apapun (angka, "murah", "terjangkau", atau perbandingan harga) di "script_narration" maupun "ai_ready_prompt" -- harga TIDAK boleh muncul sama sekali di video ini.`;
+// Previously "BOLEH disebut" (optional) -- with many other WAJIB instructions
+// competing for a tiny word budget on short/single-scene generations, an
+// optional instruction was consistently the first thing dropped, so users
+// who explicitly turned the price toggle ON never saw a price in the output.
+export function buildPriceRule(includePrice: boolean, sceneCount?: number): string {
+  if (!includePrice) {
+    return `DILARANG menyebutkan harga produk dalam bentuk apapun (angka, "murah", "terjangkau", atau perbandingan harga) di "script_narration" maupun "ai_ready_prompt" -- harga TIDAK boleh muncul sama sekali di video ini.`;
+  }
+  const singleSceneNote =
+    sceneCount === 1
+      ? ` Karena video ini HANYA 1 scene (hook dan CTA jadi satu), prioritaskan menyingkat bagian lain (hook/CTA) SEBELUM mengorbankan harga -- harga TETAP HARUS ada meski ruang kata terbatas.`
+      : "";
+  return `Harga produk WAJIB disebutkan minimal SATU KALI di narasi (bukan opsional), dalam bentuk lisan natural (lihat aturan angka di bawah), di scene manapun yang paling mendukung hook/CTA.${singleSceneNote}`;
+}
+
+// Universal delivery-technique instructions, independent of GAYA BAHASA
+// (vocabulary/energy) and GAYA VIDEO (structure) -- addresses what neither
+// covers: HOW a genuine affiliator/influencer actually talks, vs. reading
+// out an ad script. Tone controls word choice; this controls the shape of
+// the delivery itself (address, opening move, story-vs-list, rhythm).
+export function buildDeliveryTechniqueRule(): string {
+  return `TEKNIK PENYAMPAIAN (WAJIB, berlaku di semua gaya bahasa/video di atas):
+1. Sapa penonton secara langsung minimal sekali (kata ganti orang kedua sesuai gaya bahasa yang dipilih -- kalian/kamu/Bunda dsb.), jangan cuma bicara TENTANG produk tanpa pernah bicara KE penonton.
+2. Buka dengan reaksi/pengamatan/pertanyaan personal yang hidup, BUKAN pernyataan produk yang datar seperti membaca spesifikasi ("produk ini punya fitur...").
+3. Ceritakan pengalaman/reaksi/observasi dulu, baru kaitkan ke manfaat produk -- DILARANG menjejer fitur produk berurutan seperti daftar brosur/katalog.
+4. Variasikan ritme kalimat: campur kalimat pendek yang tegas dengan kalimat sedang yang mengalir -- JANGAN semua kalimat panjangnya seragam, itu salah satu ciri paling kentara skrip AI yang kaku.`;
 }
