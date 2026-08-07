@@ -1,4 +1,4 @@
-import type { Product as DbProduct, Settings as DbSettings, AiSettings as DbAiSettings, Character as DbCharacter, VideoContent as DbVideoContent } from "@shared/schema";
+import type { Product as DbProduct, Settings as DbSettings, AiSettings as DbAiSettings, Character as DbCharacter, VideoContent as DbVideoContent, VideoStorageAccount as DbVideoStorageAccount } from "@shared/schema";
 
 export function toApiProduct(row: DbProduct) {
   return {
@@ -100,5 +100,18 @@ export function toApiVideoContent(row: DbVideoContent) {
     cloudinary_public_id: row.cloudinaryPublicId,
     status: row.status,
     created_at: row.createdAt,
+  };
+}
+
+// Same masking convention as toApiAiSettings() -- key/secret never reach the
+// browser after saving, only whether they're set.
+export function toApiVideoStorageAccount(row: DbVideoStorageAccount) {
+  return {
+    id: row.id,
+    category: row.category,
+    cloud_name: row.cloudName,
+    has_api_key: Boolean(row.apiKey),
+    has_api_secret: Boolean(row.apiSecret),
+    updated_at: row.updatedAt,
   };
 }

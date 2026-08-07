@@ -50,6 +50,9 @@ export async function POST(request: NextRequest) {
       promptSnapshot: typeof body.prompt_snapshot === "string" ? body.prompt_snapshot : undefined,
       videoUrl: body.video_url,
       cloudinaryPublicId: body.cloudinary_public_id,
+      // Carried straight through from the /sign response that produced this
+      // upload -- always the account actually used, no re-resolution here.
+      storageAccountId: typeof body.storage_account_id === "string" && body.storage_account_id ? body.storage_account_id : undefined,
     })
     .returning();
 

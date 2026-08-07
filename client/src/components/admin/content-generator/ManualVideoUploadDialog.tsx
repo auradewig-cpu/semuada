@@ -83,6 +83,7 @@ export function ManualVideoUploadDialog({ isOpen, onOpenChange }: ManualVideoUpl
         hashtags,
         video_url: result.secure_url,
         cloudinary_public_id: result.public_id,
+        storage_account_id: result.storage_account_id,
       });
       toast({ title: 'Berhasil', description: 'Video tersimpan ke Video Library.' });
       resetForm();

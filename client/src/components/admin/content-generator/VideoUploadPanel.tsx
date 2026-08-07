@@ -55,6 +55,7 @@ export function VideoUploadPanel({ productId, category, subcategory, caption, ha
         prompt_snapshot: promptSnapshot,
         video_url: result.secure_url,
         cloudinary_public_id: result.public_id,
+        storage_account_id: result.storage_account_id,
       });
       setLastUploadedUrl(result.secure_url);
       setSelectedFile(null);

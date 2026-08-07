@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2, Film, Pencil, Upload } from 'lucide-react';
+import { Trash2, Film, Pencil, Upload, Database } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useVideoContents, useVideoContentStats, useDeleteVideoContent, useUpdateVideoContent, type VideoContent } from "@/hooks/useVideoContent";
 import { useCategoryContext } from "@/context/CategoryContext";
 import { ManualVideoUploadDialog } from "@/components/admin/content-generator/ManualVideoUploadDialog";
+import { StorageAccountsDialog } from "@/components/admin/content-generator/StorageAccountsDialog";
 
 type VideoSize = 'small' | 'medium' | 'large';
 
@@ -58,6 +59,7 @@ export function VideoLibraryTab() {
   const [editCaption, setEditCaption] = useState('');
   const [editHashtags, setEditHashtags] = useState('');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isStorageDialogOpen, setIsStorageDialogOpen] = useState(false);
 
   // Display preference only, no server round-trip needed -- read once on
   // mount (client-only, this tab never renders on the server) and persist
@@ -148,6 +150,9 @@ export function VideoLibraryTab() {
                     ))}
                 </SelectContent>
               </Select>
+              <Button type="button" size="sm" variant="outline" onClick={() => setIsStorageDialogOpen(true)}>
+                <Database className="h-4 w-4 mr-1" /> Kelola Storage
+              </Button>
               <Button type="button" size="sm" onClick={() => setIsUploadDialogOpen(true)}>
                 <Upload className="h-4 w-4 mr-1" /> Upload Video Manual
               </Button>
@@ -218,6 +223,7 @@ export function VideoLibraryTab() {
       </Card>
 
       <ManualVideoUploadDialog isOpen={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen} />
+      <StorageAccountsDialog isOpen={isStorageDialogOpen} onOpenChange={setIsStorageDialogOpen} />
 
       <Dialog open={editTarget !== null} onOpenChange={(open) => !open && setEditTarget(null)}>
         <DialogContent className="sm:max-w-[500px]">

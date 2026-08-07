@@ -98,6 +98,20 @@ export const contentGenerations = pgTable("content_generations", {
 // hung off `content_generations` -- that table is write-only/orphaned (no id
 // ever returned to the client, no update path), so this is a clean slate
 // purpose-built for the video library + future social scheduling feature.
+// One Cloudinary account per product category (free-tier storage is spread
+// across several accounts to scale past a single account's quota). Category
+// is unique -- resolveStorageAccount() in lib/videoStorage.ts falls back to
+// the "Perawatan & Kecantikan" row for any category without its own account.
+export const videoStorageAccounts = pgTable("video_storage_accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  category: text("category").notNull().unique(),
+  cloudName: text("cloud_name").notNull(),
+  apiKey: text("api_key").notNull(),
+  apiSecret: text("api_secret").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 export const videoContents = pgTable("video_contents", {
   id: uuid("id").defaultRandom().primaryKey(),
   // Nullable: videos uploaded manually (not through Content Generator) are
@@ -110,6 +124,10 @@ export const videoContents = pgTable("video_contents", {
   promptSnapshot: text("prompt_snapshot"),
   videoUrl: text("video_url").notNull(),
   cloudinaryPublicId: text("cloudinary_public_id").notNull(),
+  // Which Cloudinary account this video's bytes actually live in -- fixed at
+  // upload time (see sign/route.ts), never re-resolved later, so adding a
+  // dedicated account for a category afterward doesn't strand old videos.
+  storageAccountId: uuid("storage_account_id").references(() => videoStorageAccounts.id),
   status: text("status").default("uploaded"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
@@ -154,6 +172,12 @@ export const insertVideoContentSchema = createInsertSchema(videoContents).omit({
   createdAt: true,
 });
 
+export const insertVideoStorageAccountSchema = createInsertSchema(videoStorageAccounts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type ProductAnalytics = typeof productAnalytics.$inferSelect;
@@ -170,3 +194,5 @@ export type ContentGeneration = typeof contentGenerations.$inferSelect;
 export type InsertContentGeneration = z.infer<typeof insertContentGenerationSchema>;
 export type VideoContent = typeof videoContents.$inferSelect;
 export type InsertVideoContent = z.infer<typeof insertVideoContentSchema>;
+export type VideoStorageAccount = typeof videoStorageAccounts.$inferSelect;
+export type InsertVideoStorageAccount = z.infer<typeof insertVideoStorageAccountSchema>;

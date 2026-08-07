@@ -82,6 +82,7 @@ export function useCreateVideoContent() {
       prompt_snapshot?: string;
       video_url: string;
       cloudinary_public_id: string;
+      storage_account_id?: string;
     }) => {
       const res = await apiRequest('POST', '/api/video-content', payload);
       return res.json() as Promise<VideoContent>;
@@ -96,6 +97,11 @@ export function useCreateVideoContent() {
 interface CloudinaryUploadResult {
   secure_url: string;
   public_id: string;
+  // Which Cloudinary account (see useVideoStorageAccounts.ts) this landed in
+  // -- carried straight from the /sign response, pass through to
+  // useCreateVideoContent() as storage_account_id so the row always records
+  // the account actually used, not a re-resolved guess.
+  storage_account_id: string;
 }
 
 // Uploads DIRECTLY from the browser to Cloudinary (not relayed through our
@@ -111,7 +117,7 @@ export function uploadVideoToCloudinary(
     (async () => {
       try {
         const signRes = await apiRequest('POST', '/api/video-content/sign', { category });
-        const { timestamp, folder, signature, apiKey, cloudName } = await signRes.json();
+        const { timestamp, folder, signature, apiKey, cloudName, storageAccountId } = await signRes.json();
 
         const formData = new FormData();
         formData.append('file', file);
@@ -131,7 +137,7 @@ export function uploadVideoToCloudinary(
 
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(JSON.parse(xhr.responseText));
+            resolve({ ...JSON.parse(xhr.responseText), storage_account_id: storageAccountId });
           } else {
             reject(new Error(`Upload gagal (${xhr.status}): ${xhr.responseText}`));
           }
