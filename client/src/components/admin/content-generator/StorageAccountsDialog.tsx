@@ -120,16 +120,20 @@ export function StorageAccountsDialog({ isOpen, onOpenChange }: StorageAccountsD
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
                 <Label>Cloudinary Cloud Name</Label>
-                <Input value={cloudName} onChange={(e) => setCloudName(e.target.value)} disabled={saveAccount.isPending} />
+                <Input value={cloudName} onChange={(e) => setCloudName(e.target.value)} disabled={saveAccount.isPending} autoComplete="off" />
               </div>
               <div className="space-y-1.5">
                 <Label>API Key</Label>
-                <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} disabled={saveAccount.isPending} />
+                {/* autoComplete="new-password" is a well-known trick to stop
+                    Chrome matching this field against saved login credentials
+                    for the site -- plain "off" is often ignored for
+                    login-like fields. */}
+                <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} disabled={saveAccount.isPending} autoComplete="new-password" />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>API Secret</Label>
-              <Input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} disabled={saveAccount.isPending} />
+              <Input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} disabled={saveAccount.isPending} autoComplete="new-password" />
             </div>
             <Button type="button" onClick={handleSave} disabled={saveAccount.isPending} className="w-full">
               {saveAccount.isPending ? 'Menyimpan...' : 'Simpan Storage'}
