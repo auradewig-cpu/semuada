@@ -1,4 +1,5 @@
 import { getAiToolSpec, usesLiteralDialogueConvention } from "./aiTools";
+import { pickExamples, formatExamples, deriveSeed, NARRATOR_AUDIO_BANK } from "./exampleBank";
 import type { AiToolId, CameraPattern, ContentGoal, NarrationMode } from "./types";
 
 // Shared prompt fragments used by masterPrompt.ts, sceneRegen.ts, and
@@ -26,7 +27,7 @@ export function buildCharacterBlock(characterName: string | null, characterDescr
 // mode outright. It also decides how to handle faceless+lipsync, which is the
 // DEFAULT state when no character is picked and which is self-contradictory:
 // there is no mouth to sync.
-export function buildDialogueRule(aiTool: AiToolId, narrationMode: NarrationMode, hasCharacter: boolean): string {
+export function buildDialogueRule(aiTool: AiToolId, narrationMode: NarrationMode, hasCharacter: boolean, seed: number): string {
   const toolSpec = getAiToolSpec(aiTool);
 
   // Faceless + lipsync can't be honoured literally, so resolve it to the only
@@ -37,12 +38,15 @@ export function buildDialogueRule(aiTool: AiToolId, narrationMode: NarrationMode
 
   if (effectiveMode === "voiceover") {
     const subject = hasCharacter ? "orang di layar" : "tangan/produk di layar";
-    // Deliberately describes WHAT the audio clause must convey rather than
-    // dictating the sentence itself. The previous version supplied a
-    // ready-made English sentence, which every generation then copied
-    // verbatim -- four consecutive outputs opened with the identical line.
+    // An earlier version asked the model to "compose your own audio clause"
+    // with no concrete anchor -- it reliably skipped this in favor of
+    // cinematography.ts's simpler ambience/foley instruction, shipping videos
+    // with ZERO narration audio. Rotated concrete templates (not one fixed
+    // sentence) fix the reliability problem without reintroducing the
+    // verbatim-repetition bug.
+    const picked = pickExamples(NARRATOR_AUDIO_BANK, 2, deriveSeed(seed, 6));
     return `MODE NARASI: VOICEOVER (non-sync) -- ${subject} TIDAK bicara, narasi datang dari narator di luar frame. JANGAN sisipkan kutipan ucapan, tag [DIALOGUE: ...], atau frasa "says" ke "ai_ready_prompt".
-Isi audio channel secara POSITIF (larangan saja tidak cukup -- kalau audio dibiarkan ambigu, AI video tool otomatis membuat mulut bergerak bicara): tulis SATU klausa audio singkat dalam bahasa Inggris yang menyatakan narator berbahasa Indonesia di luar frame menjelaskan produk, dan subjek di layar tidak bicara. SUSUN KALIMATNYA SENDIRI dengan kata-katamu, berbeda tiap scene -- jangan memakai rumusan yang sama persis berulang kali. Jangan mengutip ulang script_narration di sini (batas ${toolSpec.charLimit} karakter), dan jangan menggambarkan setup mirip wawancara/podcast yang memicu kesan sedang bercakap-cakap.`;
+WAJIB isi audio channel secara POSITIF (larangan saja tidak cukup -- kalau audio dibiarkan ambigu, AI video tool otomatis membuat mulut bergerak bicara): "ai_ready_prompt" WAJIB memuat SATU klausa "Audio: ..." yang menyatakan ada narator berbahasa Indonesia di luar frame menjelaskan produk, dan subjek di layar tidak bicara -- ini WAJIB ADA, bukan opsional, dan tidak boleh digantikan hanya oleh deskripsi suara ambience/foley. Contoh pola (tulis versi kamu sendiri dengan makna sama, JANGAN salin persis, boleh gabungkan dengan detail ambience/foley singkat setelahnya): ${formatExamples(picked)}. Jangan mengutip ulang script_narration di sini (batas ${toolSpec.charLimit} karakter), dan jangan menggambarkan setup mirip wawancara/podcast yang memicu kesan sedang bercakap-cakap.`;
   }
 
   if (usesLiteralDialogueConvention(aiTool)) {

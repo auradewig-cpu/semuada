@@ -80,7 +80,7 @@ export function compileSceneRegenPrompt(input: SceneRegenInput): string {
   const toneSpec = getLanguageTone(input.languageTone);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
-  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode, hasCharacter);
+  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode, hasCharacter, input.seed);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   // Only the last scene carries the price mandate here: forcing a price into a

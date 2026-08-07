@@ -79,7 +79,7 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
     .map((scene, i) => {
       const narrationMode = scene.narrationMode ?? input.narrationMode;
       const cameraPattern = scene.cameraPattern ?? input.cameraPattern;
-      return `Scene ${i + 1} (${scene.duration}s): ${buildDialogueRule(input.aiTool, narrationMode, hasCharacter)} ${buildCameraPatternRule(cameraPattern)}`;
+      return `Scene ${i + 1} (${scene.duration}s): ${buildDialogueRule(input.aiTool, narrationMode, hasCharacter, input.seed)} ${buildCameraPatternRule(cameraPattern)}`;
     })
     .join("\n");
 

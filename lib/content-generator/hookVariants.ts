@@ -72,7 +72,7 @@ export function compileHookVariantsPrompt(input: HookVariantsInput): string {
   const archetypeList = availableArchetypes.map((a) => `- ${a.id}: ${a.instruction}`).join("\n");
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
-  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode, hasCharacter);
+  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode, hasCharacter, input.seed);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   // Scene 1 is a hook, not the CTA beat -- a mandatory price here would fight

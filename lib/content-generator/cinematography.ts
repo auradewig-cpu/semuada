@@ -47,8 +47,13 @@ const LIGHTING_TERMS = [
 export function buildCinematographyRule(aiTool: AiToolId): string {
   const spec = getAiToolSpec(aiTool);
 
+  // Deliberately phrased as ADDITIVE, not a standalone audio instruction.
+  // The earlier wording competed with buildDialogueRule's narrator-audio
+  // requirement (voiceover mode) -- being the more concrete/easier of the two
+  // instructions, the model satisfied this one and skipped the narrator
+  // clause entirely, shipping videos with no narration audio at all.
   const audioRule = usesNativeAudio(aiTool)
-    ? `\nAUDIO: ${spec.label} menghasilkan audio bersama videonya. Sebutkan singkat suasana audionya di "ai_ready_prompt" -- ambience ruangan, dan bunyi natural saat produk dipegang/dibuka/dipakai (foley). Kalau tidak ingin ada musik, nyatakan eksplisit "no background music".`
+    ? `\nAUDIO: ${spec.label} menghasilkan audio bersama videonya. Kalau scene ini bermode voiceover, klausa "Audio: ..." WAJIB berisi narator dulu (lihat instruksi MODE NARASI) -- detail ambience ruangan/foley HANYA boleh ditambahkan SETELAH klausa narator itu, bukan menggantikannya. Kalau tidak ingin ada musik, nyatakan eksplisit "no background music".`
     : "";
 
   return `KOSAKATA SINEMATOGRAFI (pakai istilah-istilah ini di "camera_direction" dan "ai_ready_prompt" -- JANGAN cuma menulis "kamera bagus"/"cinematic" tanpa menyebut teknik konkret):

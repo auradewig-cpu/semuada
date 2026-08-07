@@ -319,6 +319,25 @@ export const CAPTION_SHARE_BANK: readonly string[] = [
   "tandain temen yang cocok",
 ];
 
+// --- Off-screen narrator audio clauses (voiceover mode) ----------------------
+// Rotated concrete templates, not an abstract instruction. An earlier version
+// asked the model to "compose your own audio clause" with no concrete anchor,
+// which the model reliably skipped in favor of the simpler ambience/foley
+// instruction next to it -- shipping videos with zero narration audio at all.
+// A single hardcoded sentence caused the opposite bug (identical narrator line
+// every generation). Rotating a bank of ~10 concrete variants gets both:
+// the model reliably includes a narrator clause, and it differs across scenes.
+export const NARRATOR_AUDIO_BANK: readonly string[] = [
+  "Audio: an off-screen Indonesian-language narrator voice explains the product; the subject on screen stays silent.",
+  "Audio: an unseen Indonesian narrator describes the product's benefits over the shot; no on-screen speech.",
+  "Audio: a warm off-camera Indonesian voiceover walks through the product while the subject in frame says nothing.",
+  "Audio: an off-screen narrator speaks Indonesian describing the product in use; the on-screen subject remains quiet.",
+  "Audio: voiceover narration in Indonesian plays over the shot from outside the frame; nobody on screen talks.",
+  "Audio: an Indonesian-speaking narrator, heard but not seen, explains the product's features; the frame stays silent.",
+  "Audio: a calm off-screen Indonesian narrator voice carries the explanation; the on-screen subject is non-verbal.",
+  "Audio: narration in Indonesian comes from an unseen speaker describing the product; the visible subject stays mute.",
+];
+
 // --- Spoken price examples ---------------------------------------------------
 // Replaces the old real-estate leftovers ("empat setengah miliar", "dua ratus
 // lima puluh lima meter") that were injected into every prompt in the system
