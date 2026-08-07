@@ -9,6 +9,8 @@ import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
 import { parseSceneResponse, validateScene, checkToolDurationLimits, buildSceneRepairPrompt } from "@root/lib/content-generator/jsonParser";
 import { makeSeed } from "@root/lib/content-generator/exampleBank";
+import { requiredPromptTokens } from "@root/lib/content-generator/promptFragments";
+import { resolveVisualDictionary } from "@root/lib/content-generator/cinematography";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
 import { rephraseSceneViolations } from "@root/lib/content-generator/autoRephrase";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
@@ -43,6 +45,7 @@ export async function POST(request: NextRequest) {
     includePrice,
     narrationMode,
     cameraPattern,
+    narratorVoice,
   } = parsed.data;
   const previousScene = parsed.data.previousScene as SceneOutput | null;
   const nextScene = parsed.data.nextScene as SceneOutput | null;
@@ -96,6 +99,7 @@ export async function POST(request: NextRequest) {
     includePrice,
     narrationMode,
     cameraPattern,
+    narratorVoice,
     seed: makeSeed(),
   });
 
@@ -110,6 +114,9 @@ export async function POST(request: NextRequest) {
   // the price across the video.
   const isLastScene = sceneIndex + 1 === totalScenes;
   const priceRequired = includePrice && isLastScene;
+  // Same source of truth compileSceneRegenPrompt uses to declare these
+  // mandatory, so instruction and validation can't drift apart.
+  const requiredTokens = requiredPromptTokens(aiTool, resolveVisualDictionary(languageTone, style));
 
   try {
     const response = await generateWithFallback(providerOrder, keys, prompt, images, 0.65);
@@ -123,7 +130,7 @@ export async function POST(request: NextRequest) {
     // price, empty narration, wrong duration, etc). Previously this endpoint
     // had no repair loop at all, so e.g. a dropped mandatory price on the
     // last scene shipped completely undetected.
-    let problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, priceRequired, narrationWpm);
+    let problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, priceRequired, requiredTokens, narrationMode, narrationWpm);
     if (problems.length > 0) {
       const repairPrompt = buildSceneRepairPrompt(scene, problems);
       const repaired = await generateWithFallback(providerOrder, keys, repairPrompt, images, 0.65);
@@ -146,7 +153,7 @@ export async function POST(request: NextRequest) {
     // Re-validated on the FINAL scene (after both repair and rephrase), not
     // before -- so warnings shown to the user always describe the scene they
     // actually received, never a stale intermediate one.
-    problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, priceRequired, narrationWpm);
+    problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, priceRequired, requiredTokens, narrationMode, narrationWpm);
 
     scene.scene_number = sceneIndex + 1;
     scene.reference_images = {

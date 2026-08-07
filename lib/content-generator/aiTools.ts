@@ -40,7 +40,10 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     label: "Google Flow",
     charLimit: 1300,
     supportsRef: true,
-    maxDurationSeconds: 8,
+    // Confirmed by the user from actual Flow usage: 10s per generate. The
+    // previous 8s was the older Veo API clip limit and made the app's own
+    // default 10s scene trip a false warning on every generate.
+    maxDurationSeconds: 10,
     supportsNegativePrompt: false,
     formatTemplate: "Bahasa visualnya netral dan policy-safe -- hindari klaim absolut/medis/testimonial di dalam deskripsi visual.",
   },
@@ -49,7 +52,10 @@ export const AI_TOOLS: Record<AiToolId, AiToolSpec> = {
     label: "Google Veo 3",
     charLimit: 1300,
     supportsRef: true,
-    maxDurationSeconds: 8,
+    // Kept in step with google_flow above -- same engine family, and this is
+    // the app's default tool, so a stricter number here would reintroduce the
+    // false warning the Flow fix just removed.
+    maxDurationSeconds: 10,
     supportsNegativePrompt: false,
     formatTemplate: "Mendukung audio native (narasi + ambience) sekaligus dalam satu generate.",
   },

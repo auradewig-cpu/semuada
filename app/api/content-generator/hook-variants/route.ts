@@ -13,6 +13,8 @@ import { hookVariantsRequestSchema, formatZodError } from "@root/lib/content-gen
 import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { getRecentGenerations, buildAvoidRepetitionBlock } from "@root/lib/content-generator/variationContext";
 import { makeSeed } from "@root/lib/content-generator/exampleBank";
+import { requiredPromptTokens } from "@root/lib/content-generator/promptFragments";
+import { resolveVisualDictionary } from "@root/lib/content-generator/cinematography";
 import type { AiProvider, SceneOutput } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
@@ -40,6 +42,7 @@ export async function POST(request: NextRequest) {
     includePrice,
     narrationMode,
     cameraPattern,
+    narratorVoice,
   } = parsed.data;
   const currentScene = parsed.data.currentScene as unknown as SceneOutput;
 
@@ -72,6 +75,10 @@ export async function POST(request: NextRequest) {
   // point of this endpoint, and it previously had no history at all.
   const avoidRepetitionBlock = buildAvoidRepetitionBlock(await getRecentGenerations(productId));
 
+  // Same source of truth compileHookVariantsPrompt uses to declare these
+  // mandatory, so instruction and validation can't drift apart.
+  const requiredTokens = requiredPromptTokens(aiTool, resolveVisualDictionary(languageTone, style));
+
   const variantCount = 3;
   const prompt = compileHookVariantsPrompt({
     productName: product.productName,
@@ -93,6 +100,7 @@ export async function POST(request: NextRequest) {
     includePrice,
     narrationMode,
     cameraPattern,
+    narratorVoice,
     variantCount,
     seed: makeSeed(),
     avoidRepetitionBlock,
@@ -116,7 +124,7 @@ export async function POST(request: NextRequest) {
     const variants = result.variants.map((scene, i) => {
       // priceRequired=false: scene 1 is the hook, never the price beat --
       // matches buildPriceRule(false, ...) in hookVariants.ts.
-      const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, false);
+      const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category, false, requiredTokens, narrationMode);
       warnings.push(...problems.map((p) => `Varian ${i + 1}: ${p}`));
 
       // Detection only (no auto-rephrase): rephrasing all 3 variants would

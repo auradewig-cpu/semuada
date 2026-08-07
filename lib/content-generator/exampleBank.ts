@@ -1,4 +1,4 @@
-import type { CtaTypeId, HookArchetype, LanguageTone } from "./types";
+import type { CtaTypeId, HookArchetype, LanguageTone, NarratorVoice } from "./types";
 
 // Central pool of concrete example phrases, plus a seeded picker.
 //
@@ -319,14 +319,50 @@ export const CAPTION_SHARE_BANK: readonly string[] = [
   "tandain temen yang cocok",
 ];
 
-// --- Off-screen narrator audio clauses (voiceover mode) ----------------------
-// Rotated concrete templates, not an abstract instruction. An earlier version
-// asked the model to "compose your own audio clause" with no concrete anchor,
-// which the model reliably skipped in favor of the simpler ambience/foley
-// instruction next to it -- shipping videos with zero narration audio at all.
-// A single hardcoded sentence caused the opposite bug (identical narrator line
-// every generation). Rotating a bank of ~10 concrete variants gets both:
-// the model reliably includes a narrator clause, and it differs across scenes.
+// --- Voice casting -----------------------------------------------------------
+// English on purpose: these strings land inside ai_ready_prompt. Veo 3 / Flow
+// synthesise the voice from this description, so without one the model casts a
+// different voice on every generate and the scenes of one video don't match.
+// Rotated (rather than one fixed line per gender) for the same reason every
+// other bank here is: a single fixed descriptor gets copied verbatim forever.
+
+export const VOICE_PERSONA_BANK: Record<NarratorVoice, readonly string[]> = {
+  wanita: [
+    "a young Indonesian woman in her early twenties",
+    "an Indonesian woman in her mid-twenties",
+    "a cheerful young Indonesian woman",
+    "a relaxed Indonesian woman in her twenties",
+    "an energetic young Indonesian female creator",
+    "a friendly Indonesian woman, late twenties",
+  ],
+  pria: [
+    "a young Indonesian man in his early twenties",
+    "an Indonesian man in his mid-twenties",
+    "a laid-back young Indonesian man",
+    "a confident Indonesian man in his twenties",
+    "an energetic young Indonesian male creator",
+    "a friendly Indonesian man, late twenties",
+  ],
+};
+
+// --- Spoken-narration patterns (voiceover on NATIVE-AUDIO tools) -------------
+// Every entry ends at the point where the literal script_narration goes. On
+// Veo 3 / Flow the model generates the audio itself, so a clause that says a
+// narrator exists WITHOUT giving the words makes the model invent its own
+// speech -- which is why the carefully written Indonesian script never made it
+// into the finished video. The quote is the whole point of these lines.
+export const NARRATOR_SPOKEN_BANK: readonly string[] = [
+  'Audio: off-screen voiceover by {VOICE}, says: "{NARRATION}". No on-screen speech.',
+  'Audio: {VOICE} narrates from off-camera, saying: "{NARRATION}". Nobody on screen speaks.',
+  'Audio: an unseen narrator, {VOICE}, says: "{NARRATION}". The on-screen subject stays silent.',
+  'Audio: voiceover narration by {VOICE}: "{NARRATION}". No visible speaker in frame.',
+];
+
+// --- Off-screen narrator audio clauses (voiceover, SILENT tools) -------------
+// For Kling/Runway/Luma/Pika the tool produces no audio at all, so the words
+// are added later in the editor -- describing that a narrator exists is the
+// correct (and only useful) instruction there. Kept separate from
+// NARRATOR_SPOKEN_BANK above so the two cases can never be confused again.
 export const NARRATOR_AUDIO_BANK: readonly string[] = [
   "Audio: an off-screen Indonesian-language narrator voice explains the product; the subject on screen stays silent.",
   "Audio: an unseen Indonesian narrator describes the product's benefits over the shot; no on-screen speech.",

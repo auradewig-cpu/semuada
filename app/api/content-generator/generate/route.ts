@@ -8,7 +8,8 @@ import { compileMasterPrompt } from "@root/lib/content-generator/masterPrompt";
 import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
 import { parseAiResponse, parseCaptionResponse, validateOutput, buildRepairPrompt, checkToolDurationLimits } from "@root/lib/content-generator/jsonParser";
-import { narrationModeWasCoerced } from "@root/lib/content-generator/promptFragments";
+import { narrationModeWasCoerced, requiredPromptTokens } from "@root/lib/content-generator/promptFragments";
+import { resolveVisualDictionary } from "@root/lib/content-generator/cinematography";
 import { makeSeed } from "@root/lib/content-generator/exampleBank";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
 import { buildCaptionRephrasePrompt, rephraseSceneViolations } from "@root/lib/content-generator/autoRephrase";
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest) {
     includePrice,
     narrationMode,
     cameraPattern,
+    narratorVoice,
   } = parsed.data;
   const selectedImageUrls = scenes.map((s) => s.imageUrl);
 
@@ -146,6 +148,7 @@ export async function POST(request: NextRequest) {
     includePrice,
     narrationMode,
     cameraPattern,
+    narratorVoice,
     avoidRepetitionBlock,
     seed: makeSeed(),
   });
@@ -163,6 +166,12 @@ export async function POST(request: NextRequest) {
     category: product.category,
     includePrice,
     narrationWpm,
+    // Same source of truth the prompt used to declare these mandatory, so the
+    // instruction and the check can't drift apart.
+    requiredTokens: requiredPromptTokens(aiTool, resolveVisualDictionary(languageTone, style)),
+    // EFFECTIVE per-scene mode (scene override, else the request default) --
+    // matches how compileMasterPrompt resolves it for perSceneDirection.
+    sceneNarrationModes: scenes.map((s) => s.narrationMode ?? narrationMode),
   };
 
   try {

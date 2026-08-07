@@ -65,6 +65,9 @@ export const GROWTH_ALLOWED_CTAS: CtaTypeId[] = ['follow_more', 'save_for_later'
 
 export type NarrationMode = 'lipsync' | 'voiceover';
 export type CameraPattern = 'single_angle' | 'aroll_broll';
+// Global per video (not per scene) -- one narrator per video. Drives the voice
+// that native-audio tools (Veo 3 / Google Flow) synthesise.
+export type NarratorVoice = 'wanita' | 'pria';
 
 export interface SceneOutput {
   scene_number: number;
@@ -121,6 +124,7 @@ export interface GenerateContentInput {
   includePrice: boolean;
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
+  narratorVoice: NarratorVoice;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -214,6 +218,7 @@ export interface RegenerateSceneInput {
   includePrice: boolean;
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
+  narratorVoice: NarratorVoice;
 }
 
 export function useRegenerateScene() {
@@ -243,6 +248,7 @@ export interface HookVariantsInput {
   includePrice: boolean;
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
+  narratorVoice: NarratorVoice;
 }
 
 export function useHookVariants() {

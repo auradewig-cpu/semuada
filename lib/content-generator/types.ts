@@ -63,6 +63,14 @@ export const GROWTH_ALLOWED_CTAS: CtaTypeId[] = ["follow_more", "save_for_later"
 // only (non-sync) -- no dialogue tag or quoted speech should appear at all.
 export type NarrationMode = "lipsync" | "voiceover";
 
+// Who speaks. Matters most on tools that synthesise audio natively (Veo 3 /
+// Google Flow): without an explicit voice description the model picks one at
+// random per generate, so the same video's scenes come back in different
+// voices. Global per request rather than per scene -- one narrator for one
+// video is the norm for affiliate content, and a per-scene override would
+// mostly produce accidental inconsistency.
+export type NarratorVoice = "wanita" | "pria";
+
 // single_angle = one consistent shot style per scene. aroll_broll = intercut
 // between character shots (A-roll) and product cutaways (B-roll) within scenes.
 export type CameraPattern = "single_angle" | "aroll_broll";

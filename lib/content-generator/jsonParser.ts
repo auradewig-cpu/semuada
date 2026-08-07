@@ -1,5 +1,6 @@
 import { getAiToolSpec } from "./aiTools";
-import type { AiToolId, GenerationResult, SceneOutput } from "./types";
+import { usesNativeAudio } from "./cinematography";
+import type { AiToolId, GenerationResult, NarrationMode, SceneOutput } from "./types";
 
 export function parseAiResponse(rawText: string): GenerationResult | null {
   const direct = tryParse(rawText);
@@ -37,6 +38,21 @@ function expectedWordCount(durationSeconds: number, wpm: number): number {
   return Math.round((wpm / 60) * durationSeconds);
 }
 
+// WPM is an English-derived metric, but the narration is Indonesian, where the
+// average word carries noticeably more syllables ("menggunakan" is five). On
+// tools that synthesise the speech themselves (Veo 3 / Flow) there is no human
+// reader to compress on the fly, so a WPM-derived count that looks reasonable
+// on paper comes out rushed or clipped. This caps the ask at a rate that
+// actually fits, and is used both when writing the instruction and when
+// validating the result so the two can't disagree.
+const MAX_SPOKEN_WORDS_PER_SECOND = 2.4;
+
+export function spokenWordBudget(durationSeconds: number, wpm: number, aiTool: AiToolId): number {
+  const fromWpm = expectedWordCount(durationSeconds, wpm);
+  if (!usesNativeAudio(aiTool)) return fromWpm;
+  return Math.min(fromWpm, Math.floor(MAX_SPOKEN_WORDS_PER_SECOND * durationSeconds));
+}
+
 function wordCountInRange(actual: number, expected: number): boolean {
   return actual >= expected * 0.6 && actual <= expected * 1.4;
 }
@@ -61,6 +77,34 @@ function mentionsProduct(text: string, productName: string, category: string): b
 // "sembilan ratus ribuan"), not raw digits -- so this checks for either a
 // literal digit sequence (AI sometimes still writes "99 ribu") or the
 // magnitude words that virtually always accompany a spoken-out price.
+// Turns the "required token" instruction into an enforced contract. Every
+// other critical prompt rule so far relied on the script-writing model simply
+// complying; these three tokens visibly change what the video model renders
+// (single take vs. morphing cut, burned-in subtitles, phone-footage look), so
+// they get checked and routed into the existing repair loop instead.
+function missingRequiredTokens(aiReadyPrompt: string, tokens: string[]): string[] {
+  const lower = (aiReadyPrompt || "").toLowerCase();
+  return tokens.filter((t) => !lower.includes(t.toLowerCase()));
+}
+
+// Verifies the narration is actually embedded in the prompt, not merely
+// described. On native-audio tools a prompt that says "a narrator explains the
+// product" without the words makes the model invent its own speech, so the
+// script the user wrote never reaches the video. Matching a run of the first
+// few significant words is deliberately loose -- the model is allowed to wrap
+// the quote in its own phrasing, it just may not replace or summarise it.
+function containsSpokenNarration(aiReadyPrompt: string, scriptNarration: string): boolean {
+  const words = (scriptNarration || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+  if (words.length < 3) return true;
+  const probe = words.slice(0, 4).join(" ");
+  const haystack = (aiReadyPrompt || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "");
+  return haystack.includes(probe);
+}
+
 function mentionsPrice(text: string): boolean {
   if (/\d/.test(text)) return true;
   return /\b(rupiah|ribu|ratus|juta|rp)\b/i.test(text);
@@ -94,6 +138,14 @@ export interface ValidationContext {
   category: string;
   includePrice: boolean;
   narrationWpm: number;
+  // Literal English strings the prompt declared mandatory (see
+  // requiredPromptTokens in promptFragments.ts) -- passed in rather than
+  // recomputed so the instruction and the check share one source.
+  requiredTokens: string[];
+  // Per-scene EFFECTIVE narration modes. Only voiceover scenes on a
+  // native-audio tool need the script embedded in ai_ready_prompt; a lipsync
+  // scene already carries it via the dialogue convention.
+  sceneNarrationModes: NarrationMode[];
 }
 
 // Scene duration exceeding the target tool's real per-clip ceiling. Returned
@@ -115,7 +167,7 @@ export function checkToolDurationLimits(sceneDurations: number[], aiTool: AiTool
 
 export function validateOutput(result: GenerationResult, context: ValidationContext): string[] {
   const problems: string[] = [];
-  const { sceneDurations, aiTool, characterName, productName, category, includePrice, narrationWpm } = context;
+  const { sceneDurations, aiTool, characterName, productName, category, includePrice, narrationWpm, requiredTokens, sceneNarrationModes } = context;
   const charLimit = getAiToolSpec(aiTool).charLimit;
 
   if (result.scenes.length !== sceneDurations.length) {
@@ -164,9 +216,25 @@ export function validateOutput(result: GenerationResult, context: ValidationCont
 
     problems.push(...checkRequiredTextFields(scene, `Scene ${index + 1}`));
 
-    if (expectedDuration !== undefined && !wordCountInRange(actualWordCount, expectedWordCount(expectedDuration, narrationWpm))) {
-      const expected = expectedWordCount(expectedDuration, narrationWpm);
-      problems.push(`Scene ${index + 1}: narasi ${actualWordCount} kata untuk durasi ${expectedDuration}s terasa ${actualWordCount < expected ? "terlalu sedikit (buru-buru/kosong)" : "terlalu banyak (kepotong saat diucapkan)"} untuk target ${narrationWpm} kata/menit (idealnya sekitar ${expected} kata) -- sesuaikan panjang narasi.`);
+    const missing = missingRequiredTokens(scene.ai_ready_prompt, requiredTokens);
+    if (missing.length > 0) {
+      problems.push(`Scene ${index + 1}: ai_ready_prompt tidak memuat token wajib ${missing.map((t) => `"${t}"`).join(", ")} -- tulis apa adanya, jangan diparafrase.`);
+    }
+
+    // Only enforced where it actually changes the video: a voiceover scene on
+    // a tool that synthesises its own audio. Without the words in the prompt,
+    // the tool invents speech and the written script never gets spoken.
+    if (usesNativeAudio(aiTool) && sceneNarrationModes[index] === "voiceover" && scene.ai_ready_prompt) {
+      if (!containsSpokenNarration(scene.ai_ready_prompt, scene.script_narration)) {
+        problems.push(`Scene ${index + 1}: isi "script_narration" tidak tertanam di "ai_ready_prompt". Tool ini menghasilkan suaranya sendiri, jadi tanpa kutipan kata-per-kata narasinya tidak akan pernah diucapkan -- sisipkan sebagai baris "Audio: ... says: \\"<narasi>\\"".`);
+      }
+    }
+
+    if (expectedDuration !== undefined) {
+      const expected = spokenWordBudget(expectedDuration, narrationWpm, aiTool);
+      if (!wordCountInRange(actualWordCount, expected)) {
+        problems.push(`Scene ${index + 1}: narasi ${actualWordCount} kata untuk durasi ${expectedDuration}s terasa ${actualWordCount < expected ? "terlalu sedikit (buru-buru/kosong)" : "terlalu banyak (kepotong saat diucapkan)"} -- idealnya sekitar ${expected} kata, sesuaikan panjang narasi.`);
+      }
     }
   });
 
@@ -273,6 +341,11 @@ export function validateScene(
   // always false, scene 1 is the hook, not the price beat -- see
   // buildPriceRule() in sceneRegen.ts/hookVariants.ts, which this mirrors).
   priceRequired: boolean,
+  // Same contract as validateOutput's ValidationContext -- the literal tokens
+  // the prompt declared mandatory, and the scene's EFFECTIVE narration mode
+  // (which decides whether the script must be embedded in ai_ready_prompt).
+  requiredTokens: string[],
+  effectiveNarrationMode: NarrationMode,
   // Optional -- hook-variants doesn't resolve a WPM today (variants are
   // short hook fragments, not full-pace scenes), so it's omitted there and
   // this check is simply skipped rather than forcing an artificial value.
@@ -285,13 +358,24 @@ export function validateScene(
     problems.push(`Fitur "Sertakan harga" aktif dan scene ini WAJIB menyebut harga (scene terakhir) -- tapi tidak ada harga di narasinya, wajib disisipkan.`);
   }
 
+  const missing = missingRequiredTokens(scene.ai_ready_prompt, requiredTokens);
+  if (missing.length > 0) {
+    problems.push(`ai_ready_prompt tidak memuat token wajib ${missing.map((t) => `"${t}"`).join(", ")} -- tulis apa adanya, jangan diparafrase.`);
+  }
+
+  if (usesNativeAudio(aiTool) && effectiveNarrationMode === "voiceover" && scene.ai_ready_prompt) {
+    if (!containsSpokenNarration(scene.ai_ready_prompt, scene.script_narration)) {
+      problems.push(`Isi "script_narration" tidak tertanam di "ai_ready_prompt". Tool ini menghasilkan suaranya sendiri, jadi tanpa kutipan kata-per-kata narasinya tidak akan pernah diucapkan -- sisipkan sebagai baris "Audio: ... says: \\"<narasi>\\"".`);
+    }
+  }
+
   const actualWordCount = countWords(scene.script_narration || "");
   scene.script_word_count = actualWordCount;
 
   if (narrationWpm !== undefined) {
-    const expectedWords = expectedWordCount(expectedDuration, narrationWpm);
+    const expectedWords = spokenWordBudget(expectedDuration, narrationWpm, aiTool);
     if (!wordCountInRange(actualWordCount, expectedWords)) {
-      problems.push(`Narasi ${actualWordCount} kata untuk durasi ${expectedDuration}s terasa ${actualWordCount < expectedWords ? "terlalu sedikit (buru-buru/kosong)" : "terlalu banyak (kepotong saat diucapkan)"} untuk target ${narrationWpm} kata/menit (idealnya sekitar ${expectedWords} kata) -- sesuaikan panjang narasi.`);
+      problems.push(`Narasi ${actualWordCount} kata untuk durasi ${expectedDuration}s terasa ${actualWordCount < expectedWords ? "terlalu sedikit (buru-buru/kosong)" : "terlalu banyak (kepotong saat diucapkan)"} -- idealnya sekitar ${expectedWords} kata, sesuaikan panjang narasi.`);
     }
   }
 

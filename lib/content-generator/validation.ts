@@ -42,6 +42,7 @@ const ctaTypeSchema = z.enum([
 ]);
 const narrationModeSchema = z.enum(["lipsync", "voiceover"]);
 const cameraPatternSchema = z.enum(["single_angle", "aroll_broll"]);
+const narratorVoiceSchema = z.enum(["wanita", "pria"]);
 const languageToneSchema = z.enum([
   "formal_netral",
   "santai_ngobrol",
@@ -88,10 +89,11 @@ export const generateRequestSchema = z.object({
   hookArchetype: hookArchetypeSchema,
   contentGoal: contentGoalSchema,
   ctaType: ctaTypeSchema,
-  languageTone: languageToneSchema.default("formal_netral"),
+  languageTone: languageToneSchema.default("gaul_kekinian"),
   includePrice: z.boolean().default(true),
   narrationMode: narrationModeSchema.default("lipsync"),
   cameraPattern: cameraPatternSchema.default("single_angle"),
+  narratorVoice: narratorVoiceSchema.default("wanita"),
 });
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>;
@@ -106,7 +108,7 @@ export const regenerateSceneRequestSchema = z.object({
   hookArchetype: hookArchetypeSchema,
   contentGoal: contentGoalSchema,
   ctaType: ctaTypeSchema,
-  languageTone: languageToneSchema.default("formal_netral"),
+  languageTone: languageToneSchema.default("gaul_kekinian"),
   sceneIndex: z.number().int().min(0),
   sceneDuration: z.number().int().positive(),
   totalScenes: z.number().int().positive(),
@@ -120,6 +122,7 @@ export const regenerateSceneRequestSchema = z.object({
   // silently discarded a deliberate per-scene override.
   narrationMode: narrationModeSchema.default("lipsync"),
   cameraPattern: cameraPatternSchema.default("single_angle"),
+  narratorVoice: narratorVoiceSchema.default("wanita"),
 });
 
 export const hookVariantsRequestSchema = z.object({
@@ -134,13 +137,14 @@ export const hookVariantsRequestSchema = z.object({
   // policy check, so growth-mode variants were never screened for hard-sell
   // language -- and clicking "Pakai" installed it straight into the video.
   contentGoal: contentGoalSchema.default("conversion"),
-  languageTone: languageToneSchema.default("formal_netral"),
+  languageTone: languageToneSchema.default("gaul_kekinian"),
   sceneDuration: z.number().int().positive(),
   productImageUrl: z.string().url(),
   currentScene: sceneShapeSchema,
   includePrice: z.boolean().default(true),
   narrationMode: narrationModeSchema.default("lipsync"),
   cameraPattern: cameraPatternSchema.default("single_angle"),
+  narratorVoice: narratorVoiceSchema.default("wanita"),
 });
 
 export function formatZodError(error: z.ZodError): string {

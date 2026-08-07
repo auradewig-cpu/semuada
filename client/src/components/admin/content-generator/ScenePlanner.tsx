@@ -9,8 +9,8 @@ const QUICK_PICKS = [5, 6, 8, 10];
 // maxDurationSeconds server-side -- kept here so the warning appears BEFORE
 // the user spends an AI call, not only in the post-generate warning list.
 const TOOL_MAX_SECONDS: Record<AiToolId, { label: string; max: number }> = {
-  google_flow: { label: 'Google Flow', max: 8 },
-  veo3: { label: 'Google Veo 3', max: 8 },
+  google_flow: { label: 'Google Flow', max: 10 },
+  veo3: { label: 'Google Veo 3', max: 10 },
   kling_ai: { label: 'Kling AI 2.0', max: 10 },
   runway_gen4: { label: 'Runway Gen-4', max: 10 },
   luma_dream: { label: 'Luma Dream Machine', max: 9 },

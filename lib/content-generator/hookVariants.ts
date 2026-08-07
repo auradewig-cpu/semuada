@@ -3,8 +3,10 @@ import { HOOK_ARCHETYPES } from "./hookPatterns";
 import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec, buildPlatformBehavior } from "./platforms";
 import { getLanguageTone, buildLanguageToneRule } from "./languageTones";
-import { buildCinematographyRule, buildSingleTakeRule } from "./cinematography";
+import { buildCinematographyRule, buildSingleTakeRule, resolveVisualDictionary } from "./cinematography";
 import { buildNegativePromptBlock, buildSpokenNumberRule } from "./negativePrompt";
+import { buildVoiceDescriptor } from "./voiceCasting";
+import { spokenWordBudget } from "./jsonParser";
 import {
   buildCharacterBlock,
   buildDialogueRule,
@@ -18,8 +20,9 @@ import {
   buildRealismRule,
   buildBannedClaimsRule,
   buildWordCountSelfCheckRule,
+  buildRequiredTokensRule,
 } from "./promptFragments";
-import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, HookArchetype, LanguageTone, NarrationMode, PlatformTarget, SceneOutput } from "./types";
+import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, HookArchetype, LanguageTone, NarrationMode, NarratorVoice, PlatformTarget, SceneOutput } from "./types";
 
 export interface HookVariantsInput {
   productName: string;
@@ -44,6 +47,7 @@ export interface HookVariantsInput {
   includePrice: boolean;
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
+  narratorVoice: NarratorVoice;
   variantCount?: number;
   seed: number;
   // Same anti-repetition history the main generate flow gets. Variants exist
@@ -67,12 +71,14 @@ export function compileHookVariantsPrompt(input: HookVariantsInput): string {
   const platformSpec = getPlatformSpec(input.platform);
   const hasCharacter = input.characterName !== null;
   const toneSpec = getLanguageTone(input.languageTone);
+  const dictionary = resolveVisualDictionary(input.languageTone, input.style);
+  const voiceDescriptor = buildVoiceDescriptor(input.narratorVoice, input.languageTone, input.seed);
 
   const availableArchetypes = Object.values(HOOK_ARCHETYPES).filter((a) => a.id !== input.currentArchetype);
   const archetypeList = availableArchetypes.map((a) => `- ${a.id}: ${a.instruction}`).join("\n");
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
-  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode, hasCharacter, input.seed);
+  const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode, hasCharacter, input.seed, voiceDescriptor);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   // Scene 1 is a hook, not the CTA beat -- a mandatory price here would fight
@@ -112,9 +118,11 @@ ${buildPromptBudgetRule(input.aiTool, hasCharacter)}
 
 ${buildAiReadyPromptStructureRule(hasCharacter, input.aspectRatio, toneSpec.genreAnchor)}
 
-${buildCinematographyRule(input.aiTool)}
+${buildCinematographyRule(input.aiTool, dictionary)}
 
-${buildSingleTakeRule()}
+${buildSingleTakeRule(input.aiTool)}
+
+${buildRequiredTokensRule(input.aiTool, dictionary)}
 
 [SCENE 1 SAAT INI -- konteks, JANGAN disalin]
 Teknik hook saat ini: ${input.currentArchetype}
@@ -127,14 +135,14 @@ ATURAN WAJIB:
 - ${variantCount} varian, masing-masing teknik hook BERBEDA dari daftar di atas (jangan ulangi teknik antar varian).
 - scene_number=1, duration_seconds=${input.sceneDuration} TIDAK BOLEH berubah di semua varian.
 - Hook front-loaded: kalimat pertama script_narration = inti hook langsung, bukan basa-basi. WAJIB detail spesifik, bukan generik.
-- Target kecepatan bicara ${input.narrationWpm} kata per menit, jadi narasi tiap varian sekitar ${Math.round((input.narrationWpm / 60) * input.sceneDuration)} kata untuk durasi ${input.sceneDuration}s. Kalimat maksimal sekitar ${toneSpec.maxWordsPerSentence} kata.
+- PANJANG NARASI tiap varian maksimal ~${spokenWordBudget(input.sceneDuration, input.narrationWpm, input.aiTool)} kata (batas yang benar-benar muat saat diucapkan dalam ${input.sceneDuration}s). Kalimat maksimal sekitar ${toneSpec.maxWordsPerSentence} kata.
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris. Pengecualian: kutipan dialog di dalam "ai_ready_prompt" (kalau mode lipsync) tetap Bahasa Indonesia apa adanya.
 - ${productAnchorRule}
 - ${priceRule}
 - ${cameraPatternRule}
 - ${dialogueRule}
 - ${buildBannedClaimsRule()}
-- ${buildRealismRule()}
+- ${buildRealismRule(dictionary)}
 - ${buildWordCountSelfCheckRule()}
 - ${buildSpokenNumberRule(input.seed)}
 - Isi "text_overlay" tiap varian: teks caption pendek (MAKSIMAL 8 kata, bahasa Indonesia) untuk di-burn-in saat editing -- inti hook varian itu, BUKAN salinan "script_narration".

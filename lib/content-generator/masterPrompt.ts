@@ -4,9 +4,11 @@ import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec, buildPlatformBehavior } from "./platforms";
 import { buildCtaInstruction, resolveCtaForGoal, resolveCtaForPlatform } from "./ctaTypes";
 import { getLanguageTone, buildLanguageToneRule } from "./languageTones";
-import { buildCinematographyRule, buildSingleTakeRule } from "./cinematography";
+import { buildCinematographyRule, buildSingleTakeRule, resolveVisualDictionary } from "./cinematography";
 import { buildNegativePromptBlock, buildSpokenNumberRule } from "./negativePrompt";
 import { pickExamples, deriveSeed, CAPTION_SHARE_BANK } from "./exampleBank";
+import { buildVoiceDescriptor } from "./voiceCasting";
+import { spokenWordBudget } from "./jsonParser";
 import {
   buildCharacterBlock,
   buildDialogueRule,
@@ -20,8 +22,9 @@ import {
   buildRealismRule,
   buildBannedClaimsRule,
   buildWordCountSelfCheckRule,
+  buildRequiredTokensRule,
 } from "./promptFragments";
-import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, LanguageTone, NarrationMode, PlatformTarget, SceneInput } from "./types";
+import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, LanguageTone, NarrationMode, NarratorVoice, PlatformTarget, SceneInput } from "./types";
 
 interface MasterPromptInput {
   productName: string;
@@ -43,6 +46,10 @@ interface MasterPromptInput {
   // Request-level defaults, used for any scene that didn't set its own override.
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
+  // Global (not per-scene) -- one narrator per video. Drives the voice the
+  // native-audio tools cast; without it Veo 3 picks a different voice per
+  // generate and one video's scenes come back sounding like different people.
+  narratorVoice: NarratorVoice;
   // Rotates every concrete example phrase in the prompt (tone vocabulary, hook
   // openers, CTA phrasings, spoken-price example) so consecutive generations of
   // the same product don't converge on identical wording. See exampleBank.ts.
@@ -66,6 +73,8 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
   // applied, so an Instagram video could be told to say "klik keranjang kuning".
   const effectiveCta = resolveCtaForPlatform(resolveCtaForGoal(input.ctaType, input.contentGoal), input.platform);
   const toneSpec = getLanguageTone(input.languageTone);
+  const dictionary = resolveVisualDictionary(input.languageTone, input.style);
+  const voiceDescriptor = buildVoiceDescriptor(input.narratorVoice, input.languageTone, input.seed);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
@@ -79,7 +88,7 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
     .map((scene, i) => {
       const narrationMode = scene.narrationMode ?? input.narrationMode;
       const cameraPattern = scene.cameraPattern ?? input.cameraPattern;
-      return `Scene ${i + 1} (${scene.duration}s): ${buildDialogueRule(input.aiTool, narrationMode, hasCharacter, input.seed)} ${buildCameraPatternRule(cameraPattern)}`;
+      return `Scene ${i + 1} (${scene.duration}s): ${buildDialogueRule(input.aiTool, narrationMode, hasCharacter, input.seed, voiceDescriptor)} ${buildCameraPatternRule(cameraPattern)}`;
     })
     .join("\n");
 
@@ -151,9 +160,11 @@ ${buildPromptBudgetRule(input.aiTool, hasCharacter)}
 
 ${buildAiReadyPromptStructureRule(hasCharacter, input.aspectRatio, toneSpec.genreAnchor)}
 
-${buildCinematographyRule(input.aiTool)}
+${buildCinematographyRule(input.aiTool, dictionary)}
 
-${buildSingleTakeRule()}
+${buildSingleTakeRule(input.aiTool)}
+
+${buildRequiredTokensRule(input.aiTool, dictionary)}
 
 HOOK SCENE 1: ${hookInstruction}
 
@@ -171,9 +182,9 @@ ATURAN WAJIB (SANGAT PENTING):
 3. BAHASA PER FIELD (WAJIB DIPATUHI PERSIS): "script_narration" WAJIB Bahasa Indonesia. "visual_description", "camera_direction", dan "ai_ready_prompt" WAJIB Bahasa Inggris -- field-field ini dibaca oleh AI video tool, bukan manusia Indonesia. SATU-SATUNYA pengecualian: kutipan dialog di dalam "ai_ready_prompt" (kalau mode scene-nya lipsync) tetap Bahasa Indonesia apa adanya, karena video tool menyimpulkan bahasa ucapan dari isi kutipan itu -- menerjemahkannya akan membuat karakter bicara bahasa yang salah.
 4. ${productAnchorRule}
 5. ${priceRule}
-6. Narasi harus terdengar natural, TIDAK monoton: intonasi hidup, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit. Kalimat maksimal sekitar ${toneSpec.maxWordsPerSentence} kata (sesuai GAYA BAHASA yang dipilih) -- HINDARI kalimat majemuk yang jauh melebihi batas itu bersambung dengan "dan"/"yang"/"karena" berkali-kali, itu bikin AI voice salah penekanan dan terdengar "blibet". Pecah jadi beberapa kalimat terpisah kalau lebih panjang dari itu, masing-masing 1 ide saja.
+6. Narasi harus terdengar natural, TIDAK monoton: intonasi hidup, artikulasi jelas, ada jeda natural sebelum kalimat penting. PANJANG NARASI TIAP SCENE (WAJIB dipatuhi, ini batas yang benar-benar muat saat diucapkan): ${input.scenes.map((s, i) => `scene ${i + 1} maksimal ~${spokenWordBudget(s.duration, input.narrationWpm, input.aiTool)} kata`).join(", ")}. Kalimat maksimal sekitar ${toneSpec.maxWordsPerSentence} kata (sesuai GAYA BAHASA yang dipilih) -- HINDARI kalimat majemuk yang jauh melebihi batas itu bersambung dengan "dan"/"yang"/"karena" berkali-kali, itu bikin AI voice salah penekanan dan terdengar "blibet". Pecah jadi beberapa kalimat terpisah kalau lebih panjang dari itu, masing-masing 1 ide saja.
 7. ${buildBannedClaimsRule()}
-8. ${buildRealismRule()}
+8. ${buildRealismRule(dictionary)}
 9. ${buildSpokenNumberRule(input.seed)}
 10. Setelah semua scene, buat SATU caption (bahasa Indonesia, singkat, catchy, kekinian) dan TEPAT 5 hashtag relevan (tanpa duplikat, tanpa tanda # ganda) -- kalau ada RIWAYAT KONTEN SEBELUMNYA di atas, kombinasi hashtag WAJIB berbeda dari riwayat itu (boleh overlap 1-2 hashtag paling relevan, tapi JANGAN salin ulang 5 hashtag yang sama persis). Field "caption" HANYA berisi teks caption -- JANGAN sertakan hashtag apapun di dalam teks caption, hashtag HANYA boleh muncul di field "hashtags" terpisah.
 11. ${buildWordCountSelfCheckRule()}

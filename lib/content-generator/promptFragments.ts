@@ -1,5 +1,6 @@
 import { getAiToolSpec, usesLiteralDialogueConvention } from "./aiTools";
-import { pickExamples, formatExamples, deriveSeed, NARRATOR_AUDIO_BANK } from "./exampleBank";
+import { usesNativeAudio, type VisualDictionary } from "./cinematography";
+import { pickExamples, formatExamples, deriveSeed, NARRATOR_AUDIO_BANK, NARRATOR_SPOKEN_BANK } from "./exampleBank";
 import type { AiToolId, CameraPattern, ContentGoal, NarrationMode } from "./types";
 
 // Shared prompt fragments used by masterPrompt.ts, sceneRegen.ts, and
@@ -27,7 +28,13 @@ export function buildCharacterBlock(characterName: string | null, characterDescr
 // mode outright. It also decides how to handle faceless+lipsync, which is the
 // DEFAULT state when no character is picked and which is self-contradictory:
 // there is no mouth to sync.
-export function buildDialogueRule(aiTool: AiToolId, narrationMode: NarrationMode, hasCharacter: boolean, seed: number): string {
+export function buildDialogueRule(
+  aiTool: AiToolId,
+  narrationMode: NarrationMode,
+  hasCharacter: boolean,
+  seed: number,
+  voiceDescriptor: string
+): string {
   const toolSpec = getAiToolSpec(aiTool);
 
   // Faceless + lipsync can't be honoured literally, so resolve it to the only
@@ -38,21 +45,36 @@ export function buildDialogueRule(aiTool: AiToolId, narrationMode: NarrationMode
 
   if (effectiveMode === "voiceover") {
     const subject = hasCharacter ? "orang di layar" : "tangan/produk di layar";
-    // An earlier version asked the model to "compose your own audio clause"
-    // with no concrete anchor -- it reliably skipped this in favor of
-    // cinematography.ts's simpler ambience/foley instruction, shipping videos
-    // with ZERO narration audio. Rotated concrete templates (not one fixed
-    // sentence) fix the reliability problem without reintroducing the
-    // verbatim-repetition bug.
+
+    // The branch that matters most. Veo 3 / Flow SYNTHESISE the audio, so a
+    // clause that merely asserts a narrator exists -- which is what this used
+    // to emit, while explicitly forbidding the script from being quoted --
+    // leaves the model with no words and it invents its own speech. That is
+    // why the Indonesian script never actually reached the finished video.
+    // On these tools the literal narration IS the instruction.
+    if (usesNativeAudio(aiTool)) {
+      const [pattern] = pickExamples(NARRATOR_SPOKEN_BANK, 1, deriveSeed(seed, 6));
+      return `MODE NARASI: VOICEOVER (non-sync) -- ${subject} TIDAK bicara, narasi datang dari narator di luar frame.
+${toolSpec.label} MENGHASILKAN SUARANYA SENDIRI, jadi kalau kata-katanya tidak ditulis di prompt, tool ini akan MENGARANG ucapan sendiri dan naskahmu tidak akan pernah terdengar. Karena itu "ai_ready_prompt" WAJIB memuat satu baris "Audio: ..." yang berisi ISI "script_narration" LENGKAP KATA PER KATA di dalam tanda kutip, dalam Bahasa Indonesia apa adanya -- JANGAN diterjemahkan, JANGAN diringkas, JANGAN diparafrase, JANGAN diganti deskripsi seperti "narrator explains the product".
+Pakai pola ini (ganti {VOICE} dan {NARRATION}, sisanya boleh kamu variasikan sedikit): ${pattern}
+{VOICE} = ${voiceDescriptor}
+{NARRATION} = isi "script_narration" scene ini, persis.
+Detail ambience/foley singkat boleh ditambahkan SESUDAH kutipan itu, tidak boleh menggantikannya. Jangan menggambarkan setup mirip wawancara/podcast.`;
+    }
+
+    // Silent tools (Kling/Runway/Luma/Pika) produce no audio at all -- the
+    // voice is added later in the editor, so quoting the script into the
+    // prompt would only waste budget. Describing that a narrator exists is
+    // the correct instruction here.
     const picked = pickExamples(NARRATOR_AUDIO_BANK, 2, deriveSeed(seed, 6));
     return `MODE NARASI: VOICEOVER (non-sync) -- ${subject} TIDAK bicara, narasi datang dari narator di luar frame. JANGAN sisipkan kutipan ucapan, tag [DIALOGUE: ...], atau frasa "says" ke "ai_ready_prompt".
-WAJIB isi audio channel secara POSITIF (larangan saja tidak cukup -- kalau audio dibiarkan ambigu, AI video tool otomatis membuat mulut bergerak bicara): "ai_ready_prompt" WAJIB memuat SATU klausa "Audio: ..." yang menyatakan ada narator berbahasa Indonesia di luar frame menjelaskan produk, dan subjek di layar tidak bicara -- ini WAJIB ADA, bukan opsional, dan tidak boleh digantikan hanya oleh deskripsi suara ambience/foley. Contoh pola (tulis versi kamu sendiri dengan makna sama, JANGAN salin persis, boleh gabungkan dengan detail ambience/foley singkat setelahnya): ${formatExamples(picked)}. Jangan mengutip ulang script_narration di sini (batas ${toolSpec.charLimit} karakter), dan jangan menggambarkan setup mirip wawancara/podcast yang memicu kesan sedang bercakap-cakap.`;
+WAJIB isi audio channel secara POSITIF (larangan saja tidak cukup -- kalau audio dibiarkan ambigu, AI video tool otomatis membuat mulut bergerak bicara): "ai_ready_prompt" WAJIB memuat SATU klausa "Audio: ..." yang menyatakan ada narator berbahasa Indonesia di luar frame menjelaskan produk, dan subjek di layar tidak bicara -- ini WAJIB ADA, bukan opsional, dan tidak boleh digantikan hanya oleh deskripsi suara ambience/foley. Contoh pola (tulis versi kamu sendiri dengan makna sama, JANGAN salin persis, boleh gabungkan dengan detail ambience/foley singkat setelahnya): ${formatExamples(picked)}. Suara naratornya: ${voiceDescriptor}. Jangan mengutip ulang script_narration di sini (batas ${toolSpec.charLimit} karakter) karena audionya memang ditambahkan manual saat editing, dan jangan menggambarkan setup mirip wawancara/podcast.`;
   }
 
   if (usesLiteralDialogueConvention(aiTool)) {
-    return `MODE NARASI: LIPSYNC -- dialog WAJIB disisipkan sebagai kutipan literal dengan pola: [Subjek] says, "<isi script_narration WORD-FOR-WORD, JANGAN diterjemahkan/diparafrase>" (no subtitles). Ini konvensi resmi ${toolSpec.label} -- model menyimpulkan bahasa ucapan dari ISI kalimat dalam kutip, bukan dari label bahasa.`;
+    return `MODE NARASI: LIPSYNC -- dialog WAJIB disisipkan sebagai kutipan literal dengan pola: [Subjek] says, "<isi script_narration WORD-FOR-WORD, JANGAN diterjemahkan/diparafrase>". Ini konvensi resmi ${toolSpec.label} -- model menyimpulkan bahasa ucapan dari ISI kalimat dalam kutip, bukan dari label bahasa. Karakter suaranya: ${voiceDescriptor}.`;
   }
-  return `MODE NARASI: LIPSYNC -- dialog WAJIB disisipkan dengan pola: [DIALOGUE: Bahasa Indonesia] "<isi script_narration WORD-FOR-WORD, JANGAN diterjemahkan/diparafrase/dikosongkan>". WAJIB sertakan kutipan narasi aslinya, BUKAN tag kosong -- tanpa itu AI video tool tidak tahu harus mengucapkan apa dan akan mengarang dialog sendiri yang melenceng dari produk.`;
+  return `MODE NARASI: LIPSYNC -- dialog WAJIB disisipkan dengan pola: [DIALOGUE: Bahasa Indonesia] "<isi script_narration WORD-FOR-WORD, JANGAN diterjemahkan/diparafrase/dikosongkan>". WAJIB sertakan kutipan narasi aslinya, BUKAN tag kosong -- tanpa itu AI video tool tidak tahu harus mengucapkan apa dan akan mengarang dialog sendiri yang melenceng dari produk. Karakter suaranya: ${voiceDescriptor}.`;
 }
 
 // Reports whether buildDialogueRule() had to reinterpret the requested mode, so
@@ -136,8 +158,35 @@ export function buildBannedClaimsRule(): string {
   return `JANGAN gunakan kata "sempurna", "flawless", "studio quality", "dijamin", "terbukti ampuh 100%", atau klaim absolut sejenis -- hindari janji berlebihan dan bahasa yang terdengar dibuat mesin.`;
 }
 
-export function buildRealismRule(): string {
-  return `Instruksi kamera dan pencahayaan harus terasa seperti rekaman HP asli: framing sedikit tidak simetris, pencahayaan ruangan natural (bukan studio lighting), dan ada satu detail kecil yang tidak rapi supaya tidak terlihat seperti render AI.`;
+// Dictionary-aware. This rule used to demand phone-footage realism
+// unconditionally while buildCinematographyRule simultaneously mandated
+// dolly/orbit/golden-hour vocabulary -- two directly opposed instructions in
+// the same prompt, which is a large part of why output landed in an uncanny
+// middle: too polished to read as a real creator, too loose to read as an ad.
+export function buildRealismRule(dictionary: VisualDictionary): string {
+  if (dictionary === "cinematic") {
+    return `Meski gaya visualnya rapi/sinematik, hindari kesan render AI: sisakan satu ketidaksempurnaan kecil yang wajar (pantulan, debu halus, bayangan yang tidak simetris) dan jangan buat semuanya terlalu simetris/steril.`;
+  }
+  return `Instruksi kamera dan pencahayaan harus terasa seperti rekaman HP asli: framing sedikit tidak simetris, pencahayaan ruangan apa adanya (BUKAN studio lighting), dan ada satu detail kecil yang tidak rapi (barang lain di meja, bayangan tangan, latar yang tidak ditata) supaya tidak terlihat seperti render AI atau iklan.`;
+}
+
+// The literal English strings that must survive into ai_ready_prompt, kept in
+// one place so the prompt instruction and the validator can never disagree
+// about what "required" means. Deliberately short: every entry here becomes a
+// hard failure that can trigger a repair call, so only the tokens that
+// demonstrably change the rendered video earn a slot.
+export function requiredPromptTokens(aiTool: AiToolId, dictionary: VisualDictionary): string[] {
+  const tokens = ["single continuous shot"];
+  if (usesNativeAudio(aiTool)) tokens.push("no subtitles");
+  if (dictionary === "ugc") tokens.push("shot on a smartphone");
+  return tokens;
+}
+
+export function buildRequiredTokensRule(aiTool: AiToolId, dictionary: VisualDictionary): string {
+  const list = requiredPromptTokens(aiTool, dictionary)
+    .map((t) => `"${t}"`)
+    .join(", ");
+  return `TOKEN WAJIB DI "ai_ready_prompt" (tulis APA ADANYA, huruf kecil, jangan diparafrase/diterjemahkan): ${list}. Output yang tidak memuat semuanya akan ditolak dan diminta ulang.`;
 }
 
 export function buildWordCountSelfCheckRule(): string {

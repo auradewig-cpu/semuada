@@ -18,6 +18,7 @@ import {
   type CtaTypeId,
   type LanguageTone,
   type NarrationMode,
+  type NarratorVoice,
   type CameraPattern,
   type SceneInput,
 } from "@/hooks/useContentGenerator";
@@ -49,9 +50,10 @@ export function ContentGeneratorTab() {
   const [contentGoal, setContentGoal] = useState<ContentGoal>('conversion');
   const [ctaType, setCtaType] = useState<CtaTypeId>('klik_keranjang_kuning');
   const [hookArchetype, setHookArchetype] = useState<HookArchetype>('specific_outcome');
-  const [languageTone, setLanguageTone] = useState<LanguageTone>('formal_netral');
+  const [languageTone, setLanguageTone] = useState<LanguageTone>('gaul_kekinian');
   const [includePrice, setIncludePrice] = useState(true);
   const [narrationMode, setNarrationMode] = useState<NarrationMode>('lipsync');
+  const [narratorVoice, setNarratorVoice] = useState<NarratorVoice>('wanita');
   const [cameraPattern, setCameraPattern] = useState<CameraPattern>('single_angle');
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -132,6 +134,7 @@ export function ContentGeneratorTab() {
         includePrice,
         narrationMode,
         cameraPattern,
+        narratorVoice,
       },
       {
         onSuccess: (data) => {
@@ -172,6 +175,21 @@ export function ContentGeneratorTab() {
             <p className="text-xs text-muted-foreground mt-3">
               Ini nilai default untuk semua scene. Tiap scene bisa override sendiri di Card 4 (mis. scene 1 voiceover, scene 2 lipsync).
             </p>
+
+            <div className="mt-4 pt-4 border-t">
+              <label className="text-sm font-medium block mb-2">Suara Narator</label>
+              <select
+                className="text-sm border rounded px-3 py-2 bg-background w-full sm:w-64"
+                value={narratorVoice}
+                onChange={(e) => setNarratorVoice(e.target.value as NarratorVoice)}
+              >
+                <option value="wanita">Wanita</option>
+                <option value="pria">Pria</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-2">
+                Berlaku untuk seluruh video (satu narator per video). Paling berpengaruh di Google Flow/Veo 3 yang membuat suaranya sendiri &mdash; tanpa ini, tiap generate bisa dapat suara yang berbeda-beda.
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -352,6 +370,7 @@ export function ContentGeneratorTab() {
             includePrice,
             narrationMode,
             cameraPattern,
+            narratorVoice,
           }}
         />
       )}

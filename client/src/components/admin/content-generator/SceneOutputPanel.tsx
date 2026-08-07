@@ -18,6 +18,7 @@ import {
   type LanguageTone,
   type NarrationMode,
   type CameraPattern,
+  type NarratorVoice,
   type SceneInput,
 } from "@/hooks/useContentGenerator";
 import { ReferenceFrameGuide } from "@/components/admin/content-generator/ReferenceFrameGuide";
@@ -37,6 +38,9 @@ export interface SceneGenerationContext {
   includePrice: boolean;
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
+  // Global per video -- no per-scene override, so unlike narrationMode/
+  // cameraPattern it is passed straight through to regenerate/hook-variants.
+  narratorVoice: NarratorVoice;
 }
 
 interface SceneOutputPanelProps {
@@ -170,6 +174,7 @@ export function SceneOutputPanel({ result, onResultChange, warnings, onWarningsC
         includePrice: context.includePrice,
         narrationMode: effectiveNarrationMode(0),
         cameraPattern: effectiveCameraPattern(0),
+        narratorVoice: context.narratorVoice,
       },
       {
         onSuccess: (data) => {
