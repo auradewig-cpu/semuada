@@ -76,6 +76,9 @@ export function checkPolicyCompliance(result: GenerationResult, contentGoal: Con
     const fields: [string, string | null | undefined][] = [
       ["script_narration", scene.script_narration],
       ["ai_ready_prompt", scene.ai_ready_prompt],
+      // Burned into the video regardless of narration -- most short-form
+      // viewers watch muted, so a banned claim here ships just as visibly.
+      ["text_overlay", scene.text_overlay],
     ];
     for (const [field, text] of fields) {
       for (const hit of scanText(text, extraRules)) {

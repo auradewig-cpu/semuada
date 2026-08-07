@@ -33,6 +33,10 @@ interface MasterPromptInput {
   // Request-level defaults, used for any scene that didn't set its own override.
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
+  // From variationContext.ts's buildAvoidRepetitionBlock() -- empty string
+  // for a product's first-ever generation, so the prompt is byte-identical
+  // to before this field existed when there's no history yet.
+  avoidRepetitionBlock?: string;
 }
 
 export function compileMasterPrompt(input: MasterPromptInput): string {
@@ -104,7 +108,7 @@ ${ctaGoalNote}
 CTA: ${ctaSpec.instruction}
 ${loopEndingRule}
 ${captionShareNote}
-
+${input.avoidRepetitionBlock ?? ""}
 INSTRUKSI PER SCENE (mode narasi & pola kamera BISA BERBEDA antar scene, WAJIB ikuti persis per scene):
 ${perSceneDirection}
 

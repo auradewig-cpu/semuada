@@ -7,6 +7,7 @@ import { requireAuth } from "@root/lib/apiAuth";
 import { compileHookVariantsPrompt } from "@root/lib/content-generator/hookVariants";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
 import { parseHookVariantsResponse, validateScene } from "@root/lib/content-generator/jsonParser";
+import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
 import { hookVariantsRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
 import type { AiProvider, SceneOutput } from "@root/lib/content-generator/types";
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
   ];
 
   try {
-    const response = await generateWithFallback(providerOrder, keys, prompt, images);
+    const response = await generateWithFallback(providerOrder, keys, prompt, images, 0.65);
     const result = parseHookVariantsResponse(response.text);
     if (!result) {
       return NextResponse.json({ error: "AI mengembalikan format varian yang tidak bisa dibaca." }, { status: 502 });
@@ -99,6 +100,16 @@ export async function POST(request: NextRequest) {
     const variants = result.variants.map((scene, i) => {
       const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
       warnings.push(...problems.map((p) => `Varian ${i + 1}: ${p}`));
+
+      // Detection only (no auto-rephrase) -- this endpoint previously had no
+      // compliance screening at all. Rephrasing all 3 variants would triple
+      // AI cost for a feature whose point is picking just one; the admin
+      // sees the warning here and "Regenerate" on the picked variant does
+      // get the full rephrase treatment. No contentGoal on this request
+      // schema, so growth-mode's extra commercial-language rule doesn't
+      // apply here specifically -- base compliance rules still do.
+      const policyViolations = checkPolicyCompliance({ scenes: [scene], caption: "", hashtags: [] }, "conversion");
+      warnings.push(...formatPolicyViolations(policyViolations).map((w) => `Varian ${i + 1}: ${w}`));
 
       const archetypeUsed = (scene as SceneOutput & { hook_archetype_used?: string }).hook_archetype_used ?? null;
       if (!archetypeUsed) {

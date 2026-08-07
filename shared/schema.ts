@@ -90,6 +90,16 @@ export const contentGenerations = pgTable("content_generations", {
   characterId: uuid("character_id"),
   style: text("style").notNull(),
   output: text("output").notNull(),
+  // Denormalized copies of fields already inside `output`'s JSON -- kept as
+  // real columns (rather than parsing the blob) so lib/content-generator/
+  // variationContext.ts can cheaply query recent generations per product to
+  // nudge the AI away from repeating itself. Nullable: old rows predate this
+  // and are never backfilled, only new rows going forward carry these.
+  hookArchetype: text("hook_archetype"),
+  contentGoal: text("content_goal"),
+  ctaType: text("cta_type"),
+  caption: text("caption"),
+  hashtags: text("hashtags").array(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 

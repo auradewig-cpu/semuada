@@ -8,6 +8,8 @@ import { compileSceneRegenPrompt } from "@root/lib/content-generator/sceneRegen"
 import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
 import { parseSceneResponse, validateScene } from "@root/lib/content-generator/jsonParser";
+import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
+import { rephraseSceneViolations } from "@root/lib/content-generator/autoRephrase";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
 import { regenerateSceneRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
 import type { AiProvider, SceneOutput } from "@root/lib/content-generator/types";
@@ -97,13 +99,23 @@ export async function POST(request: NextRequest) {
   ];
 
   try {
-    const response = await generateWithFallback(providerOrder, keys, prompt, images);
-    const scene = parseSceneResponse(response.text);
+    const response = await generateWithFallback(providerOrder, keys, prompt, images, 0.65);
+    let scene = parseSceneResponse(response.text);
     if (!scene) {
       return NextResponse.json({ error: "AI mengembalikan format scene yang tidak bisa dibaca." }, { status: 502 });
     }
 
     const problems = validateScene(scene, sceneDuration, aiTool, character?.name ?? null, product.productName, product.category);
+
+    // Unlike the main "Generate" flow, this endpoint previously skipped
+    // compliance checking entirely -- a regenerated scene could reintroduce
+    // a banned claim with zero screening. Mirror generate/route.ts's
+    // check-then-rephrase-once behavior here too.
+    let policyViolations = checkPolicyCompliance({ scenes: [scene], caption: "", hashtags: [] }, contentGoal);
+    if (policyViolations.length > 0) {
+      scene = await rephraseSceneViolations(scene, policyViolations, providerOrder, keys);
+      policyViolations = checkPolicyCompliance({ scenes: [scene], caption: "", hashtags: [] }, contentGoal);
+    }
 
     scene.scene_number = sceneIndex + 1;
     scene.reference_images = {
@@ -113,7 +125,7 @@ export async function POST(request: NextRequest) {
       product_filename: `gambar${sceneIndex + 1}.jpg`,
     };
 
-    return NextResponse.json({ scene, warnings: problems });
+    return NextResponse.json({ scene, warnings: [...problems, ...formatPolicyViolations(policyViolations)] });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Gagal regenerate scene." },

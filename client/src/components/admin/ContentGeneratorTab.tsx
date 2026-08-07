@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   useGenerateContent,
+  fetchHookSuggestion,
   type GenerationResult,
   type ContentStyleId,
   type AiToolId,
@@ -55,6 +56,10 @@ export function ContentGeneratorTab() {
   // must reuse the per-scene overrides that actually produced the result,
   // even if the user has since edited the scene list above.
   const [generatedScenePlan, setGeneratedScenePlan] = useState<SceneInput[]>([]);
+  // Set from fetchHookSuggestion() when a product is picked -- shown as a
+  // hint under HookArchetypeSelector so the "rotation" is a visible default
+  // change the admin can override, never a silent server-side substitution.
+  const [hookSuggestionHint, setHookSuggestionHint] = useState<string | null>(null);
 
   const generateContent = useGenerateContent();
   const { toast } = useToast();
@@ -63,6 +68,17 @@ export function ContentGeneratorTab() {
     setProduct(p);
     setScenes([]);
     setResult(null);
+    setHookSuggestionHint(null);
+    fetchHookSuggestion(p.id)
+      .then(({ suggested_archetype, recent }) => {
+        setHookArchetype(suggested_archetype);
+        if (recent.length > 0 && recent[0].hook_archetype_label) {
+          setHookSuggestionHint(`Terakhir pakai: ${recent[0].hook_archetype_label} -- disarankan coba teknik lain.`);
+        }
+      })
+      .catch(() => {
+        // best-effort suggestion only -- keep the existing default hookArchetype on failure
+      });
   };
 
   const MAX_SCENES = 10;
@@ -220,6 +236,9 @@ export function ContentGeneratorTab() {
           </CardHeader>
           <CardContent>
             <HookArchetypeSelector value={hookArchetype} onChange={setHookArchetype} />
+            {hookSuggestionHint && (
+              <p className="text-xs text-muted-foreground mt-2">{hookSuggestionHint}</p>
+            )}
           </CardContent>
         </Card>
       )}

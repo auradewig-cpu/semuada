@@ -1,6 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
+export interface HookSuggestion {
+  suggested_archetype: HookArchetype;
+  recent: { hook_archetype: string | null; hook_archetype_label: string | null; caption: string | null; created_at: string | null }[];
+}
+
+// Plain fetch, not a react-query hook -- this is a one-shot side effect
+// triggered on product selection (see ContentGeneratorTab.tsx), not a value
+// the UI subscribes to. Visibly changes the HookArchetypeSelector's default
+// so the admin can see/override it, rather than silently rotating server-side.
+export async function fetchHookSuggestion(productId: string): Promise<HookSuggestion> {
+  const res = await fetch(`/api/content-generator/hook-suggestion?productId=${encodeURIComponent(productId)}`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 export interface Character {
   id: string;
   name: string;

@@ -7,12 +7,13 @@ import { requireAuth } from "@root/lib/apiAuth";
 import { compileMasterPrompt } from "@root/lib/content-generator/masterPrompt";
 import { resolveNarrationWpm } from "@root/lib/content-generator/contentStyles";
 import { generateWithFallback } from "@root/lib/content-generator/providers";
-import { parseAiResponse, parseSceneResponse, parseCaptionResponse, validateOutput, buildRepairPrompt } from "@root/lib/content-generator/jsonParser";
+import { parseAiResponse, parseCaptionResponse, validateOutput, buildRepairPrompt } from "@root/lib/content-generator/jsonParser";
 import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content-generator/policyCheck";
-import { buildSceneRephrasePrompt, buildCaptionRephrasePrompt } from "@root/lib/content-generator/autoRephrase";
+import { buildCaptionRephrasePrompt, rephraseSceneViolations } from "@root/lib/content-generator/autoRephrase";
 import type { PolicyViolation } from "@root/lib/content-generator/policyCheck";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
 import { generateRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
+import { getRecentGenerations, buildAvoidRepetitionBlock } from "@root/lib/content-generator/variationContext";
 import type { AiProvider, GenerationResult } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
@@ -42,14 +43,7 @@ async function applyTargetedRephrase(
   for (const [sceneNumber, sceneViolations] of violationsByScene) {
     const sceneIndex = result.scenes.findIndex((s) => s.scene_number === sceneNumber);
     if (sceneIndex === -1) continue;
-    try {
-      const rephrasePrompt = buildSceneRephrasePrompt(result.scenes[sceneIndex], sceneViolations);
-      const response = await generateWithFallback(providerOrder, keys, rephrasePrompt, []);
-      const rephrased = parseSceneResponse(response.text);
-      if (rephrased) result.scenes[sceneIndex] = rephrased;
-    } catch {
-      // leave scene as-is, violation stays in warnings
-    }
+    result.scenes[sceneIndex] = await rephraseSceneViolations(result.scenes[sceneIndex], sceneViolations, providerOrder, keys);
   }
 
   if (captionViolations.length > 0) {
@@ -126,6 +120,10 @@ export async function POST(request: NextRequest) {
   };
   const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180);
 
+  // Anti-repetition context, scoped per product -- see variationContext.ts.
+  const recentGenerations = await getRecentGenerations(productId);
+  const avoidRepetitionBlock = buildAvoidRepetitionBlock(recentGenerations);
+
   const prompt = compileMasterPrompt({
     productName: product.productName,
     category: product.category,
@@ -144,6 +142,7 @@ export async function POST(request: NextRequest) {
     includePrice,
     narrationMode,
     cameraPattern,
+    avoidRepetitionBlock,
   });
 
   const images = [
@@ -160,7 +159,11 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const first = await generateWithFallback(providerOrder, keys, prompt, images);
+    // Higher temperature than the 0.35 default for this initial creative
+    // call -- more lexical variety, complementing the avoidRepetitionBlock
+    // above. Repair/rephrase calls below stay at the default (need precise
+    // instruction-following to fix a specific flagged problem, not creativity).
+    const first = await generateWithFallback(providerOrder, keys, prompt, images, 0.65);
     let result = parseAiResponse(first.text);
     if (!result) {
       return NextResponse.json(
@@ -208,12 +211,26 @@ export async function POST(request: NextRequest) {
 
     const warnings = [...problems, ...formatPolicyViolations(policyViolations)];
 
-    await db.insert(contentGenerations).values({
-      productId: product.id,
-      characterId: character?.id,
-      style,
-      output: JSON.stringify(result),
-    });
+    // Isolated from the main try/catch on purpose: a transient DB error here
+    // must not turn an already-successful generation into a 502 for the user
+    // (they'd lose the result they already paid AI-call cost for). Losing
+    // this one history row just means the next generation's anti-repetition
+    // context is slightly less complete, not a user-facing failure.
+    try {
+      await db.insert(contentGenerations).values({
+        productId: product.id,
+        characterId: character?.id,
+        style,
+        output: JSON.stringify(result),
+        hookArchetype,
+        contentGoal,
+        ctaType,
+        caption: result.caption,
+        hashtags: result.hashtags,
+      });
+    } catch {
+      // best-effort history log, see comment above
+    }
 
     return NextResponse.json({ result, warnings });
   } catch (err) {

@@ -63,7 +63,7 @@ async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeTy
   return { base64: Buffer.from(buffer).toString("base64"), mimeType: contentType };
 }
 
-async function callGemini(apiKey: string, model: string, prompt: string, images: ImageInput[]): Promise<CallResult> {
+async function callGemini(apiKey: string, model: string, prompt: string, images: ImageInput[], temperature: number): Promise<CallResult> {
   const imageParts = await Promise.all(
     images.map(async (img) => {
       const { base64, mimeType } = await fetchImageAsBase64(img.url);
@@ -82,7 +82,7 @@ async function callGemini(apiKey: string, model: string, prompt: string, images:
         signal: controller.signal,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }, ...imageParts] }],
-          generationConfig: { temperature: 0.35, maxOutputTokens: 16384, responseMimeType: "application/json" },
+          generationConfig: { temperature, maxOutputTokens: 16384, responseMimeType: "application/json" },
         }),
       }
     );
@@ -108,7 +108,8 @@ async function callOpenAiCompatible(
   endpoint: string,
   apiKey: string,
   model: string,
-  prompt: string
+  prompt: string,
+  temperature: number
 ): Promise<CallResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -122,7 +123,7 @@ async function callOpenAiCompatible(
       signal: controller.signal,
       body: JSON.stringify({
         model,
-        temperature: 0.35,
+        temperature,
         max_tokens: 8192,
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
@@ -142,19 +143,21 @@ async function callProvider(
   provider: AiProvider,
   keys: ProviderKeys,
   prompt: string,
-  images: ImageInput[]
+  images: ImageInput[],
+  temperature: number
 ): Promise<CallResult> {
   switch (provider) {
     case "gemini":
       if (!keys.geminiApiKey) throw new Error("Gemini API key belum diisi.");
-      return callGemini(keys.geminiApiKey, keys.geminiModel || "gemini-flash-latest", prompt, images);
+      return callGemini(keys.geminiApiKey, keys.geminiModel || "gemini-flash-latest", prompt, images, temperature);
     case "groq":
       if (!keys.groqApiKey) throw new Error("Groq API key belum diisi.");
       return callOpenAiCompatible(
         "https://api.groq.com/openai/v1/chat/completions",
         keys.groqApiKey,
         "llama-3.3-70b-versatile",
-        prompt
+        prompt,
+        temperature
       );
     case "openrouter":
       if (!keys.openrouterApiKey) throw new Error("OpenRouter API key belum diisi.");
@@ -162,7 +165,8 @@ async function callProvider(
         "https://openrouter.ai/api/v1/chat/completions",
         keys.openrouterApiKey,
         "deepseek/deepseek-chat",
-        prompt
+        prompt,
+        temperature
       );
     case "deepseek":
       if (!keys.deepseekApiKey) throw new Error("DeepSeek API key belum diisi.");
@@ -170,7 +174,8 @@ async function callProvider(
         "https://api.deepseek.com/chat/completions",
         keys.deepseekApiKey,
         "deepseek-chat",
-        prompt
+        prompt,
+        temperature
       );
   }
 }
@@ -179,7 +184,12 @@ export async function generateWithFallback(
   providerOrder: AiProvider[],
   keys: ProviderKeys,
   prompt: string,
-  images: ImageInput[]
+  images: ImageInput[],
+  // 0.35 is the long-standing default (precise/instruction-following) -- call
+  // sites that want more lexical variety (initial creative generate, hook
+  // variants) pass a higher value explicitly. Repair/rephrase calls omit this
+  // on purpose, since those need to fix a specific flagged problem precisely.
+  temperature = 0.35
 ): Promise<{ text: string; providerUsed: AiProvider }> {
   const errors: string[] = [];
   // Don't let cooldowns lock out generation entirely -- if every provider in
@@ -193,7 +203,7 @@ export async function generateWithFallback(
       continue;
     }
     try {
-      const result = await callProvider(provider, keys, prompt, images);
+      const result = await callProvider(provider, keys, prompt, images, temperature);
       providerCooldowns.delete(provider);
       return { text: result.text, providerUsed: provider };
     } catch (err) {

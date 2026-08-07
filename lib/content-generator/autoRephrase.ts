@@ -1,5 +1,7 @@
-import type { SceneOutput } from "./types";
+import type { AiProvider, SceneOutput } from "./types";
 import type { PolicyViolation } from "./policyCheck";
+import { generateWithFallback, type ProviderKeys } from "./providers";
+import { parseSceneResponse } from "./jsonParser";
 
 // Ported concept from ViralFrame Studio's autoRephrase.ts -- instead of
 // resending the whole result and asking the AI to "fix everything" (our
@@ -38,4 +40,25 @@ ${formatViolations(violations)}
 
 Tulis ulang caption ini, perbaiki HANYA frasa yang melanggar, pertahankan nada dan pesan lain apa adanya. Jangan sertakan hashtag di dalamnya. Balas HANYA dengan JSON berbentuk {"caption": "..."} berisi caption baru, tidak ada teks lain di luar JSON itu.
 `.trim();
+}
+
+// Best-effort single-scene rephrase: leaves the scene untouched if the AI
+// call fails or the response doesn't parse, same as the inline behavior this
+// was extracted from (generate/route.ts's applyTargetedRephrase). Shared by
+// the main generate flow and regenerate-scene, which both need the identical
+// "flag a violation, try once to fix it" behavior.
+export async function rephraseSceneViolations(
+  scene: SceneOutput,
+  violations: PolicyViolation[],
+  providerOrder: AiProvider[],
+  keys: ProviderKeys
+): Promise<SceneOutput> {
+  try {
+    const rephrasePrompt = buildSceneRephrasePrompt(scene, violations);
+    const response = await generateWithFallback(providerOrder, keys, rephrasePrompt, []);
+    const rephrased = parseSceneResponse(response.text);
+    return rephrased ?? scene;
+  } catch {
+    return scene;
+  }
 }
