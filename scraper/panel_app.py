@@ -188,12 +188,12 @@ def _run_worker(link_column: str, base_url: str, username: str, password: str) -
                     _state["failed"] += 1
             _push_log(f"[{index}/{total}] {message}")
 
-        success, failed = run_scrape_loop(
+        success, failed, skipped_out_of_stock = run_scrape_loop(
             _driver, todo, link_column, on_result, control=_control, progress_cb=progress_cb
         )
 
         final_status = "stopped" if _control.stopped else "done"
-        _push_log(f"Selesai. Berhasil: {success}, Gagal: {failed}.")
+        _push_log(f"Selesai. Berhasil: {success}, Gagal: {failed}, Dilewati (stok habis): {skipped_out_of_stock}.")
         _set_status(final_status)
     except site_client.SiteAuthError as e:
         _push_log(f"Login gagal: {e}")

@@ -41,3 +41,9 @@ RATING_CSS = "div.product-rating-overview__rating-score"
 SOLD_TEXT_PATTERN = r"([\d.,]+\s*(?:RB|JT)?\+?)\s*Terjual"
 RATING_COUNT_TEXT_PATTERN = r"([\d.,]+\s*(?:RB|JT)?)\s*penilaian"
 SHIP_FROM_LABEL_TEXT = "Dikirim Dari"
+
+# Confirmed from a real out-of-stock product page (2026-08-07): Shopee
+# renders a plain "STOK HABIS" <div> near the buy buttons regardless of
+# variant selection -- reliable even though the buy buttons' own disabled
+# state is ambiguous (they're also disabled before a variant is picked).
+OUT_OF_STOCK_TEXT_PATTERN = r"STOK\s+HABIS"

@@ -216,6 +216,16 @@ def scrape_sold_count(body_text: str) -> int | None:
     return parse_count(match.group(1)) if match else None
 
 
+class OutOfStockError(Exception):
+    """Raised by scrape_product() to signal the product should be skipped --
+    caught separately in run_scrape_loop() so it's never counted as a scrape
+    failure (doesn't trip the consecutive-failure circuit breaker)."""
+
+
+def is_out_of_stock(body_text: str) -> bool:
+    return bool(re.search(sel.OUT_OF_STOCK_TEXT_PATTERN, body_text, re.IGNORECASE))
+
+
 def scrape_ship_from(body_text: str) -> str:
     idx = body_text.find(sel.SHIP_FROM_LABEL_TEXT)
     if idx == -1:
@@ -310,6 +320,9 @@ def scrape_product(driver, product_url: str, product_id: str = "") -> dict:
     # document.body.innerText via JS runs natively in the browser and is
     # dramatically faster for the exact same text content.
     body_text = driver.execute_script("return document.body.innerText;")
+
+    if is_out_of_stock(body_text):
+        raise OutOfStockError(f"Produk stok habis: {product_id}")
 
     category, subcategory, item, scraped_title = scrape_breadcrumb(driver)
     price = scrape_price(driver, body_text)
@@ -425,16 +438,17 @@ def run_scrape_loop(
     on_result: Callable[[dict, dict], None],
     control: Optional[ScrapeControl] = None,
     progress_cb: Optional[Callable[[int, int, str, bool], None]] = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Scrapes each row's `link_column` URL and calls on_result(csv_row,
     scraped) for every success. Shared by the CLI (writes CSV rows) and the
     local control panel (POSTs straight to the site's API).
 
     progress_cb(index, total, message, ok) is called after every row
-    (success or failure) so a caller can report live progress.
+    (success, failure, or out-of-stock skip) so a caller can report live
+    progress. Returns (success, failed, skipped_out_of_stock).
     """
     control = control or ScrapeControl()
-    success, failed = 0, 0
+    success, failed, skipped_out_of_stock = 0, 0, 0
     consecutive_failures = 0
 
     for i, row in enumerate(rows, start=1):
@@ -464,6 +478,14 @@ def run_scrape_loop(
             log.info("  %s", msg)
             if progress_cb:
                 progress_cb(i, len(rows), msg, True)
+        except OutOfStockError:
+            skipped_out_of_stock += 1
+            # Not a scrape failure -- don't trip the circuit breaker, and
+            # reset it since this proves the session/connection is fine.
+            consecutive_failures = 0
+            log.info("  [%d/%d] Dilewati ID %s: stok habis", i, len(rows), product_id)
+            if progress_cb:
+                progress_cb(i, len(rows), f"Dilewati ID {product_id}: stok habis", True)
         except (TimeoutException, WebDriverException) as e:
             failed += 1
             consecutive_failures += 1
@@ -491,7 +513,7 @@ def run_scrape_loop(
 
         control.interruptible_sleep(random.uniform(MIN_DELAY_SECONDS, MAX_DELAY_SECONDS))
 
-    return success, failed
+    return success, failed, skipped_out_of_stock
 
 
 def main() -> None:
@@ -519,11 +541,14 @@ def main() -> None:
 
     try:
         wait_for_manual_login(driver)
-        success, failed = run_scrape_loop(driver, todo, "Link Produk", on_result)
+        success, failed, skipped_out_of_stock = run_scrape_loop(driver, todo, "Link Produk", on_result)
     finally:
         driver.quit()
 
-    log.info("Selesai. Berhasil: %d, Gagal: %d. Output: %s", success, failed, args.output_csv)
+    log.info(
+        "Selesai. Berhasil: %d, Gagal: %d, Dilewati (stok habis): %d. Output: %s",
+        success, failed, skipped_out_of_stock, args.output_csv
+    )
     if failed:
         log.info("Jalankan ulang command yang sama untuk retry baris yang gagal (otomatis skip yang sudah sukses).")
 
