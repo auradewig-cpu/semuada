@@ -39,6 +39,17 @@ export type PlatformTarget = 'shopee_video' | 'instagram_reels' | 'facebook_reel
 export type AspectRatio = '9:16' | '16:9' | '1:1' | '4:5' | '3:4';
 export type HookArchetype = 'unpopular_opinion' | 'pov_realism' | 'specific_outcome' | 'curiosity_gap' | 'relatable' | 'emotional' | 'mistake_warning';
 export type ContentGoal = 'conversion' | 'growth' | 'engagement';
+export type LanguageTone =
+  | 'formal_netral'
+  | 'santai_ngobrol'
+  | 'gaul_kekinian'
+  | 'elegan_premium'
+  | 'heboh_lebay'
+  | 'kocak_receh'
+  | 'sotoy_santai'
+  | 'curhat_personal'
+  | 'sarkas_julid'
+  | 'ibu_bapack_relatable';
 export type CtaTypeId =
   | 'link_bio'
   | 'dm_whatsapp'
@@ -101,6 +112,7 @@ export interface GenerateContentInput {
   hookArchetype: HookArchetype;
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
+  languageTone: LanguageTone;
   includePrice: boolean;
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
@@ -187,6 +199,7 @@ export interface RegenerateSceneInput {
   hookArchetype: HookArchetype;
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
+  languageTone: LanguageTone;
   sceneIndex: number;
   sceneDuration: number;
   totalScenes: number;
@@ -215,6 +228,7 @@ export interface HookVariantsInput {
   platform: PlatformTarget;
   aspectRatio: AspectRatio;
   currentArchetype: HookArchetype;
+  languageTone: LanguageTone;
   sceneDuration: number;
   productImageUrl: string;
   currentScene: SceneOutput;

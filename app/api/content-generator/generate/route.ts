@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
     hookArchetype,
     contentGoal,
     ctaType,
+    languageTone,
     includePrice,
     narrationMode,
     cameraPattern,
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
     openrouterApiKey: settingsRow.openrouterApiKey,
     deepseekApiKey: settingsRow.deepseekApiKey,
   };
-  const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180);
+  const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180, languageTone);
 
   // Anti-repetition context, scoped per product -- see variationContext.ts.
   const recentGenerations = await getRecentGenerations(productId);
@@ -136,6 +137,7 @@ export async function POST(request: NextRequest) {
     hookArchetype,
     contentGoal,
     ctaType,
+    languageTone,
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
     narrationWpm,

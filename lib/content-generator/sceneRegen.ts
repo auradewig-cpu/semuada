@@ -3,6 +3,7 @@ import { buildHookInstruction } from "./hookPatterns";
 import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { getCtaType, resolveCtaForGoal } from "./ctaTypes";
+import { getLanguageTone, buildLanguageToneRule } from "./languageTones";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
 import {
   buildCharacterBlock,
@@ -20,6 +21,7 @@ import type {
   ContentStyleId,
   CtaTypeId,
   HookArchetype,
+  LanguageTone,
   NarrationMode,
   PlatformTarget,
   SceneOutput,
@@ -42,6 +44,7 @@ export interface SceneRegenInput {
   hookArchetype: HookArchetype;
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
+  languageTone: LanguageTone;
   characterName: string | null;
   characterDescription: string | null;
   narrationWpm: number;
@@ -61,6 +64,7 @@ export function compileSceneRegenPrompt(input: SceneRegenInput): string {
   const isFirstScene = input.sceneIndex === 0;
   const effectiveCta = resolveCtaForGoal(input.ctaType, input.contentGoal);
   const ctaSpec = getCtaType(effectiveCta);
+  const toneSpec = getLanguageTone(input.languageTone);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode);
@@ -84,6 +88,7 @@ PRODUK: ${input.productName} (${input.category})${priceLine ? `, ${priceLine.rep
 ${characterBlock}
 
 GAYA VIDEO: ${style.label} -- ${style.narrativeVoiceGuidance}
+${buildLanguageToneRule(input.languageTone)}
 PLATFORM: ${platformSpec.label} (rasio ${input.aspectRatio}) -- ${platformSpec.behavior}
 AI VIDEO TOOL: ${toolSpec.label} (batas ai_ready_prompt: ${toolSpec.charLimit} karakter). Format: ${toolSpec.formatTemplate}
 ${hookBlock}
@@ -94,7 +99,7 @@ ${contextBlock}
 ATURAN:
 - scene_number HARUS PERSIS ${sceneNumber}, duration_seconds HARUS PERSIS ${input.sceneDuration}.
 - "script_narration" Bahasa Indonesia. "visual_description", "camera_direction", "ai_ready_prompt" Bahasa Inggris.
-- Target kecepatan bicara ${input.narrationWpm} kata per menit. WAJIB pakai kalimat PENDEK (di bawah 12 kata), HINDARI kalimat majemuk panjang -- pecah jadi beberapa kalimat pendek supaya AI voice tidak salah penekanan/terdengar blibet.
+- Target kecepatan bicara ${input.narrationWpm} kata per menit. Kalimat maksimal sekitar ${toneSpec.maxWordsPerSentence} kata (sesuai gaya bahasa di atas), HINDARI kalimat majemuk yang jauh melebihi itu -- pecah jadi beberapa kalimat supaya AI voice tidak salah penekanan/terdengar blibet.
 - ${productAnchorRule}
 - ${priceRule}
 - ${cameraPatternRule}

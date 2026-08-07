@@ -27,6 +27,22 @@ export type HookArchetype =
 
 export type ContentGoal = "conversion" | "growth" | "engagement";
 
+// Independent from ContentStyleId (video STRUCTURE, e.g. vlog/tutorial) --
+// this controls voice REGISTER (how casual/gaul/formal the narration
+// sounds), so e.g. "tutorial structure + gaul tone" is expressible. See
+// lib/content-generator/languageTones.ts for the concrete instructions.
+export type LanguageTone =
+  | "formal_netral"
+  | "santai_ngobrol"
+  | "gaul_kekinian"
+  | "elegan_premium"
+  | "heboh_lebay"
+  | "kocak_receh"
+  | "sotoy_santai"
+  | "curhat_personal"
+  | "sarkas_julid"
+  | "ibu_bapack_relatable";
+
 export type CtaTypeId =
   | "link_bio"
   | "dm_whatsapp"

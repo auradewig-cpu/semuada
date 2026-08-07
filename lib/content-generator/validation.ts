@@ -42,6 +42,18 @@ const ctaTypeSchema = z.enum([
 ]);
 const narrationModeSchema = z.enum(["lipsync", "voiceover"]);
 const cameraPatternSchema = z.enum(["single_angle", "aroll_broll"]);
+const languageToneSchema = z.enum([
+  "formal_netral",
+  "santai_ngobrol",
+  "gaul_kekinian",
+  "elegan_premium",
+  "heboh_lebay",
+  "kocak_receh",
+  "sotoy_santai",
+  "curhat_personal",
+  "sarkas_julid",
+  "ibu_bapack_relatable",
+]);
 
 // Scenes round-trip through our own generate response (previousScene/nextScene/
 // currentScene) -- they're already shaped by our own code, so a full nested
@@ -76,6 +88,7 @@ export const generateRequestSchema = z.object({
   hookArchetype: hookArchetypeSchema,
   contentGoal: contentGoalSchema,
   ctaType: ctaTypeSchema,
+  languageTone: languageToneSchema.default("formal_netral"),
   includePrice: z.boolean().default(true),
   narrationMode: narrationModeSchema.default("lipsync"),
   cameraPattern: cameraPatternSchema.default("single_angle"),
@@ -93,6 +106,7 @@ export const regenerateSceneRequestSchema = z.object({
   hookArchetype: hookArchetypeSchema,
   contentGoal: contentGoalSchema,
   ctaType: ctaTypeSchema,
+  languageTone: languageToneSchema.default("formal_netral"),
   sceneIndex: z.number().int().min(0),
   sceneDuration: z.number().int().positive(),
   totalScenes: z.number().int().positive(),
@@ -112,6 +126,7 @@ export const hookVariantsRequestSchema = z.object({
   platform: platformSchema,
   aspectRatio: aspectRatioSchema,
   currentArchetype: hookArchetypeSchema,
+  languageTone: languageToneSchema.default("formal_netral"),
   sceneDuration: z.number().int().positive(),
   productImageUrl: z.string().url(),
   currentScene: sceneShapeSchema,

@@ -2,6 +2,7 @@ import { getContentStyle } from "./contentStyles";
 import { HOOK_ARCHETYPES } from "./hookPatterns";
 import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
+import { buildLanguageToneRule } from "./languageTones";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
 import {
   buildCharacterBlock,
@@ -11,7 +12,7 @@ import {
   buildPriceRule,
   buildCameraPatternRule,
 } from "./promptFragments";
-import type { AiToolId, AspectRatio, CameraPattern, ContentStyleId, HookArchetype, NarrationMode, PlatformTarget, SceneOutput } from "./types";
+import type { AiToolId, AspectRatio, CameraPattern, ContentStyleId, HookArchetype, LanguageTone, NarrationMode, PlatformTarget, SceneOutput } from "./types";
 
 export interface HookVariantsInput {
   productName: string;
@@ -21,6 +22,7 @@ export interface HookVariantsInput {
   productImageUrl: string;
   currentScene: SceneOutput;
   currentArchetype: HookArchetype;
+  languageTone: LanguageTone;
   style: ContentStyleId;
   aiTool: AiToolId;
   platform: PlatformTarget;
@@ -65,6 +67,7 @@ PRODUK: ${input.productName} (${input.category})${priceLine ? `, ${priceLine.rep
 ${characterBlock}
 
 GAYA VIDEO: ${style.label}
+${buildLanguageToneRule(input.languageTone)}
 PLATFORM: ${platformSpec.label} -- ${platformSpec.behavior}
 AI VIDEO TOOL: ${toolSpec.label} (batas ai_ready_prompt: ${toolSpec.charLimit} karakter). Format: ${toolSpec.formatTemplate}
 

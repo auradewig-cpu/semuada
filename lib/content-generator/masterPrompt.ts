@@ -3,6 +3,7 @@ import { buildHookInstruction } from "./hookPatterns";
 import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec } from "./platforms";
 import { getCtaType, resolveCtaForGoal } from "./ctaTypes";
+import { getLanguageTone, buildLanguageToneRule } from "./languageTones";
 import { NEGATIVE_PROMPT_BLOCK, SPOKEN_NUMBER_RULE } from "./negativePrompt";
 import {
   buildCharacterBlock,
@@ -12,7 +13,7 @@ import {
   buildPriceRule,
   buildCameraPatternRule,
 } from "./promptFragments";
-import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, NarrationMode, PlatformTarget, SceneInput } from "./types";
+import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, LanguageTone, NarrationMode, PlatformTarget, SceneInput } from "./types";
 
 interface MasterPromptInput {
   productName: string;
@@ -26,6 +27,7 @@ interface MasterPromptInput {
   hookArchetype: HookArchetype;
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
+  languageTone: LanguageTone;
   characterName: string | null;
   characterDescription: string | null;
   narrationWpm: number;
@@ -47,6 +49,7 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
   const hookInstruction = buildHookInstruction(input.hookArchetype, input.platform, input.scenes[0].duration);
   const effectiveCta = resolveCtaForGoal(input.ctaType, input.contentGoal);
   const ctaSpec = getCtaType(effectiveCta);
+  const toneSpec = getLanguageTone(input.languageTone);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
@@ -96,6 +99,8 @@ Struktur: ${style.structureDescription}
 - Instruksi kamera: ${style.cameraInstruction}
 - Instruksi nada bicara: ${style.narrativeVoiceGuidance}
 
+${buildLanguageToneRule(input.languageTone)}
+
 PLATFORM TUJUAN: ${platformSpec.label} (rasio ${input.aspectRatio}, durasi total ${input.scenes.reduce((a, s) => a + s.duration, 0)}s)
 ${platformSpec.behavior}
 
@@ -118,7 +123,7 @@ ATURAN WAJIB (SANGAT PENTING):
 3. BAHASA PER FIELD (WAJIB DIPATUHI PERSIS): "script_narration" WAJIB Bahasa Indonesia. "visual_description", "camera_direction", dan "ai_ready_prompt" WAJIB Bahasa Inggris (English) -- field-field ini dibaca oleh AI video tool, bukan manusia Indonesia.
 4. ${productAnchorRule}
 5. ${priceRule}
-6. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit. WAJIB pakai kalimat PENDEK (idealnya di bawah 12 kata) -- HINDARI kalimat majemuk panjang bersambung dengan "dan"/"yang"/"karena" berkali-kali, itu bikin AI voice salah penekanan dan terdengar "blibet". Pecah jadi beberapa kalimat pendek terpisah tanda titik, masing-masing 1 ide saja.
+6. Narasi harus terdengar natural, TIDAK monoton: intonasi cepat, artikulasi jelas, ada jeda natural sebelum kalimat penting. Target kecepatan bicara ${input.narrationWpm} kata per menit. Kalimat maksimal sekitar ${toneSpec.maxWordsPerSentence} kata (sesuai GAYA BAHASA yang dipilih) -- HINDARI kalimat majemuk yang jauh melebihi batas itu bersambung dengan "dan"/"yang"/"karena" berkali-kali, itu bikin AI voice salah penekanan dan terdengar "blibet". Pecah jadi beberapa kalimat terpisah tanda titik kalau lebih panjang dari itu, masing-masing 1 ide saja.
 7. JANGAN gunakan kata "sempurna", "flawless", "studio quality", "dijamin", "terbukti ampuh 100%" -- hindari klaim berlebihan dan bahasa yang terdengar buatan AI.
 8. Instruksi kamera harus terasa seperti rekaman HP asli: sedikit tidak simetris, pencahayaan ruangan natural (bukan studio), ada momen kecil yang tidak sempurna supaya tidak terlihat "AI banget".
 9. Mode narasi dan pola kamera tiap scene WAJIB ikuti persis "INSTRUKSI PER SCENE" di atas -- JANGAN disamaratakan kalau ada scene yang berbeda mode.

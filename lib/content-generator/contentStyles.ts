@@ -1,4 +1,5 @@
-import type { ContentStyleId } from "./types";
+import { getLanguageTone } from "./languageTones";
+import type { ContentStyleId, LanguageTone } from "./types";
 
 interface ContentStyleDefinition {
   id: ContentStyleId;
@@ -115,7 +116,15 @@ export function getContentStyle(id: ContentStyleId): ContentStyleDefinition {
 // any other value is an explicit manual override and wins outright.
 const UNCUSTOMIZED_WPM_DEFAULT = 180;
 
-export function resolveNarrationWpm(styleId: ContentStyleId, settingsWpm: number | null): number {
+// Floor/ceiling so an extreme tone adjustment (e.g. heboh_lebay's +15 on an
+// already-fast style) can't push the resolved pace somewhere unnatural.
+const MIN_WPM = 80;
+const MAX_WPM = 220;
+
+export function resolveNarrationWpm(styleId: ContentStyleId, settingsWpm: number | null, tone: LanguageTone): number {
+  // An explicit admin override always wins outright -- tone only adjusts the
+  // style's researched default, never a deliberate manual value.
   if (settingsWpm !== null && settingsWpm !== UNCUSTOMIZED_WPM_DEFAULT) return settingsWpm;
-  return getContentStyle(styleId).defaultWpm;
+  const base = getContentStyle(styleId).defaultWpm + getLanguageTone(tone).wpmAdjustment;
+  return Math.min(MAX_WPM, Math.max(MIN_WPM, base));
 }

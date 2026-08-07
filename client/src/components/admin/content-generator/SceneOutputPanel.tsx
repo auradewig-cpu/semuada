@@ -15,6 +15,7 @@ import {
   type HookArchetype,
   type ContentGoal,
   type CtaTypeId,
+  type LanguageTone,
   type NarrationMode,
   type CameraPattern,
   type SceneInput,
@@ -32,6 +33,7 @@ export interface SceneGenerationContext {
   hookArchetype: HookArchetype;
   contentGoal: ContentGoal;
   ctaType: CtaTypeId;
+  languageTone: LanguageTone;
   includePrice: boolean;
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
@@ -132,6 +134,7 @@ export function SceneOutputPanel({ result, onResultChange, warnings, context, sc
         platform: context.platform,
         aspectRatio: context.aspectRatio,
         currentArchetype: context.hookArchetype,
+        languageTone: context.languageTone,
         sceneDuration: scene.duration_seconds,
         productImageUrl: scene.reference_images.product,
         currentScene: scene,

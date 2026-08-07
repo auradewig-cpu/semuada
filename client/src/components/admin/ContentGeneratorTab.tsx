@@ -16,6 +16,7 @@ import {
   type HookArchetype,
   type ContentGoal,
   type CtaTypeId,
+  type LanguageTone,
   type NarrationMode,
   type CameraPattern,
   type SceneInput,
@@ -31,6 +32,7 @@ import { StyleSelector } from "@/components/admin/content-generator/StyleSelecto
 import { ContentGoalSelector } from "@/components/admin/content-generator/ContentGoalSelector";
 import { CtaTypeSelector } from "@/components/admin/content-generator/CtaTypeSelector";
 import { HookArchetypeSelector } from "@/components/admin/content-generator/HookArchetypeSelector";
+import { LanguageToneSelector } from "@/components/admin/content-generator/LanguageToneSelector";
 import { NarrationModeSelector } from "@/components/admin/content-generator/NarrationModeSelector";
 import { CameraPatternSelector } from "@/components/admin/content-generator/CameraPatternSelector";
 import { SceneOutputPanel } from "@/components/admin/content-generator/SceneOutputPanel";
@@ -47,6 +49,7 @@ export function ContentGeneratorTab() {
   const [contentGoal, setContentGoal] = useState<ContentGoal>('conversion');
   const [ctaType, setCtaType] = useState<CtaTypeId>('klik_keranjang_kuning');
   const [hookArchetype, setHookArchetype] = useState<HookArchetype>('specific_outcome');
+  const [languageTone, setLanguageTone] = useState<LanguageTone>('formal_netral');
   const [includePrice, setIncludePrice] = useState(true);
   const [narrationMode, setNarrationMode] = useState<NarrationMode>('lipsync');
   const [cameraPattern, setCameraPattern] = useState<CameraPattern>('single_angle');
@@ -92,7 +95,7 @@ export function ContentGeneratorTab() {
       });
       return;
     }
-    setScenes((prev) => [...prev, { imageUrl: url, duration: 8, narrationMode: null, cameraPattern: null }]);
+    setScenes((prev) => [...prev, { imageUrl: url, duration: 10, narrationMode: null, cameraPattern: null }]);
   };
 
   const usageCounts = scenes.reduce<Record<string, number>>((acc, s) => {
@@ -121,6 +124,7 @@ export function ContentGeneratorTab() {
         hookArchetype,
         contentGoal,
         ctaType,
+        languageTone,
         includePrice,
         narrationMode,
         cameraPattern,
@@ -260,7 +264,21 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>10. Tujuan Konten</CardTitle>
+            <CardTitle>10. Gaya Bahasa</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LanguageToneSelector value={languageTone} onChange={setLanguageTone} />
+            <p className="text-xs text-muted-foreground mt-3">
+              Seberapa gaul/formal narasinya -- independen dari "Gaya Video" di atas (yang mengatur struktur cerita, bukan nada bicara). Mempengaruhi panjang kalimat & kecepatan bicara juga.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {scenes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>11. Tujuan Konten</CardTitle>
           </CardHeader>
           <CardContent>
             <ContentGoalSelector value={contentGoal} onChange={setContentGoal} />
@@ -271,7 +289,7 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>11. Opsi Harga</CardTitle>
+            <CardTitle>12. Opsi Harga</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
@@ -287,7 +305,7 @@ export function ContentGeneratorTab() {
       {scenes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>12. CTA</CardTitle>
+            <CardTitle>13. CTA</CardTitle>
           </CardHeader>
           <CardContent>
             <CtaTypeSelector value={ctaType} onChange={setCtaType} contentGoal={contentGoal} platform={platform} />
@@ -320,6 +338,7 @@ export function ContentGeneratorTab() {
             hookArchetype,
             contentGoal,
             ctaType,
+            languageTone,
             includePrice,
             narrationMode,
             cameraPattern,
