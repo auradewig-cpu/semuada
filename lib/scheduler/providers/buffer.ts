@@ -7,6 +7,10 @@ import type { SchedulerPlatform, ProviderResults } from "../types";
 // videoUrl is already public, so unlike Zernio (see ../providers/zernio.ts)
 // no upload step is needed here.
 //
+// Base URL confirmed against Buffer's own guide: GraphQL requests POST
+// directly to https://api.buffer.com (no /graphql suffix -- Buffer's API is
+// GraphQL-only, so the root IS the GraphQL endpoint).
+//
 // IMPORTANT: the exact GraphQL field/argument names below are written from
 // Buffer's documented shape at the time this feature was designed, not from
 // a live schema introspection. Run one real call against Buffer's GraphQL
@@ -14,7 +18,7 @@ import type { SchedulerPlatform, ProviderResults } from "../types";
 // this in production, and adjust field names if Buffer's actual schema
 // differs -- particularly the `media` input shape and whatever field
 // signals "publish now" vs "schedule for later".
-const BUFFER_GRAPHQL_ENDPOINT = "https://api.buffer.com/2/graphql";
+const BUFFER_GRAPHQL_ENDPOINT = "https://api.buffer.com";
 
 function captionText(video: VideoContent): string {
   return [video.caption, ...(video.hashtags ?? []).map((h) => `#${h}`)].filter(Boolean).join("\n\n");

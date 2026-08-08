@@ -7,13 +7,16 @@ import type { SchedulerPlatform, ProviderResults } from "../types";
 // video bytes must be uploaded via a presigned URL first, then referenced by
 // the publicUrl that upload returns.
 //
+// Base URL confirmed against the quickstart guide's own curl example
+// (`curl https://zernio.com/api/v1/posts ...`) -- NOT a subdomain.
+//
 // IMPORTANT: the platform key strings below ("threads", "facebook") are
 // best-guess from Zernio's docs overview page, not a live schema/response
 // check -- confirm the exact key Zernio expects for Facebook Page (may be
-// "facebook_page" rather than "facebook") via a real GET /v1/accounts call
+// "facebook_page" rather than "facebook") via a real GET /accounts call
 // before relying on this in production. Same caveat for the per-platform
 // result shape in the createPost response, parsed defensively below.
-const ZERNIO_API_BASE = "https://api.zernio.com";
+const ZERNIO_API_BASE = "https://zernio.com/api/v1";
 
 const ZERNIO_PLATFORM_KEY: Record<"threads" | "facebook_page", string> = {
   threads: "threads",
@@ -30,7 +33,7 @@ async function uploadVideoToZernio(apiKey: string, videoUrl: string): Promise<st
   const contentType = videoRes.headers.get("content-type") ?? "video/mp4";
   const videoBytes = await videoRes.arrayBuffer();
 
-  const presignRes = await fetch(`${ZERNIO_API_BASE}/v1/media/presign`, {
+  const presignRes = await fetch(`${ZERNIO_API_BASE}/media/presign`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ filename: "video.mp4", contentType }),
@@ -69,7 +72,7 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
   try {
     const publicUrl = await uploadVideoToZernio(account.zernioApiKey, video.videoUrl);
 
-    const postRes = await fetch(`${ZERNIO_API_BASE}/v1/posts`, {
+    const postRes = await fetch(`${ZERNIO_API_BASE}/posts`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${account.zernioApiKey}` },
       body: JSON.stringify({
