@@ -17,14 +17,22 @@ import type { SchedulerPlatform, ProviderResults } from "../types";
 // API with a real API key (e.g. via their API explorer) before relying on
 // this in production, and adjust field names if Buffer's actual schema
 // differs -- particularly the `media` input shape and whatever field
-// signals "publish now" vs "schedule for later".
+// signals "publish now" vs "schedule for later". This especially applies to
+// `scheduledAt` below, which has NEVER been exercised against a real Buffer
+// account -- verify it against a real call before trusting the daily
+// auto-build flow with real accounts (a wrong/ignored field name could
+// silently publish immediately instead of scheduling for later).
 const BUFFER_GRAPHQL_ENDPOINT = "https://api.buffer.com";
 
 function captionText(video: VideoContent): string {
   return [video.caption, ...(video.hashtags ?? []).map((h) => `#${h}`)].filter(Boolean).join("\n\n");
 }
 
-export async function postToBuffer(account: SchedulerAccount, video: VideoContent, platforms: SchedulerPlatform[]): Promise<ProviderResults> {
+// scheduledAt omitted -> publish immediately (used by the "Jadwalkan & Post
+// Sekarang" manual button). scheduledAt provided -> hand off to Buffer's own
+// scheduler for that exact time (used by the daily 01:00 auto-build, so the
+// actual publish-moment precision is Buffer's job, not our cron's).
+export async function postToBuffer(account: SchedulerAccount, video: VideoContent, platforms: SchedulerPlatform[], scheduledAt?: Date): Promise<ProviderResults> {
   const results: ProviderResults = {};
   if (!account.bufferApiKey) {
     for (const p of platforms) results[p] = { ok: false, error: "Buffer API key belum diisi." };
@@ -50,11 +58,7 @@ export async function postToBuffer(account: SchedulerAccount, video: VideoConten
               profileIds: [profileId],
               text,
               media: { type: "video", url: video.videoUrl },
-              // Publish immediately rather than scheduling further inside
-              // Buffer -- our own rotation schedule (lib/scheduler/rotation.ts)
-              // is the single source of truth for timing; Buffer is only
-              // called when it's actually time to post (see dispatch.ts).
-              now: true,
+              ...(scheduledAt ? { scheduledAt: scheduledAt.toISOString() } : { now: true }),
             },
           },
         }),

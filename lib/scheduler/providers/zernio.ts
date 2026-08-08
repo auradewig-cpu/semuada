@@ -15,7 +15,11 @@ import type { SchedulerPlatform, ProviderResults } from "../types";
 // check -- confirm the exact key Zernio expects for Facebook Page (may be
 // "facebook_page" rather than "facebook") via a real GET /accounts call
 // before relying on this in production. Same caveat for the per-platform
-// result shape in the createPost response, parsed defensively below.
+// result shape in the createPost response, parsed defensively below, and
+// for `scheduledAt` below -- never exercised against a real Zernio account,
+// verify before trusting the daily auto-build flow with real accounts (a
+// wrong/ignored field name could silently publish immediately instead of
+// scheduling for later).
 const ZERNIO_API_BASE = "https://zernio.com/api/v1";
 
 const ZERNIO_PLATFORM_KEY: Record<"threads" | "facebook_page", string> = {
@@ -47,7 +51,10 @@ async function uploadVideoToZernio(apiKey: string, videoUrl: string): Promise<st
   return publicUrl;
 }
 
-export async function postToZernio(account: SchedulerAccount, video: VideoContent, platforms: SchedulerPlatform[]): Promise<ProviderResults> {
+// scheduledAt omitted -> publish immediately (manual "Jadwalkan & Post
+// Sekarang" button). scheduledAt provided -> hand off to Zernio's own
+// scheduler for that exact time (daily 01:00 auto-build).
+export async function postToZernio(account: SchedulerAccount, video: VideoContent, platforms: SchedulerPlatform[], scheduledAt?: Date): Promise<ProviderResults> {
   const results: ProviderResults = {};
   if (!account.zernioApiKey) {
     for (const p of platforms) results[p] = { ok: false, error: "Zernio API key belum diisi." };
@@ -79,9 +86,7 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
         content: captionText(video),
         mediaItems: [{ url: publicUrl, type: "video" }],
         platforms: validTargets.map((t) => ({ platform: ZERNIO_PLATFORM_KEY[t.platform], accountId: t.accountId })),
-        // Publish immediately -- same reasoning as Buffer's `now: true` above,
-        // our own schedule is the single source of truth for timing.
-        publishNow: true,
+        ...(scheduledAt ? { scheduledAt: scheduledAt.toISOString() } : { publishNow: true }),
       }),
     });
     const json = await postRes.json().catch(() => null);
