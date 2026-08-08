@@ -3,6 +3,16 @@ import { CalendarClock, Settings2, TriangleAlert, CheckCircle2, XCircle, Clock, 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSchedulerAccounts, useScheduledPosts, useBuildScheduleNow, useSwapScheduledPostVideo, type ScheduledPost } from "@/hooks/useScheduler";
 import { SchedulerAccountsDialog } from "@/components/admin/content-generator/SchedulerAccountsDialog";
@@ -38,6 +48,7 @@ export function SchedulerTab() {
   const buildScheduleNow = useBuildScheduleNow();
   const swapVideo = useSwapScheduledPostVideo();
   const [pickerForPost, setPickerForPost] = useState<ScheduledPost | null>(null);
+  const [confirmBuildNow, setConfirmBuildNow] = useState(false);
 
   const accounts = accountsData?.items ?? [];
   const posts = postsData?.items ?? [];
@@ -58,14 +69,20 @@ export function SchedulerTab() {
     if (!selectedAccountId) return;
     buildScheduleNow.mutate(selectedAccountId, {
       onSuccess: (data) => {
-        if (data.result.status === 'already_built') {
-          toast({ title: 'Sudah dijadwalkan', description: 'Akun ini sudah dijadwalkan untuk hari ini -- tidak ada perubahan.' });
-        } else {
-          toast({
-            title: 'Jadwal dibuat',
-            description: `${data.result.slotsBuilt} slot terisi${data.result.slotsSkipped > 0 ? `, ${data.result.slotsSkipped} slot kekurangan video` : ''}.`,
-          });
-        }
+        const buildNote =
+          data.buildResult.status === 'already_built'
+            ? 'Sudah dijadwalkan hari ini, tidak ada slot baru.'
+            : `${data.buildResult.slotsBuilt} slot baru dibuat${data.buildResult.slotsSkipped > 0 ? ` (${data.buildResult.slotsSkipped} kekurangan video)` : ''}.`;
+        const { attempted, posted, failed, errors } = data.dispatch;
+        const dispatchNote =
+          attempted === 0
+            ? 'Tidak ada yang perlu diposting sekarang.'
+            : `${posted} berhasil diposting${failed > 0 ? `, ${failed} gagal (${errors[0] ?? 'lihat detail di kartu'})` : ''}.`;
+        toast({
+          variant: failed > 0 ? 'destructive' : 'default',
+          title: failed > 0 ? 'Sebagian gagal posting' : 'Berhasil diposting',
+          description: `${buildNote} ${dispatchNote}`,
+        });
       },
       onError: (error) => toast({ variant: 'destructive', title: 'Gagal menjadwalkan', description: error.message }),
     });
@@ -108,8 +125,8 @@ export function SchedulerTab() {
                 </SelectContent>
               </Select>
               {selectedAccount && (
-                <Button type="button" size="sm" variant="outline" onClick={handleBuildNow} disabled={buildScheduleNow.isPending}>
-                  <Zap className="h-4 w-4 mr-1" /> {buildScheduleNow.isPending ? 'Menjadwalkan...' : 'Jadwalkan Sekarang'}
+                <Button type="button" size="sm" variant="outline" onClick={() => setConfirmBuildNow(true)} disabled={buildScheduleNow.isPending}>
+                  <Zap className="h-4 w-4 mr-1" /> {buildScheduleNow.isPending ? 'Memposting...' : 'Jadwalkan & Post Sekarang'}
                 </Button>
               )}
               <Button type="button" size="sm" variant="outline" onClick={() => setIsAccountsDialogOpen(true)}>
@@ -205,6 +222,23 @@ export function SchedulerTab() {
           onSelect={handleSwapVideo}
         />
       )}
+
+      <AlertDialog open={confirmBuildNow} onOpenChange={setConfirmBuildNow}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Jadwalkan & post sekarang untuk "{selectedAccount?.label}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ini akan langsung memposting video ke TikTok/Instagram/YouTube (via Buffer) dan Threads/FB Page (via Zernio) yang terhubung ke akun ini -- bukan sekadar antre, tapi benar-benar tayang sekarang juga.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmBuildNow(false); handleBuildNow(); }}>
+              Ya, Post Sekarang
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

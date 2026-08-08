@@ -96,16 +96,27 @@ export type BuildScheduleResult =
   | { status: 'already_built' }
   | { status: 'built'; slotsBuilt: number; slotsSkipped: number };
 
+export interface BuildAndDispatchResponse {
+  ok: boolean;
+  date: string;
+  buildResult: BuildScheduleResult;
+  dispatch: { attempted: number; posted: number; failed: number; errors: string[] };
+}
+
+// One click: builds today's queue (no-op if already built today) AND
+// immediately posts everything still queued for this account to Buffer/
+// Zernio -- not a preview. See app/api/scheduler-accounts/[id]/build-now/route.ts.
 export function useBuildScheduleNow() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (accountId: string) => {
       const res = await apiRequest('POST', `/api/scheduler-accounts/${accountId}/build-now`);
-      return res.json() as Promise<{ ok: boolean; date: string; result: BuildScheduleResult }>;
+      return res.json() as Promise<BuildAndDispatchResponse>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
       queryClient.invalidateQueries({ queryKey: ['scheduler-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['video-content'] });
     },
   });
 }
