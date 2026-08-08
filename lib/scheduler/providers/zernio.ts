@@ -10,16 +10,24 @@ import type { SchedulerPlatform, ProviderResults } from "../types";
 // Base URL confirmed against the quickstart guide's own curl example
 // (`curl https://zernio.com/api/v1/posts ...`) -- NOT a subdomain.
 //
+// The presign request shape (filename, contentType), response shape
+// (uploadUrl, publicUrl), base URL, and Bearer auth format below are
+// confirmed against docs.zernio.com's own worked example (2026-08-09) and
+// match this file exactly -- so a real "Zernio presign gagal (400)" seen in
+// production isn't an obviously-wrong field name. The presign error message
+// now includes the response body (previously discarded) specifically so the
+// next real failure is self-diagnosing instead of needing another guess.
+//
 // IMPORTANT: the platform key strings below ("threads", "facebook") are
-// best-guess from Zernio's docs overview page, not a live schema/response
-// check -- confirm the exact key Zernio expects for Facebook Page (may be
-// "facebook_page" rather than "facebook") via a real GET /accounts call
-// before relying on this in production. Same caveat for the per-platform
-// result shape in the createPost response, parsed defensively below, and
-// for `scheduledAt` below -- never exercised against a real Zernio account,
-// verify before trusting the daily auto-build flow with real accounts (a
-// wrong/ignored field name could silently publish immediately instead of
-// scheduling for later).
+// still best-guess from Zernio's docs overview page, not a live
+// schema/response check -- confirm the exact key Zernio expects for
+// Facebook Page (may be "facebook_page" rather than "facebook") via a real
+// GET /accounts call before relying on this in production. Same caveat for
+// the per-platform result shape in the createPost response, parsed
+// defensively below, and for `scheduledAt` -- never exercised against a real
+// Zernio account, verify before trusting the daily auto-build flow with real
+// accounts (a wrong/ignored field name could silently publish immediately
+// instead of scheduling for later).
 const ZERNIO_API_BASE = "https://zernio.com/api/v1";
 
 const ZERNIO_PLATFORM_KEY: Record<"threads" | "facebook_page", string> = {
@@ -42,11 +50,17 @@ async function uploadVideoToZernio(apiKey: string, videoUrl: string): Promise<st
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ filename: "video.mp4", contentType }),
   });
-  if (!presignRes.ok) throw new Error(`Zernio presign gagal (${presignRes.status}).`);
+  if (!presignRes.ok) {
+    const body = await presignRes.text().catch(() => "");
+    throw new Error(`Zernio presign gagal (${presignRes.status})${body ? `: ${body}` : ""}.`);
+  }
   const { uploadUrl, publicUrl } = await presignRes.json();
 
   const putRes = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": contentType }, body: videoBytes });
-  if (!putRes.ok) throw new Error(`Upload video ke Zernio gagal (${putRes.status}).`);
+  if (!putRes.ok) {
+    const body = await putRes.text().catch(() => "");
+    throw new Error(`Upload video ke Zernio gagal (${putRes.status})${body ? `: ${body}` : ""}.`);
+  }
 
   return publicUrl;
 }
