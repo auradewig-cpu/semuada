@@ -135,6 +135,31 @@ export function useSwapScheduledPostVideo() {
   });
 }
 
+export interface RetryScheduledPostResponse {
+  ok: boolean;
+  status: ScheduledPost['status'];
+  errorMessage: string | null;
+}
+
+// Per-card "Jadwalkan & Post Sekarang" retry -- only valid for posts
+// currently "failed" (see app/api/scheduled-posts/[id]/route.ts POST).
+// Publishes immediately, not a preview -- has real, immediately-visible
+// effects on the connected social accounts, same as the account-level
+// manual trigger.
+export function useRetryScheduledPost() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await apiRequest('POST', `/api/scheduled-posts/${postId}/retry`);
+      return res.json() as Promise<RetryScheduledPostResponse>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['video-content'] });
+    },
+  });
+}
+
 export function useScheduledPosts(schedulerAccountId?: string) {
   return useQuery<{ items: ScheduledPost[] }>({
     queryKey: ['scheduled-posts', schedulerAccountId ?? 'all'],

@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useSchedulerAccounts, useScheduledPosts, useBuildScheduleNow, useSwapScheduledPostVideo, type ScheduledPost } from "@/hooks/useScheduler";
+import { useSchedulerAccounts, useScheduledPosts, useBuildScheduleNow, useSwapScheduledPostVideo, useRetryScheduledPost, type ScheduledPost } from "@/hooks/useScheduler";
 import { SchedulerAccountsDialog } from "@/components/admin/content-generator/SchedulerAccountsDialog";
 import { VideoPickerDialog } from "@/components/admin/content-generator/VideoPickerDialog";
 
@@ -47,8 +47,10 @@ export function SchedulerTab() {
   const { data: postsData, isLoading: isLoadingPosts } = useScheduledPosts(selectedAccountId);
   const buildScheduleNow = useBuildScheduleNow();
   const swapVideo = useSwapScheduledPostVideo();
+  const retryPost = useRetryScheduledPost();
   const [pickerForPost, setPickerForPost] = useState<ScheduledPost | null>(null);
   const [confirmBuildNow, setConfirmBuildNow] = useState(false);
+  const [confirmRetryPost, setConfirmRetryPost] = useState<ScheduledPost | null>(null);
 
   const accounts = accountsData?.items ?? [];
   const posts = postsData?.items ?? [];
@@ -85,6 +87,22 @@ export function SchedulerTab() {
         });
       },
       onError: (error) => toast({ variant: 'destructive', title: 'Gagal menjadwalkan', description: error.message }),
+    });
+  };
+
+  const handleRetryPost = () => {
+    if (!confirmRetryPost) return;
+    retryPost.mutate(confirmRetryPost.id, {
+      onSuccess: (data) => {
+        toast({
+          variant: data.status === 'posted' ? 'default' : 'destructive',
+          title: data.status === 'posted' ? 'Berhasil diposting' : 'Masih gagal',
+          description: data.status === 'posted'
+            ? 'Video berhasil diposting ulang.'
+            : (data.errorMessage ?? 'Percobaan ulang masih gagal, lihat detail di kartu.'),
+        });
+      },
+      onError: (error) => toast({ variant: 'destructive', title: 'Gagal mencoba ulang', description: error.message }),
     });
   };
 
@@ -202,6 +220,18 @@ export function SchedulerTab() {
                           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Ganti Video
                         </Button>
                       )}
+                      {post.status === 'failed' && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                          disabled={retryPost.isPending}
+                          onClick={() => setConfirmRetryPost(post)}
+                        >
+                          <Zap className="h-3.5 w-3.5 mr-1" /> Jadwalkan & Post Sekarang
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 );
@@ -235,6 +265,24 @@ export function SchedulerTab() {
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction onClick={() => { setConfirmBuildNow(false); handleBuildNow(); }}>
               Ya, Post Sekarang
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmRetryPost !== null} onOpenChange={(open) => !open && setConfirmRetryPost(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Coba jadwalkan & post sekarang ulang?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Video ini akan langsung dicoba post lagi ke platform yang tadi gagal ({confirmRetryPost?.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join(', ')}) --
+              bukan sekadar antre, langsung tayang sekarang juga kalau berhasil.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmRetryPost(null); handleRetryPost(); }}>
+              Ya, Coba Lagi Sekarang
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
