@@ -16,6 +16,7 @@ export interface SchedulerAccount {
   increment_minutes: number;
   cap_time: string;
   rotation_day_index: number;
+  last_built_date: string | null;
   is_active: boolean;
   updated_at: string | null;
 }
@@ -87,6 +88,38 @@ export function useDeleteSchedulerAccount() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduler-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
+    },
+  });
+}
+
+export type BuildScheduleResult =
+  | { status: 'already_built' }
+  | { status: 'built'; slotsBuilt: number; slotsSkipped: number };
+
+export function useBuildScheduleNow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (accountId: string) => {
+      const res = await apiRequest('POST', `/api/scheduler-accounts/${accountId}/build-now`);
+      return res.json() as Promise<{ ok: boolean; date: string; result: BuildScheduleResult }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduler-accounts'] });
+    },
+  });
+}
+
+export function useSwapScheduledPostVideo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ postId, videoContentId }: { postId: string; videoContentId: string }) => {
+      const res = await apiRequest('PATCH', `/api/scheduled-posts/${postId}`, { video_content_id: videoContentId });
+      return res.json() as Promise<ScheduledPost>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['video-content'] });
     },
   });
 }

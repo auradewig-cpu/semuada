@@ -137,6 +137,7 @@ export function toApiSchedulerAccount(row: DbSchedulerAccount) {
     increment_minutes: row.incrementMinutes,
     cap_time: row.capTime,
     rotation_day_index: row.rotationDayIndex,
+    last_built_date: row.lastBuiltDate,
     is_active: row.isActive,
     updated_at: row.updatedAt,
   };

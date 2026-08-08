@@ -186,6 +186,12 @@ export const schedulerAccounts = pgTable("scheduler_accounts", {
   // for this account -- NOT derived from calendar-date difference, so a
   // missed cron run doesn't cause the rotation to "jump" to catch up.
   rotationDayIndex: integer("rotation_day_index").notNull().default(0),
+  // "YYYY-MM-DD" (Asia/Jakarta) of the last successful build for this
+  // account -- guards against building twice for the same day, whether from
+  // a duplicate cron invocation or the manual "Jadwalkan Sekarang" button
+  // firing after the daily cron already ran. See buildScheduleForAccount()
+  // in lib/scheduler/buildSchedule.ts.
+  lastBuiltDate: text("last_built_date"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

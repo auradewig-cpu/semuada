@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { CalendarClock, Settings2, TriangleAlert, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { CalendarClock, Settings2, TriangleAlert, CheckCircle2, XCircle, Clock, Zap, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useSchedulerAccounts, useScheduledPosts, type ScheduledPost } from "@/hooks/useScheduler";
+import { useToast } from "@/hooks/use-toast";
+import { useSchedulerAccounts, useScheduledPosts, useBuildScheduleNow, useSwapScheduledPostVideo, type ScheduledPost } from "@/hooks/useScheduler";
 import { SchedulerAccountsDialog } from "@/components/admin/content-generator/SchedulerAccountsDialog";
+import { VideoPickerDialog } from "@/components/admin/content-generator/VideoPickerDialog";
 
 const PLATFORM_LABELS: Record<string, string> = {
   tiktok: 'TikTok',
@@ -27,14 +29,47 @@ function isToday(iso: string): boolean {
 }
 
 export function SchedulerTab() {
+  const { toast } = useToast();
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(undefined);
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
 
   const { data: accountsData, isLoading: isLoadingAccounts } = useSchedulerAccounts();
   const { data: postsData, isLoading: isLoadingPosts } = useScheduledPosts(selectedAccountId);
+  const buildScheduleNow = useBuildScheduleNow();
+  const swapVideo = useSwapScheduledPostVideo();
+  const [pickerForPost, setPickerForPost] = useState<ScheduledPost | null>(null);
 
   const accounts = accountsData?.items ?? [];
   const posts = postsData?.items ?? [];
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
+  const handleSwapVideo = (video: { id: string }) => {
+    if (!pickerForPost) return;
+    swapVideo.mutate(
+      { postId: pickerForPost.id, videoContentId: video.id },
+      {
+        onSuccess: () => toast({ title: 'Video diganti', description: 'Slot ini sekarang memakai video yang baru dipilih.' }),
+        onError: (error) => toast({ variant: 'destructive', title: 'Gagal mengganti video', description: error.message }),
+      }
+    );
+  };
+
+  const handleBuildNow = () => {
+    if (!selectedAccountId) return;
+    buildScheduleNow.mutate(selectedAccountId, {
+      onSuccess: (data) => {
+        if (data.result.status === 'already_built') {
+          toast({ title: 'Sudah dijadwalkan', description: 'Akun ini sudah dijadwalkan untuk hari ini -- tidak ada perubahan.' });
+        } else {
+          toast({
+            title: 'Jadwal dibuat',
+            description: `${data.result.slotsBuilt} slot terisi${data.result.slotsSkipped > 0 ? `, ${data.result.slotsSkipped} slot kekurangan video` : ''}.`,
+          });
+        }
+      },
+      onError: (error) => toast({ variant: 'destructive', title: 'Gagal menjadwalkan', description: error.message }),
+    });
+  };
 
   // Compares today's queued+posted rows per account against how many slots
   // its base_times pattern expects -- a shortfall means the pool ran dry
@@ -72,6 +107,11 @@ export function SchedulerTab() {
                   ))}
                 </SelectContent>
               </Select>
+              {selectedAccount && (
+                <Button type="button" size="sm" variant="outline" onClick={handleBuildNow} disabled={buildScheduleNow.isPending}>
+                  <Zap className="h-4 w-4 mr-1" /> {buildScheduleNow.isPending ? 'Menjadwalkan...' : 'Jadwalkan Sekarang'}
+                </Button>
+              )}
               <Button type="button" size="sm" variant="outline" onClick={() => setIsAccountsDialogOpen(true)}>
                 <Settings2 className="h-4 w-4 mr-1" /> Kelola Akun Scheduler
               </Button>
@@ -140,6 +180,11 @@ export function SchedulerTab() {
                       {post.error_message && (
                         <p className="text-[10px] text-destructive line-clamp-2">{post.error_message}</p>
                       )}
+                      {post.status === 'queued' && (
+                        <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => setPickerForPost(post)}>
+                          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Ganti Video
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 );
@@ -150,6 +195,16 @@ export function SchedulerTab() {
       </Card>
 
       <SchedulerAccountsDialog isOpen={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen} />
+
+      {pickerForPost && (
+        <VideoPickerDialog
+          isOpen={pickerForPost !== null}
+          onOpenChange={(open) => !open && setPickerForPost(null)}
+          category={accounts.find((a) => a.id === pickerForPost.scheduler_account_id)?.category ?? ''}
+          excludeVideoId={pickerForPost.video_content_id}
+          onSelect={handleSwapVideo}
+        />
+      )}
     </div>
   );
 }
