@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Search, Menu, Settings } from 'lucide-react';
+import { Search, Menu, Settings, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SearchBar from '@/components/SearchBar';
@@ -30,7 +30,7 @@ export function Header({ searchQuery, onSearchChange, onMenuToggle }: HeaderProp
               <img src={settings.logo_url} alt={siteName} className="w-10 h-10 rounded-xl object-contain" />
             ) : (
               <div className="w-10 h-10 bg-gradient-to-br from-emerald to-metallic rounded-xl flex items-center justify-center">
-                <i className="fas fa-store text-white text-lg"></i>
+                <Store className="w-5 h-5 text-white" />
               </div>
             )}
             <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald to-metallic bg-clip-text text-transparent">

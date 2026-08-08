@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { ChevronLeft, ChevronRight, TrendingUp, Award } from 'lucide-react';
+import { ChevronLeft, ChevronRight, TrendingUp, Award, Star, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFeaturedProducts } from '@/hooks/useProductQueries';
 import { formatPrice, calculateDiscount, formatSalesCount } from '@/lib/utils';
@@ -63,7 +63,7 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 bg-muted rounded-full mb-4 mx-auto flex items-center justify-center">
-              <i className="fas fa-star text-muted-foreground text-2xl"></i>
+              <Star className="h-6 w-6 text-muted-foreground" />
             </div>
             <p className="text-muted-foreground">No featured products available</p>
           </div>
@@ -157,10 +157,10 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                       <div className="flex items-center space-x-2 md:space-x-4 mb-4 md:mb-8 leading-tight">
                         <div className="flex items-center">
                           {[1, 2, 3, 4, 5].map((star) => (
-                            <i
+                            <Star
                               key={star}
-                              className={`fas fa-star text-sm ${
-                                star <= rating ? 'text-yellow' : 'text-gray-400'
+                              className={`h-4 w-4 ${
+                                star <= rating ? 'text-yellow fill-yellow' : 'text-gray-400'
                               }`}
                             />
                           ))}
@@ -177,7 +177,7 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                       data-testid={`button-carousel-product-${product.id}`}
                     >
                       <span>Lihat Produk</span>
-                      <i className="fas fa-arrow-right"></i>
+                      <ArrowRight className="h-4 w-4" />
                     </Button>
                   </div>
                   
@@ -188,7 +188,7 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                       fill
                       sizes="448px"
                       quality={70}
-                      priority={index === 0}
+                      loading={index === 0 ? 'eager' : 'lazy'}
                       className="rounded-2xl shadow-2xl object-cover transform hover:scale-105 transition-transform duration-300"
                     />
                   </div>

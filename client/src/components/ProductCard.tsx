@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Share2, Copy, Check, Star, TrendingUp, Award } from 'lucide-react';
+import { Share2, Copy, Check, Star, TrendingUp, Award, MessageCircle, Send, Facebook } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -120,7 +120,7 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
                 className="w-full"
               >
                 <DropdownMenuItem>
-                  <i className="fab fa-whatsapp mr-2 h-4 w-4"></i>
+                  <MessageCircle className="mr-2 h-4 w-4" />
                   <span>WhatsApp</span>
                 </DropdownMenuItem>
               </a>
@@ -131,7 +131,7 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
                 className="w-full"
               >
                 <DropdownMenuItem>
-                  <i className="fab fa-telegram-plane mr-2 h-4 w-4"></i>
+                  <Send className="mr-2 h-4 w-4" />
                   <span>Telegram</span>
                 </DropdownMenuItem>
               </a>
@@ -142,7 +142,7 @@ export function ProductCard({ product, onProductClick }: ProductCardProps) {
                 className="w-full"
               >
                 <DropdownMenuItem>
-                  <i className="fab fa-facebook-f mr-2 h-4 w-4"></i>
+                  <Facebook className="mr-2 h-4 w-4" />
                   <span>Facebook</span>
                 </DropdownMenuItem>
               </a>

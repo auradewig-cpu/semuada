@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect } from "react";
 import Link from "next/link";
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Store, Facebook, Twitter, Instagram, Mail, Phone, MapPin } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FeaturedCarousel } from '@/components/FeaturedCarousel';
 import { ProductCard } from '@/components/ProductCard';
@@ -205,7 +205,7 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
                   <img src={settings.logo_url} alt={siteName} className="w-8 h-8 rounded-lg object-contain" />
                 ) : (
                   <div className="w-8 h-8 bg-gradient-to-br from-emerald to-metallic rounded-lg flex items-center justify-center">
-                    <i className="fas fa-store text-white text-sm"></i>
+                    <Store className="w-4 h-4 text-white" />
                   </div>
                 )}
                 <h3 className="text-lg font-bold bg-gradient-to-r from-emerald to-metallic bg-clip-text text-transparent">
@@ -219,17 +219,17 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
                 <div className="flex space-x-3">
                   {settings?.social_facebook_url && (
                     <a href={settings.social_facebook_url} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="w-8 h-8 bg-emerald text-white rounded-lg flex items-center justify-center hover:bg-emerald/80 transition-colors">
-                      <i className="fab fa-facebook-f text-sm"></i>
+                      <Facebook className="w-4 h-4" />
                     </a>
                   )}
                   {settings?.social_twitter_url && (
                     <a href={settings.social_twitter_url} target="_blank" rel="noopener noreferrer" aria-label="Twitter" className="w-8 h-8 bg-metallic text-white rounded-lg flex items-center justify-center hover:bg-metallic/80 transition-colors">
-                      <i className="fab fa-twitter text-sm"></i>
+                      <Twitter className="w-4 h-4" />
                     </a>
                   )}
                   {settings?.social_instagram_url && (
                     <a href={settings.social_instagram_url} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="w-8 h-8 bg-violet text-white rounded-lg flex items-center justify-center hover:bg-violet/80 transition-colors">
-                      <i className="fab fa-instagram text-sm"></i>
+                      <Instagram className="w-4 h-4" />
                     </a>
                   )}
                 </div>
@@ -270,13 +270,13 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
                 <h4 className="font-semibold mb-4">Kontak</h4>
                 <div className="space-y-2 text-sm text-muted-foreground">
                   {settings?.contact_email && (
-                    <p className="flex items-center"><i className="fas fa-envelope text-emerald mr-2"></i> {settings.contact_email}</p>
+                    <p className="flex items-center"><Mail className="w-4 h-4 text-emerald mr-2" /> {settings.contact_email}</p>
                   )}
                   {settings?.contact_phone && (
-                    <p className="flex items-center"><i className="fas fa-phone text-emerald mr-2"></i> {settings.contact_phone}</p>
+                    <p className="flex items-center"><Phone className="w-4 h-4 text-emerald mr-2" /> {settings.contact_phone}</p>
                   )}
                   {settings?.contact_address && (
-                    <p className="flex items-center"><i className="fas fa-map-marker-alt text-emerald mr-2"></i> {settings.contact_address}</p>
+                    <p className="flex items-center"><MapPin className="w-4 h-4 text-emerald mr-2" /> {settings.contact_address}</p>
                   )}
                 </div>
               </div>

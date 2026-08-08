@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Tag, Folder, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Tag, Folder, RotateCcw, SlidersHorizontal, Truck, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -361,7 +361,7 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
           {/* Pengiriman Filter */}
           <div className="mb-8">
             <h4 className="font-semibold mb-4 flex items-center">
-              <i className="fas fa-truck text-emerald mr-2"></i>
+              <Truck className="w-4 h-4 text-emerald mr-2" />
               Pilih Pengiriman
             </h4>
             {isLoadingPengiriman ? (
@@ -390,7 +390,7 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
           {/* Sort Options */}
           <div>
             <h4 className="font-semibold mb-4 flex items-center">
-              <i className="fas fa-sort text-emerald mr-2"></i>
+              <ArrowUpDown className="w-4 h-4 text-emerald mr-2" />
               Urutkan
             </h4>
             <Select value={filters.sortBy} onValueChange={handleSortChange}>

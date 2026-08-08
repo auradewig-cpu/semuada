@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { MessageCircle } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 
 // Floating WhatsApp CTA for storefront pages -- mirrors TrackingScripts'
@@ -23,7 +24,7 @@ export function WhatsAppButton() {
       aria-label="Chat via WhatsApp"
       className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg hover:brightness-110 transition-all"
     >
-      <i className="fab fa-whatsapp text-3xl"></i>
+      <MessageCircle className="h-7 w-7" />
     </a>
   );
 }
