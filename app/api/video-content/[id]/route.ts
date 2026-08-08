@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
-import { v2 as cloudinary } from "cloudinary";
 import { db } from "@root/lib/db";
-import { videoContents, videoStorageAccounts } from "@shared/schema";
+import { videoContents } from "@shared/schema";
 import { toApiVideoContent } from "@root/lib/mappers";
 import { requireAuth } from "@root/lib/apiAuth";
+import { destroyVideoAsset } from "@root/lib/videoStorage";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const unauthorized = await requireAuth();
@@ -41,33 +41,10 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     return NextResponse.json({ error: "Video tidak ditemukan." }, { status: 404 });
   }
 
-  // Best-effort Cloudinary cleanup, same pattern as character-photo delete --
-  // don't fail the request over an already-gone or slow remote asset.
-  // Credentials are passed as per-call options (not a global .config()
-  // mutation) since Vercel's Fluid Compute can reuse a warm instance across
-  // concurrent requests -- mutating shared SDK state per-request would let
-  // two concurrent deletes for different accounts race and destroy against
-  // the wrong credentials.
-  try {
-    if (row.storageAccountId) {
-      const [account] = await db.select().from(videoStorageAccounts).where(eq(videoStorageAccounts.id, row.storageAccountId));
-      if (account) {
-        // The SDK's Node types don't declare cloud_name/api_key/api_secret as
-        // valid per-call overrides, but the JS runtime honors them (this is
-        // Cloudinary's documented way to hit a different account per call) --
-        // cast to bypass the incomplete type, not to bypass real safety.
-        await cloudinary.uploader.destroy(row.cloudinaryPublicId, {
-          resource_type: "video",
-          cloud_name: account.cloudName,
-          api_key: account.apiKey,
-          api_secret: account.apiSecret,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any);
-      }
-    }
-  } catch {
-    // ignore
-  }
+  // Best-effort Cloudinary cleanup -- don't fail the request over an
+  // already-gone or slow remote asset. See destroyVideoAsset() for why
+  // credentials are passed per-call rather than via global .config().
+  await destroyVideoAsset(row);
 
   return NextResponse.json({ ok: true });
 }

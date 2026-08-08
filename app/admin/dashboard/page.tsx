@@ -12,6 +12,7 @@ import {
   Sparkles,
   BarChart3,
   Film,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +34,7 @@ import { SettingsTab } from "@/components/admin/SettingsTab";
 import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
 import { ContentGeneratorTab } from "@/components/admin/ContentGeneratorTab";
 import { VideoLibraryTab } from "@/components/admin/VideoLibraryTab";
+import { SchedulerTab } from "@/components/admin/SchedulerTab";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -41,6 +43,7 @@ const NAV_ITEMS = [
   { value: "featured", label: "Featured", icon: Star },
   { value: "content-generator", label: "Content Generator", icon: Sparkles },
   { value: "video-library", label: "Video Library", icon: Film },
+  { value: "scheduler", label: "Scheduler", icon: CalendarClock },
   { value: "analytics", label: "Analytics", icon: BarChart3 },
   { value: "settings", label: "Settings", icon: Settings },
 ] as const;
@@ -135,6 +138,12 @@ export default function AdminDashboard() {
             {activeTab === "video-library" && (
               <ErrorBoundary>
                 <VideoLibraryTab />
+              </ErrorBoundary>
+            )}
+
+            {activeTab === "scheduler" && (
+              <ErrorBoundary>
+                <SchedulerTab />
               </ErrorBoundary>
             )}
 

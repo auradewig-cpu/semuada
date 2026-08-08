@@ -1,0 +1,106 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+export interface SchedulerAccount {
+  id: string;
+  label: string;
+  category: string;
+  has_buffer_api_key: boolean;
+  has_zernio_api_key: boolean;
+  tiktok_account_id: string | null;
+  instagram_account_id: string | null;
+  youtube_account_id: string | null;
+  threads_account_id: string | null;
+  facebook_page_account_id: string | null;
+  base_times: string[];
+  increment_minutes: number;
+  cap_time: string;
+  rotation_day_index: number;
+  is_active: boolean;
+  updated_at: string | null;
+}
+
+export interface SchedulerAccountInput {
+  id?: string;
+  label: string;
+  category: string;
+  buffer_api_key?: string | null;
+  zernio_api_key?: string | null;
+  tiktok_account_id?: string | null;
+  instagram_account_id?: string | null;
+  youtube_account_id?: string | null;
+  threads_account_id?: string | null;
+  facebook_page_account_id?: string | null;
+  base_times: string[];
+  increment_minutes: number;
+  cap_time: string;
+  is_active: boolean;
+}
+
+export interface ScheduledPost {
+  id: string;
+  scheduler_account_id: string;
+  video_content_id: string;
+  scheduled_for: string;
+  platforms: string[];
+  status: 'queued' | 'posted' | 'failed';
+  provider_results: Record<string, { ok: boolean; postId?: string; error?: string }> | null;
+  posted_at: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  video_url: string;
+  caption: string | null;
+  hashtags: string[] | null;
+}
+
+export function useSchedulerAccounts() {
+  return useQuery<{ items: SchedulerAccount[] }>({
+    queryKey: ['scheduler-accounts'],
+    queryFn: async () => {
+      const res = await fetch('/api/scheduler-accounts', { credentials: 'include' });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+  });
+}
+
+export function useSaveSchedulerAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: SchedulerAccountInput) => {
+      const res = await apiRequest('POST', '/api/scheduler-accounts', payload);
+      return res.json() as Promise<SchedulerAccount>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduler-accounts'] });
+    },
+  });
+}
+
+export function useDeleteSchedulerAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest('DELETE', `/api/scheduler-accounts/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduler-accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
+    },
+  });
+}
+
+export function useScheduledPosts(schedulerAccountId?: string) {
+  return useQuery<{ items: ScheduledPost[] }>({
+    queryKey: ['scheduled-posts', schedulerAccountId ?? 'all'],
+    queryFn: async () => {
+      const url = schedulerAccountId
+        ? `/api/scheduled-posts?scheduler_account_id=${schedulerAccountId}`
+        : '/api/scheduled-posts';
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+  });
+}

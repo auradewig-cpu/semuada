@@ -1,0 +1,23 @@
+name: Dispatch scheduled posts
+
+# Vercel's Hobby plan only runs native cron jobs once/day -- far too coarse
+# for 06:00/12:00/19:00-style posting slots. This workflow is the frequent
+# trigger instead, calling the app's own /api/cron/dispatch-posts endpoint
+# (protected by CRON_SECRET) every 10 minutes. GitHub Actions' scheduled
+# workflows are best-effort timing (can lag a few minutes under load), which
+# is fine here -- the app's own database is the source of truth for what's
+# due, this just knocks on the door often enough to notice.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call dispatch-posts
+        run: |
+          curl --fail --silent --show-error \
+            "${{ secrets.SCHEDULER_SITE_URL }}/api/cron/dispatch-posts" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

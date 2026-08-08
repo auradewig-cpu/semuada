@@ -1,4 +1,4 @@
-import type { Product as DbProduct, Settings as DbSettings, AiSettings as DbAiSettings, Character as DbCharacter, VideoContent as DbVideoContent, VideoStorageAccount as DbVideoStorageAccount } from "@shared/schema";
+import type { Product as DbProduct, Settings as DbSettings, AiSettings as DbAiSettings, Character as DbCharacter, VideoContent as DbVideoContent, VideoStorageAccount as DbVideoStorageAccount, SchedulerAccount as DbSchedulerAccount, ScheduledPost as DbScheduledPost } from "@shared/schema";
 
 export function toApiProduct(row: DbProduct) {
   return {
@@ -99,6 +99,7 @@ export function toApiVideoContent(row: DbVideoContent) {
     video_url: row.videoUrl,
     cloudinary_public_id: row.cloudinaryPublicId,
     status: row.status,
+    trashed_at: row.trashedAt,
     created_at: row.createdAt,
   };
 }
@@ -113,5 +114,45 @@ export function toApiVideoStorageAccount(row: DbVideoStorageAccount) {
     has_api_key: Boolean(row.apiKey),
     has_api_secret: Boolean(row.apiSecret),
     updated_at: row.updatedAt,
+  };
+}
+
+// Same masking convention as above -- the two provider API keys never reach
+// the browser after saving, only whether each is set. Platform account IDs
+// aren't secret (they're just channel identifiers, same sensitivity as
+// cloud_name above) so those pass through as-is.
+export function toApiSchedulerAccount(row: DbSchedulerAccount) {
+  return {
+    id: row.id,
+    label: row.label,
+    category: row.category,
+    has_buffer_api_key: Boolean(row.bufferApiKey),
+    has_zernio_api_key: Boolean(row.zernioApiKey),
+    tiktok_account_id: row.tiktokAccountId,
+    instagram_account_id: row.instagramAccountId,
+    youtube_account_id: row.youtubeAccountId,
+    threads_account_id: row.threadsAccountId,
+    facebook_page_account_id: row.facebookPageAccountId,
+    base_times: row.baseTimes,
+    increment_minutes: row.incrementMinutes,
+    cap_time: row.capTime,
+    rotation_day_index: row.rotationDayIndex,
+    is_active: row.isActive,
+    updated_at: row.updatedAt,
+  };
+}
+
+export function toApiScheduledPost(row: DbScheduledPost) {
+  return {
+    id: row.id,
+    scheduler_account_id: row.schedulerAccountId,
+    video_content_id: row.videoContentId,
+    scheduled_for: row.scheduledFor,
+    platforms: row.platforms,
+    status: row.status,
+    provider_results: row.providerResults,
+    posted_at: row.postedAt,
+    error_message: row.errorMessage,
+    created_at: row.createdAt,
   };
 }

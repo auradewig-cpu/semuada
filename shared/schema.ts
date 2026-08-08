@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, numeric, integer, boolean, timestamp, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, numeric, integer, boolean, timestamp, uuid, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -138,7 +138,78 @@ export const videoContents = pgTable("video_contents", {
   // upload time (see sign/route.ts), never re-resolved later, so adding a
   // dedicated account for a category afterward doesn't strand old videos.
   storageAccountId: uuid("storage_account_id").references(() => videoStorageAccounts.id),
+  // Lifecycle: "uploaded" (available in the scheduler's video pool) ->
+  // "scheduled" (claimed by one scheduled_posts row, prevents double-claim
+  // across accounts sharing a category) -> "posted" (successfully posted,
+  // trashedAt set -- see below).
   status: text("status").default("uploaded"),
+  // Set when a post using this video succeeds. Starts the 30-day countdown
+  // before the trash-purge cron permanently deletes the row + Cloudinary
+  // asset (see destroyVideoAsset() in lib/videoStorage.ts). Null = not yet
+  // posted / not in trash.
+  trashedAt: timestamp("trashed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// One row per social-scheduling "akun" (business account) -- credentials for
+// the two providers that together cover its 5 platforms, plus its own
+// rotating posting-time pattern. Platform-to-provider is fixed by the user's
+// actual free-tier connections (Buffer: TikTok/Instagram/YouTube, Zernio:
+// Threads/Facebook Page), not a free choice -- see the per-platform account-id
+// columns below, each implicitly tied to whichever provider covers it.
+export const schedulerAccounts = pgTable("scheduler_accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  label: text("label").notNull(),
+  // Which Video Library category this account's post queue draws from.
+  // Multiple accounts CAN share a category -- claimNextVideos() (see
+  // lib/scheduler/videoPool.ts) claims FIFO inside a transaction so the same
+  // video is never handed to two accounts.
+  category: text("category").notNull(),
+  bufferApiKey: text("buffer_api_key"),
+  zernioApiKey: text("zernio_api_key"),
+  // Connected-channel IDs, obtained from each provider's own dashboard/API --
+  // entered manually by the user, same convention as videoStorageAccounts'
+  // manual cloudName/apiKey/apiSecret entry.
+  tiktokAccountId: text("tiktok_account_id"),
+  instagramAccountId: text("instagram_account_id"),
+  youtubeAccountId: text("youtube_account_id"),
+  threadsAccountId: text("threads_account_id"),
+  facebookPageAccountId: text("facebook_page_account_id"),
+  // Rotation pattern -- see lib/scheduler/rotation.ts's computeSlotTimes().
+  // "HH:mm" strings, editable by the user.
+  baseTimes: text("base_times").array().notNull(),
+  incrementMinutes: integer("increment_minutes").notNull().default(5),
+  // The ceiling the LAST baseTimes entry drifts toward before the whole
+  // pattern wraps back to baseTimes -- also "HH:mm".
+  capTime: text("cap_time").notNull(),
+  // Advances by 1 each time the daily build-schedule cron successfully runs
+  // for this account -- NOT derived from calendar-date difference, so a
+  // missed cron run doesn't cause the rotation to "jump" to catch up.
+  rotationDayIndex: integer("rotation_day_index").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// One row per queued/posted/failed scheduling attempt -- both the queue the
+// dispatch cron drains and the permanent log of what was posted where.
+export const scheduledPosts = pgTable("scheduled_posts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  schedulerAccountId: uuid("scheduler_account_id").notNull().references(() => schedulerAccounts.id),
+  videoContentId: uuid("video_content_id").notNull().references(() => videoContents.id),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+  // Snapshot of which platforms this account had configured at build time --
+  // deliberately not re-derived from the account row at dispatch time, so a
+  // credential change after the queue was built doesn't retroactively alter
+  // an already-queued post's target list.
+  platforms: text("platforms").array().notNull(),
+  status: text("status").notNull().default("queued"),
+  // Per-platform outcome, e.g. {"tiktok":{"ok":true,"postId":"..."},
+  // "instagram":{"ok":false,"error":"..."}} -- lets one post row report
+  // partial success across its 5 target platforms instead of one flat result.
+  providerResults: jsonb("provider_results"),
+  postedAt: timestamp("posted_at", { withTimezone: true }),
+  errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -188,6 +259,18 @@ export const insertVideoStorageAccountSchema = createInsertSchema(videoStorageAc
   updatedAt: true,
 });
 
+export const insertSchedulerAccountSchema = createInsertSchema(schedulerAccounts).omit({
+  id: true,
+  rotationDayIndex: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertScheduledPostSchema = createInsertSchema(scheduledPosts).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type ProductAnalytics = typeof productAnalytics.$inferSelect;
@@ -206,3 +289,7 @@ export type VideoContent = typeof videoContents.$inferSelect;
 export type InsertVideoContent = z.infer<typeof insertVideoContentSchema>;
 export type VideoStorageAccount = typeof videoStorageAccounts.$inferSelect;
 export type InsertVideoStorageAccount = z.infer<typeof insertVideoStorageAccountSchema>;
+export type SchedulerAccount = typeof schedulerAccounts.$inferSelect;
+export type InsertSchedulerAccount = z.infer<typeof insertSchedulerAccountSchema>;
+export type ScheduledPost = typeof scheduledPosts.$inferSelect;
+export type InsertScheduledPost = z.infer<typeof insertScheduledPostSchema>;

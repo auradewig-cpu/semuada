@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2, Film, Pencil, Upload, Database } from 'lucide-react';
+import { Trash2, Film, Pencil, Upload, Database, Archive } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,12 @@ const SIZE_LABELS: { value: VideoSize; label: string }[] = [
 
 export function VideoLibraryTab() {
   const [category, setCategory] = useState<string | undefined>(undefined);
+  // Purely a display filter -- videos posted by the scheduler (see
+  // lib/scheduler/dispatch.ts) get trashedAt set and drop out of the normal
+  // pool view by default, same as before this existed; toggling this shows
+  // only that trashed set instead. The purge-trash cron removes them for
+  // real after 30 days, this is just for visibility before then.
+  const [showTrashOnly, setShowTrashOnly] = useState(false);
   const { data, isLoading } = useVideoContents(category);
   const { data: stats } = useVideoContentStats();
   const { hierarchy, isLoading: isCategoryLoading } = useCategoryContext();
@@ -76,7 +82,9 @@ export function VideoLibraryTab() {
     localStorage.setItem(SIZE_STORAGE_KEY, next);
   };
 
-  const videos = data?.items ?? [];
+  const allVideos = data?.items ?? [];
+  const trashCount = allVideos.filter((v) => v.trashed_at !== null).length;
+  const videos = allVideos.filter((v) => (showTrashOnly ? v.trashed_at !== null : v.trashed_at === null));
 
   const confirmDelete = () => {
     if (!deleteTarget) return;
@@ -150,6 +158,14 @@ export function VideoLibraryTab() {
                     ))}
                 </SelectContent>
               </Select>
+              <Button
+                type="button"
+                size="sm"
+                variant={showTrashOnly ? 'secondary' : 'outline'}
+                onClick={() => setShowTrashOnly((v) => !v)}
+              >
+                <Archive className="h-4 w-4 mr-1" /> Sampah{trashCount > 0 ? ` (${trashCount})` : ''}
+              </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setIsStorageDialogOpen(true)}>
                 <Database className="h-4 w-4 mr-1" /> Kelola Storage
               </Button>
@@ -179,7 +195,9 @@ export function VideoLibraryTab() {
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Memuat video...</p>
           ) : videos.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Belum ada video yang diupload.</p>
+            <p className="text-sm text-muted-foreground">
+              {showTrashOnly ? 'Tidak ada video di sampah.' : 'Belum ada video yang diupload.'}
+            </p>
           ) : (
             <div className={`grid ${GRID_CLASSES[size]} gap-4`}>
               {videos.map((video) => (
@@ -214,6 +232,14 @@ export function VideoLibraryTab() {
                     <p className="text-[10px] text-muted-foreground">
                       {video.created_at ? new Date(video.created_at).toLocaleString('id-ID') : ''}
                     </p>
+                    {video.trashed_at && (
+                      <p className="text-[10px] text-amber-600">
+                        {(() => {
+                          const daysLeft = 30 - Math.floor((Date.now() - new Date(video.trashed_at).getTime()) / 86400000);
+                          return daysLeft > 0 ? `Terhapus permanen dalam ${daysLeft} hari` : 'Akan terhapus permanen segera';
+                        })()}
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               ))}
