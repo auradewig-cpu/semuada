@@ -74,7 +74,7 @@ export function BulkUpdateDialog({ isOpen, onOpenChange, onSubmit }: BulkUpdateD
   });
 
   const watchedCategory = form.watch("category");
-  const subcategories = watchedCategory && categories?.get(watchedCategory) ? Array.from(categories.get(watchedCategory)!) : [];
+  const subcategories = watchedCategory ? categories?.[watchedCategory] ?? [] : [];
 
   React.useEffect(() => {
     form.resetField("subcategory");
@@ -125,7 +125,7 @@ export function BulkUpdateDialog({ isOpen, onOpenChange, onSubmit }: BulkUpdateD
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {Array.from(categories?.keys() || []).map((category) => (
+                      {Object.keys(categories ?? {}).map((category) => (
                         <SelectItem key={category} value={category}>
                           {category}
                         </SelectItem>

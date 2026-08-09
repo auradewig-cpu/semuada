@@ -41,6 +41,13 @@ export default async function Page() {
       .offset(0),
     db.select().from(settings).where(eq(settings.id, SETTINGS_ID)),
   ]);
+  // categoryHierarchy is prefetched in app/layout.tsx, not here -- its
+  // consumer (CategoryContext) is mounted globally in app/providers.tsx as a
+  // PARENT of this page's HydrationBoundary, so hydrating it from here would
+  // never actually reach it (React renders CategoryProvider's useCategories()
+  // call before this component's HydrationBoundary hydrates, since parents
+  // render before children -- confirmed by inspecting the still-loading
+  // category skeleton in the prerendered output before this was moved).
 
   queryClient.setQueryData(["featuredProducts", undefined], featuredRows.map(toApiProduct));
   queryClient.setQueryData(["products-infinite", DEFAULT_HOME_FILTERS], {

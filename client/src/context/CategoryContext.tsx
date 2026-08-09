@@ -13,11 +13,23 @@ interface CategoryContextType {
 const CategoryContext = createContext<CategoryContextType | undefined>(undefined);
 
 export function CategoryProvider({ children }: { children: React.ReactNode }) {
-  const { data: hierarchy, isLoading } = useCategories();
+  const { data: rawHierarchy, isLoading } = useCategories();
+
+  // useCategories() returns the raw JSON shape (RSC-hydration-safe); build
+  // the Map<Set> shape this context exposes here instead of inside the
+  // query, so nothing downstream (FilterSidebar, Home's footer) needs to
+  // change.
+  const hierarchy = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    if (!rawHierarchy) return map;
+    for (const [category, subcategories] of Object.entries(rawHierarchy)) {
+      map.set(category, new Set(subcategories));
+    }
+    return map;
+  }, [rawHierarchy]);
 
   const categorySlugMap = useMemo(() => {
     const map = new Map<string, string>();
-    if (!hierarchy) return map;
     for (const categoryName of hierarchy.keys()) {
       map.set(slugify(categoryName), categoryName);
     }
@@ -26,7 +38,6 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
 
   const subcategorySlugMap = useMemo(() => {
     const map = new Map<string, string>();
-    if (!hierarchy) return map;
     for (const subcategories of hierarchy.values()) {
       for (const subcategoryName of subcategories) {
         map.set(slugify(subcategoryName), subcategoryName);
@@ -36,7 +47,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
   }, [hierarchy]);
 
   const value = {
-    hierarchy: hierarchy || new Map(),
+    hierarchy,
     categorySlugMap,
     subcategorySlugMap,
     isLoading,

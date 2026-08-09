@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import type { Product, FilterState, CategoryHierarchy } from '@/types';
+import type { Product, FilterState } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -149,17 +149,15 @@ export function useLatestProducts(limit: number = 4) {
   });
 }
 
+// Returns the raw JSON shape (not a Map<string, Set<string>>) so this query's
+// cache data stays safe to hydrate through app/page.tsx's Server -> Client
+// Component boundary (dehydrate()/HydrationBoundary) -- Map/Set aren't safe
+// to pass across that boundary. Consumers that want the Map<Set> shape (e.g.
+// CategoryContext) derive it locally via useMemo instead.
 export function useCategories() {
-  return useQuery<CategoryHierarchy>({
+  return useQuery<Record<string, string[]>>({
     queryKey: ['categoryHierarchy'],
-    queryFn: async () => {
-      const data = await fetchJson<Record<string, string[]>>('/api/categories');
-      const hierarchy = new Map<string, Set<string>>();
-      for (const [category, subcategories] of Object.entries(data)) {
-        hierarchy.set(category, new Set(subcategories));
-      }
-      return hierarchy;
-    },
+    queryFn: () => fetchJson<Record<string, string[]>>('/api/categories'),
     staleTime: 1000 * 60 * 10,
   });
 }
