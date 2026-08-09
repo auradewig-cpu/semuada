@@ -13,10 +13,12 @@ import type { SchedulerPlatform, ProviderResults } from "../types";
 // The presign request shape (filename, contentType), response shape
 // (uploadUrl, publicUrl), base URL, and Bearer auth format below are
 // confirmed against docs.zernio.com's own worked example (2026-08-09) and
-// match this file exactly -- so a real "Zernio presign gagal (400)" seen in
-// production isn't an obviously-wrong field name. The presign error message
-// now includes the response body (previously discarded) specifically so the
-// next real failure is self-diagnosing instead of needing another guess.
+// match this file exactly. The first real dispatch's "Zernio presign gagal
+// (400)" root cause (once the discarded response body was surfaced) turned
+// out to be the contentType VALUE, not a field-name mismatch: Cloudinary's
+// Content-Type header includes a codec parameter ("video/mp4;codecs=avc1")
+// that Zernio's strict enum validator rejects outright -- fixed below by
+// stripping to the bare MIME type before sending.
 //
 // IMPORTANT: the platform key strings below ("threads", "facebook") are
 // still best-guess from Zernio's docs overview page, not a live
@@ -42,7 +44,12 @@ function captionText(video: VideoContent): string {
 async function uploadVideoToZernio(apiKey: string, videoUrl: string): Promise<string> {
   const videoRes = await fetch(videoUrl);
   if (!videoRes.ok) throw new Error(`Gagal mengambil video dari Cloudinary (${videoRes.status}).`);
-  const contentType = videoRes.headers.get("content-type") ?? "video/mp4";
+  // Cloudinary's Content-Type header includes a codec parameter (observed:
+  // "video/mp4;codecs=avc1") that Zernio's presign endpoint rejects outright
+  // -- confirmed root cause of the first real dispatch's "Zernio presign
+  // gagal (400)" via the surfaced response body: "Invalid option: expected
+  // one of \"video/mp4\"|... param: contentType". Strip to the bare MIME type.
+  const contentType = (videoRes.headers.get("content-type") ?? "video/mp4").split(";")[0].trim();
   const videoBytes = await videoRes.arrayBuffer();
 
   const presignRes = await fetch(`${ZERNIO_API_BASE}/media/presign`, {

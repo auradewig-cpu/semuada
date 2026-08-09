@@ -46,6 +46,35 @@ function captionText(video: VideoContent): string {
   return [video.caption, ...(video.hashtags ?? []).map((h) => `#${h}`)].filter(Boolean).join("\n\n");
 }
 
+// YouTube and Instagram are the only two platforms Buffer rejects without
+// platform-specific metadata (confirmed by the first real dispatch's actual
+// error text: "YouTube posts require a title., YouTube posts require a
+// category." / "Instagram posts require a type (post, story, or reel)."),
+// found via the CreatePostInput -> metadata -> {youtube,instagram} nested
+// input types (introspected 2026-08-09, same session as the base schema).
+// TikTok's metadata is fully optional (title only, no error was raised for
+// it), so it's left unset.
+const YOUTUBE_TITLE_MAX_LENGTH = 100;
+// YouTube's fixed category taxonomy has no per-video categorization in this
+// app; "26" (Howto & Style) is a reasonable fixed default for this account's
+// "Perawatan & Kecantikan" (skincare/beauty) product content.
+const YOUTUBE_CATEGORY_ID = "26";
+
+function youtubeTitle(video: VideoContent): string {
+  const raw = video.caption?.trim() || "Video Produk";
+  return raw.length > YOUTUBE_TITLE_MAX_LENGTH ? `${raw.slice(0, YOUTUBE_TITLE_MAX_LENGTH - 1)}…` : raw;
+}
+
+function metadataForPlatform(platform: SchedulerPlatform, video: VideoContent): Record<string, unknown> | undefined {
+  if (platform === "youtube") {
+    return { youtube: { title: youtubeTitle(video), categoryId: YOUTUBE_CATEGORY_ID } };
+  }
+  if (platform === "instagram") {
+    return { instagram: { type: "reel", shouldShareToFeed: true } };
+  }
+  return undefined;
+}
+
 // scheduledAt omitted -> shareNow (publish immediately; used by the
 // "Jadwalkan & Post Sekarang" manual button). scheduledAt provided ->
 // customScheduled with dueAt (hand off to Buffer's own scheduler for that
@@ -66,6 +95,7 @@ export async function postToBuffer(account: SchedulerAccount, video: VideoConten
       results[platform] = { ok: false, error: `Account ID ${platform} belum diisi di akun "${account.label}".` };
       continue;
     }
+    const metadata = metadataForPlatform(platform, video);
     try {
       const response = await fetch(BUFFER_GRAPHQL_ENDPOINT, {
         method: "POST",
@@ -79,6 +109,7 @@ export async function postToBuffer(account: SchedulerAccount, video: VideoConten
               assets: [{ video: { url: video.videoUrl } }],
               schedulingType: "automatic",
               needsApproval: false,
+              ...(metadata ? { metadata } : {}),
               ...(scheduledAt
                 ? { mode: "customScheduled", dueAt: scheduledAt.toISOString() }
                 : { mode: "shareNow" }),
