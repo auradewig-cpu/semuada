@@ -22,6 +22,25 @@ import { dispatchScheduledPost } from "@root/lib/scheduler/dispatch";
 // safety net for any row that somehow stays "queued" past its time (e.g. this
 // step failing mid-way), just publishing it immediately at that point rather
 // than scheduling it.
+//
+// Explicit timeout budget + parallel dispatch: this is the direct fix for a
+// real duplicate-post incident (2026-08-09). The old sequential loop (one
+// dispatchScheduledPost() awaited at a time -- each involving a full Zernio
+// video re-upload plus 3 sequential Buffer calls) could add up to minutes of
+// wall-clock time across a full day's batch, with no maxDuration override to
+// match. When the function got killed by the platform's default timeout
+// mid-flight, a provider could have already ACCEPTED a post (e.g. mid-way
+// through Buffer's tiktok->instagram->youtube loop) with zero chance for our
+// trailing db.update() to ever record it -- leaving the row stuck at
+// "queued" even though it had really been posted. Hours later the
+// dispatch-posts safety net found it still "queued" past its time and
+// dispatched it AGAIN (immediate mode), creating a real second post.
+// Parallelizing is safe here (unlike dispatch-posts' intentionally-sequential
+// backlog-draining loop): each post is an independent row/video/account, this
+// batch is small and bounded (one day's slots, not an unbounded overdue
+// backlog), and different accounts already use different provider API keys.
+export const maxDuration = 300;
+
 export async function GET(request: NextRequest) {
   const unauthorized = requireCronSecret(request);
   if (unauthorized) return unauthorized;
@@ -29,22 +48,20 @@ export async function GET(request: NextRequest) {
   const accounts = await db.select().from(schedulerAccounts).where(eq(schedulerAccounts.isActive, true));
   const today = todayISOInTimezone(TIMEZONE);
 
-  const summary: Array<{ account: string; result: Awaited<ReturnType<typeof buildScheduleForAccount>>; dispatched: number }> = [];
-  for (const account of accounts) {
-    const result = await buildScheduleForAccount(account, today);
+  const summary = await Promise.all(
+    accounts.map(async (account) => {
+      const result = await buildScheduleForAccount(account, today);
 
-    const queued = await db
-      .select()
-      .from(scheduledPosts)
-      .where(and(eq(scheduledPosts.schedulerAccountId, account.id), eq(scheduledPosts.status, "queued")));
+      const queued = await db
+        .select()
+        .from(scheduledPosts)
+        .where(and(eq(scheduledPosts.schedulerAccountId, account.id), eq(scheduledPosts.status, "queued")));
 
-    // Sequential -- don't burst-call Buffer/Zernio concurrently.
-    for (const post of queued) {
-      await dispatchScheduledPost(post, { scheduledAt: post.scheduledFor });
-    }
+      await Promise.all(queued.map((post) => dispatchScheduledPost(post, { scheduledAt: post.scheduledFor })));
 
-    summary.push({ account: account.label, result, dispatched: queued.length });
-  }
+      return { account: account.label, result, dispatched: queued.length };
+    }),
+  );
 
   return NextResponse.json({ ok: true, date: today, accounts: summary });
 }
