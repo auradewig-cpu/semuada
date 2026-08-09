@@ -97,37 +97,52 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
   const validTargets = targets.filter((t): t is { platform: "threads" | "facebook_page"; accountId: string } => t !== null);
   if (validTargets.length === 0) return results;
 
+  let publicUrl: string;
   try {
-    const publicUrl = await uploadVideoToZernio(account.zernioApiKey, video.videoUrl);
-
-    const postRes = await fetch(`${ZERNIO_API_BASE}/posts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${account.zernioApiKey}` },
-      body: JSON.stringify({
-        content: captionText(video),
-        mediaItems: [{ url: publicUrl, type: "video" }],
-        platforms: validTargets.map((t) => ({ platform: ZERNIO_PLATFORM_KEY[t.platform], accountId: t.accountId })),
-        ...(scheduledAt ? { scheduledAt: scheduledAt.toISOString() } : { publishNow: true }),
-      }),
-    });
-    const json = await postRes.json().catch(() => null);
-    if (!postRes.ok) {
-      const error = json?.error ?? `HTTP ${postRes.status}`;
-      for (const t of validTargets) results[t.platform] = { ok: false, error };
-      return results;
-    }
-    // Defensive: fall back to a flat "ok" per target if the response doesn't
-    // break results out per platform (shape not confirmed -- see file header).
-    for (const t of validTargets) {
-      const perPlatform = json?.results?.[ZERNIO_PLATFORM_KEY[t.platform]];
-      results[t.platform] = perPlatform
-        ? { ok: perPlatform.status !== "failed", postId: perPlatform.id, error: perPlatform.error }
-        : { ok: true, postId: json?.id };
-    }
+    publicUrl = await uploadVideoToZernio(account.zernioApiKey, video.videoUrl);
   } catch (err) {
-    const error = err instanceof Error ? err.message : "Gagal memanggil Zernio API.";
+    const error = err instanceof Error ? err.message : "Gagal mengunggah video ke Zernio.";
     for (const t of validTargets) results[t.platform] = { ok: false, error };
+    return results;
   }
+
+  // One POST /posts call PER target, not one batched call for all of them --
+  // confirmed via a real dispatch that Zernio validates every target account
+  // up front and rejects the WHOLE request if even one is broken (a
+  // disconnected Facebook Page dragged down a perfectly healthy Threads
+  // account, which wrongly got the same "disconnected" error even though its
+  // own connection was fine). Splitting the calls means one broken platform
+  // can no longer block a working one; the shared upload above still only
+  // happens once.
+  await Promise.all(
+    validTargets.map(async (t) => {
+      try {
+        const postRes = await fetch(`${ZERNIO_API_BASE}/posts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${account.zernioApiKey}` },
+          body: JSON.stringify({
+            content: captionText(video),
+            mediaItems: [{ url: publicUrl, type: "video" }],
+            platforms: [{ platform: ZERNIO_PLATFORM_KEY[t.platform], accountId: t.accountId }],
+            ...(scheduledAt ? { scheduledAt: scheduledAt.toISOString() } : { publishNow: true }),
+          }),
+        });
+        const json = await postRes.json().catch(() => null);
+        if (!postRes.ok) {
+          results[t.platform] = { ok: false, error: json?.error ?? `HTTP ${postRes.status}` };
+          return;
+        }
+        // Defensive: fall back to a flat "ok" if the response doesn't break
+        // results out per platform (shape not confirmed -- see file header).
+        const perPlatform = json?.results?.[ZERNIO_PLATFORM_KEY[t.platform]];
+        results[t.platform] = perPlatform
+          ? { ok: perPlatform.status !== "failed", postId: perPlatform.id, error: perPlatform.error }
+          : { ok: true, postId: json?.id };
+      } catch (err) {
+        results[t.platform] = { ok: false, error: err instanceof Error ? err.message : "Gagal memanggil Zernio API." };
+      }
+    }),
+  );
 
   return results;
 }
