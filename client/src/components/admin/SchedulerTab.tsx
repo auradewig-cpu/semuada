@@ -38,6 +38,18 @@ function isToday(iso: string): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
+// Platforms without a recorded ok:true result -- covers both a fully
+// "failed" post and a "posted" post where only SOME platforms succeeded
+// (status flips to "posted" the moment any one platform succeeds, so this
+// can't just check status === 'failed' or partial failures would have no
+// retry path). Mirrors platformsNeedingDispatch() server-side -- the retry
+// endpoint only re-dispatches this same subset, so this list is also what
+// actually gets retried, not post.platforms as a whole.
+function getFailedPlatforms(post: ScheduledPost): string[] {
+  if (post.status === 'queued') return [];
+  return post.platforms.filter((p) => post.provider_results?.[p]?.ok !== true);
+}
+
 export function SchedulerTab() {
   const { toast } = useToast();
   const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(undefined);
@@ -95,11 +107,11 @@ export function SchedulerTab() {
     retryPost.mutate(confirmRetryPost.id, {
       onSuccess: (data) => {
         toast({
-          variant: data.status === 'posted' ? 'default' : 'destructive',
-          title: data.status === 'posted' ? 'Berhasil diposting' : 'Masih gagal',
-          description: data.status === 'posted'
+          variant: data.retrySucceeded ? 'default' : 'destructive',
+          title: data.retrySucceeded ? 'Berhasil diposting' : 'Masih gagal',
+          description: data.retrySucceeded
             ? 'Video berhasil diposting ulang.'
-            : (data.errorMessage ?? 'Percobaan ulang masih gagal, lihat detail di kartu.'),
+            : (data.retryErrorMessage ?? 'Percobaan ulang masih gagal, lihat detail di kartu.'),
         });
       },
       onError: (error) => toast({ variant: 'destructive', title: 'Gagal mencoba ulang', description: error.message }),
@@ -179,6 +191,7 @@ export function SchedulerTab() {
               {posts.map((post) => {
                 const account = accounts.find((a) => a.id === post.scheduler_account_id);
                 const badge = STATUS_BADGE[post.status];
+                const failedPlatforms = getFailedPlatforms(post);
                 return (
                   <Card key={post.id} className="overflow-hidden">
                     {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
@@ -200,7 +213,11 @@ export function SchedulerTab() {
                         {post.platforms.map((p) => {
                           const result = post.provider_results?.[p];
                           return (
-                            <span key={p} className="inline-flex items-center gap-1 text-[10px] bg-muted rounded px-1.5 py-0.5">
+                            <span
+                              key={p}
+                              className="inline-flex items-center gap-1 text-[10px] bg-muted rounded px-1.5 py-0.5"
+                              title={!result?.ok ? result?.error : undefined}
+                            >
                               {post.status === 'queued' ? null : result?.ok ? (
                                 <CheckCircle2 className="h-3 w-3 text-green-600" />
                               ) : (
@@ -212,15 +229,20 @@ export function SchedulerTab() {
                         })}
                       </div>
                       {post.caption && <p className="text-xs line-clamp-2">{post.caption}</p>}
-                      {post.error_message && (
-                        <p className="text-[10px] text-destructive line-clamp-2">{post.error_message}</p>
+                      {(post.error_message || failedPlatforms.length > 0) && (
+                        <p className="text-[10px] text-destructive line-clamp-2">
+                          {post.error_message
+                            ?? failedPlatforms
+                              .map((p) => `${PLATFORM_LABELS[p] ?? p}: ${post.provider_results?.[p]?.error ?? 'gagal'}`)
+                              .join(' · ')}
+                        </p>
                       )}
                       {post.status === 'queued' && (
                         <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => setPickerForPost(post)}>
                           <RefreshCw className="h-3.5 w-3.5 mr-1" /> Ganti Video
                         </Button>
                       )}
-                      {post.status === 'failed' && (
+                      {failedPlatforms.length > 0 && (
                         <Button
                           type="button"
                           size="sm"
@@ -229,7 +251,10 @@ export function SchedulerTab() {
                           disabled={retryPost.isPending}
                           onClick={() => setConfirmRetryPost(post)}
                         >
-                          <Zap className="h-3.5 w-3.5 mr-1" /> Jadwalkan & Post Sekarang
+                          <Zap className="h-3.5 w-3.5 mr-1" />
+                          {post.status === 'posted'
+                            ? `Coba Lagi (${failedPlatforms.length} Platform Gagal)`
+                            : 'Jadwalkan & Post Sekarang'}
                         </Button>
                       )}
                     </CardContent>
@@ -275,8 +300,8 @@ export function SchedulerTab() {
           <AlertDialogHeader>
             <AlertDialogTitle>Coba jadwalkan & post sekarang ulang?</AlertDialogTitle>
             <AlertDialogDescription>
-              Video ini akan langsung dicoba post lagi ke platform yang tadi gagal ({confirmRetryPost?.platforms.map((p) => PLATFORM_LABELS[p] ?? p).join(', ')}) --
-              bukan sekadar antre, langsung tayang sekarang juga kalau berhasil.
+              Video ini akan langsung dicoba post lagi ke platform yang tadi gagal ({confirmRetryPost ? getFailedPlatforms(confirmRetryPost).map((p) => PLATFORM_LABELS[p] ?? p).join(', ') : ''}) --
+              platform yang sudah berhasil sebelumnya TIDAK akan diposting ulang. Bukan sekadar antre, langsung tayang sekarang juga kalau berhasil.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

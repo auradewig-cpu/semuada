@@ -139,6 +139,11 @@ export interface RetryScheduledPostResponse {
   ok: boolean;
   status: ScheduledPost['status'];
   errorMessage: string | null;
+  // Whether THIS retry attempt succeeded, distinct from `status` -- a post
+  // can already be "posted" overall (from an earlier partial success) while
+  // this specific retry of the still-failing platforms fails again.
+  retrySucceeded: boolean;
+  retryErrorMessage: string | null;
 }
 
 // Per-card "Jadwalkan & Post Sekarang" retry -- only valid for posts
