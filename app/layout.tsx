@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { dehydrate, QueryClient } from "@tanstack/react-query";
-import { db } from "@root/lib/db";
-import { products } from "@shared/schema";
 import { Providers } from "./providers";
 import { getSiteSettings } from "@root/lib/site-settings";
+import { getCategoryHierarchy } from "@root/lib/categories";
 import "@/index.css";
 
 const inter = Inter({
@@ -19,27 +18,6 @@ const inter = Inter({
 // prefetches, so this doesn't force every page under this layout to become
 // fully dynamic.
 export const revalidate = 60;
-
-// Mirrors GET /api/categories' grouping logic. Queried here (not in
-// app/page.tsx) because CategoryProvider -- the consumer -- is mounted
-// globally in Providers, which every route renders, not just the homepage.
-async function getCategoryHierarchy(): Promise<Record<string, string[]>> {
-  const rows = await db.select({ category: products.category, subcategory: products.subcategory }).from(products);
-  const hierarchy: Record<string, string[]> = {};
-  const seen: Record<string, Set<string>> = {};
-  for (const row of rows) {
-    if (!row.category) continue;
-    if (!seen[row.category]) {
-      seen[row.category] = new Set();
-      hierarchy[row.category] = [];
-    }
-    if (row.subcategory && !seen[row.category].has(row.subcategory)) {
-      seen[row.category].add(row.subcategory);
-      hierarchy[row.category].push(row.subcategory);
-    }
-  }
-  return hierarchy;
-}
 
 export async function generateMetadata(): Promise<Metadata> {
   const { siteName, siteTagline, faviconUrl, seoMetaDescription, ogImageUrl } = await getSiteSettings();

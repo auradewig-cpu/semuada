@@ -17,16 +17,27 @@ import type { FilterState } from '@/types';
 interface HomeProps {
   categorySlug?: string;
   subcategorySlug?: string;
+  // Resolved server-side (see app/[category]/page.tsx) so the initial
+  // filters state -- and therefore the first useInfiniteProducts/
+  // useFeaturedProducts query key -- already matches what was SSR-prefetched.
+  // Without these, filters.category starts undefined and only gets set once
+  // the categorySlugMap effect below resolves client-side, causing an extra
+  // unfiltered fetch that's immediately discarded (see homepage_performance
+  // memory for the original bug this mirrors on the homepage).
+  initialCategory?: string;
+  initialSubcategory?: string;
 }
 
-export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
+export default function Home({ categorySlug, subcategorySlug, initialCategory, initialSubcategory }: HomeProps) {
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     priceMin: 0,
     priceMax: 20000000,
     sortBy: 'newest',
     dikirim_dari: undefined,
-    item: undefined
+    item: undefined,
+    category: initialCategory,
+    subcategory: initialSubcategory,
   });
   // Starts false to match server-rendered markup; restored from sessionStorage
   // right after mount so the mobile filter panel survives the route change

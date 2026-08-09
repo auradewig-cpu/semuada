@@ -4,24 +4,12 @@ import { db } from "@root/lib/db";
 import { products, settings } from "@shared/schema";
 import { toApiProduct, toApiSettings } from "@root/lib/mappers";
 import { PRODUCTS_PER_PAGE } from "@/hooks/useProductQueries";
+import { DEFAULT_PRODUCT_FILTERS } from "@root/lib/productFilters";
 import Home from "@/pages/Home";
 
 export const revalidate = 60;
 
 const SETTINGS_ID = "1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed";
-
-// Must stay structurally identical (after JSON.stringify drops undefined
-// keys) to Home.tsx's initial useState<FilterState> -- this is the query key
-// useInfiniteProducts(filters) hashes to on first render, and the prefetch
-// below only avoids a client-side waterfall if the hash matches exactly.
-const DEFAULT_HOME_FILTERS = {
-  search: '',
-  priceMin: 0,
-  priceMax: 20000000,
-  sortBy: 'newest',
-  dikirim_dari: undefined,
-  item: undefined,
-};
 
 export default async function Page() {
   const queryClient = new QueryClient();
@@ -29,13 +17,13 @@ export default async function Page() {
   const [featuredRows, firstPageRows, settingsRow] = await Promise.all([
     db.select().from(products).where(eq(products.isFeatured, true)).orderBy(asc(products.featuredOrder)).limit(100),
     // Mirrors GET /api/products' default path (no category/search/etc,
-    // sort=newest) for DEFAULT_HOME_FILTERS above -- this is the main
+    // sort=newest) for DEFAULT_PRODUCT_FILTERS -- this is the main
     // "Semua Produk" grid, previously fetched entirely client-side after
     // hydration (a loading skeleton flash on every fresh homepage visit).
     db
       .select()
       .from(products)
-      .where(and(gte(products.price, String(DEFAULT_HOME_FILTERS.priceMin)), lte(products.price, String(DEFAULT_HOME_FILTERS.priceMax))))
+      .where(and(gte(products.price, String(DEFAULT_PRODUCT_FILTERS.priceMin)), lte(products.price, String(DEFAULT_PRODUCT_FILTERS.priceMax))))
       .orderBy(desc(products.createdAt))
       .limit(PRODUCTS_PER_PAGE)
       .offset(0),
@@ -50,7 +38,7 @@ export default async function Page() {
   // category skeleton in the prerendered output before this was moved).
 
   queryClient.setQueryData(["featuredProducts", undefined], featuredRows.map(toApiProduct));
-  queryClient.setQueryData(["products-infinite", DEFAULT_HOME_FILTERS], {
+  queryClient.setQueryData(["products-infinite", DEFAULT_PRODUCT_FILTERS], {
     pages: [firstPageRows.map(toApiProduct)],
     pageParams: [0],
   });
