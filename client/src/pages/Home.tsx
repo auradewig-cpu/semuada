@@ -153,6 +153,7 @@ export default function Home({ categorySlug, subcategorySlug }: HomeProps) {
                           key={`${product.id}-${index}`}
                           product={product}
                           onProductClick={handleProductClick}
+                          priority={index < 4}
                         />
                       ))}
                     </div>

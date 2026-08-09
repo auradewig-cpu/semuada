@@ -85,7 +85,9 @@ export function useProducts(filters?: FilterState) {
   });
 }
 
-const PRODUCTS_PER_PAGE = 20;
+// Exported so app/page.tsx can prefetch a first page server-side with the
+// exact same page size the client's useInfiniteQuery expects.
+export const PRODUCTS_PER_PAGE = 20;
 
 export function useInfiniteProducts(filters?: FilterState) {
   return useInfiniteQuery<Product[]>({

@@ -14,7 +14,11 @@ function getInitialTheme(storageKey: string): Theme {
   const stored = localStorage.getItem(storageKey);
   if (stored === 'light' || stored === 'dark') return stored;
 
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  // Default to light regardless of OS/browser preference -- the site always
+  // opens light until the visitor explicitly toggles it themselves (see the
+  // matching inline script in app/layout.tsx, which must stay in sync to
+  // avoid a hydration mismatch).
+  return 'light';
 }
 
 export function ThemeProvider({ children, storageKey = 'theme' }: { children: React.ReactNode; storageKey?: string }) {

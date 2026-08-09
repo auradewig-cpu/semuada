@@ -8,6 +8,14 @@ interface ProductImageCarouselProps {
   alt: string;
   /** Applied to the fixed-size root wrapper, e.g. "w-full h-48". */
   className?: string;
+  /**
+   * Marks this image eager + high fetch priority instead of the Next.js
+   * Image default (lazy + low priority) -- for cards likely above the fold
+   * (the first grid row) so they don't compete with the LCP candidate for
+   * bandwidth/lazy-load timing. Leave unset for everything else; marking too
+   * many images priority defeats its own purpose.
+   */
+  priority?: boolean;
 }
 
 const FALLBACK_IMAGE = 'https://via.placeholder.com/300';
@@ -17,7 +25,7 @@ function handleImageError(e: React.SyntheticEvent<HTMLImageElement>) {
   e.currentTarget.src = FALLBACK_IMAGE;
 }
 
-export function ProductImageCarousel({ images, alt, className }: ProductImageCarouselProps) {
+export function ProductImageCarousel({ images, alt, className, priority }: ProductImageCarouselProps) {
   const slides = images.length > 0 ? images.slice(0, 5) : [FALLBACK_IMAGE];
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false });
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -54,6 +62,7 @@ export function ProductImageCarousel({ images, alt, className }: ProductImageCar
           quality={70}
           className={IMAGE_CLASS}
           onError={handleImageError}
+          priority={priority}
         />
       </div>
     );
@@ -73,6 +82,7 @@ export function ProductImageCarousel({ images, alt, className }: ProductImageCar
                 quality={70}
                 className={IMAGE_CLASS}
                 onError={handleImageError}
+                priority={priority && i === 0}
               />
             </div>
           ))}
