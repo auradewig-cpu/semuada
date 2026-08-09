@@ -18,6 +18,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import type { Product } from "@/types";
+import { isAllowedImageUrl } from "@root/lib/imageHosts";
+
+const IMAGE_DOMAIN_ERROR = "Domain gambar tidak diizinkan, gunakan gambar dari Shopee atau Unsplash.";
 
 // Define the form schema using Zod
 const formSchema = z.object({
@@ -29,11 +32,11 @@ const formSchema = z.object({
   price: z.coerce.number().min(0, "Price must be a positive number"),
   sales: z.coerce.number().min(0, "Sales must be a positive number").optional(),
   affiliate_url: z.string().url("Must be a valid URL"),
-  image_url: z.string().url("Must be a valid URL"),
-  image_url_2: z.string().url("Must be a valid URL").optional().or(z.literal('')),
-  image_url_3: z.string().url("Must be a valid URL").optional().or(z.literal('')),
-  image_url_4: z.string().url("Must be a valid URL").optional().or(z.literal('')),
-  image_url_5: z.string().url("Must be a valid URL").optional().or(z.literal('')),
+  image_url: z.string().url("Must be a valid URL").refine(isAllowedImageUrl, IMAGE_DOMAIN_ERROR),
+  image_url_2: z.string().url("Must be a valid URL").refine(isAllowedImageUrl, IMAGE_DOMAIN_ERROR).optional().or(z.literal('')),
+  image_url_3: z.string().url("Must be a valid URL").refine(isAllowedImageUrl, IMAGE_DOMAIN_ERROR).optional().or(z.literal('')),
+  image_url_4: z.string().url("Must be a valid URL").refine(isAllowedImageUrl, IMAGE_DOMAIN_ERROR).optional().or(z.literal('')),
+  image_url_5: z.string().url("Must be a valid URL").refine(isAllowedImageUrl, IMAGE_DOMAIN_ERROR).optional().or(z.literal('')),
   is_featured: z.boolean().optional().default(false),
   featured_order: z.coerce.number().optional(),
   rating: z.coerce.number().optional(),

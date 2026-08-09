@@ -5,6 +5,7 @@ import { db } from "@root/lib/db";
 import { products } from "@shared/schema";
 import { toApiProduct } from "@root/lib/mappers";
 import { requireAuth } from "@root/lib/apiAuth";
+import { findInvalidImageUrl } from "@root/lib/imageHosts";
 
 function shuffle<T>(array: T[]): T[] {
   const result = [...array];
@@ -101,6 +102,11 @@ export async function POST(request: NextRequest) {
   if (unauthorized) return unauthorized;
 
   const body = await request.json();
+
+  const invalidImageError = findInvalidImageUrl(body);
+  if (invalidImageError) {
+    return NextResponse.json({ error: invalidImageError }, { status: 400 });
+  }
 
   const [row] = await db
     .insert(products)

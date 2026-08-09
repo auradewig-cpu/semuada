@@ -5,6 +5,7 @@ import { db } from "@root/lib/db";
 import { products } from "@shared/schema";
 import { toApiProduct } from "@root/lib/mappers";
 import { requireAuth } from "@root/lib/apiAuth";
+import { findInvalidImageUrl } from "@root/lib/imageHosts";
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const unauthorized = await requireAuth();
@@ -12,6 +13,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
   const body = await request.json();
+
+  const invalidImageError = findInvalidImageUrl(body);
+  if (invalidImageError) {
+    return NextResponse.json({ error: invalidImageError }, { status: 400 });
+  }
 
   const [row] = await db
     .update(products)
