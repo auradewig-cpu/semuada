@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getCategoryParams, getSubcategoryParams } from "@root/lib/categories";
+import { SITE_URL } from "@root/lib/siteUrl";
 
 // Cheap to regenerate and nowhere near as time-sensitive as the storefront
 // itself, but it does hit the DB now, so give it its own ISR window rather
@@ -7,7 +8,7 @@ import { getCategoryParams, getSubcategoryParams } from "@root/lib/categories";
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://semuada-three.vercel.app";
+  const baseUrl = SITE_URL;
 
   const staticRoutes = ["", "/faq", "/how-to-shop", "/privacy-policy", "/terms-and-conditions"];
 
