@@ -187,7 +187,23 @@ export const schedulerAccounts = pgTable("scheduler_accounts", {
   facebookPageAccountId: text("facebook_page_account_id"),
   // Rotation pattern -- see lib/scheduler/rotation.ts's computeSlotTimes().
   // "HH:mm" strings, editable by the user.
+  //
+  // Ordered by PRIORITY, not by clock: the ramp below enables slots from the
+  // front, so baseTimes[0] must be the most valuable slot of the day (the
+  // evening peak for an Indonesian audience), not the earliest. This is why
+  // computeSlotTimes() derives its drift window from the LATEST entry rather
+  // than the last one -- after the ramp slices this array, the last element
+  // is usually not the latest time.
   baseTimes: text("base_times").array().notNull(),
+  // When this account started posting, i.e. when its frequency ramp began.
+  // Frequency steps up one slot per RAMP_PHASE_DAYS: 1/day for the first 30
+  // days, then 2/day, then 3/day, capped by however many baseTimes exist.
+  // Brand-new accounts posting several times a day is a spam signal, and a
+  // ban here costs a real social account -- so the ramp is keyed to each
+  // account's OWN start date, letting an account added months from now warm
+  // up from scratch instead of inheriting the others' cadence.
+  // Null = no ramp, use every baseTime (backwards-compatible default).
+  rampStartedAt: timestamp("ramp_started_at", { withTimezone: true }),
   incrementMinutes: integer("increment_minutes").notNull().default(5),
   // The ceiling the LAST baseTimes entry drifts toward before the whole
   // pattern wraps back to baseTimes -- also "HH:mm".

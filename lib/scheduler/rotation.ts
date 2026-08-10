@@ -1,9 +1,15 @@
 // Rotating posting-time pattern: each account's base times drift forward by
-// a fixed increment every day the build-schedule cron runs, until the LAST
+// a fixed increment every day the build-schedule cron runs, until the LATEST
 // base time would reach the account's cap time, then the whole pattern wraps
 // back to the base times. Modulo arithmetic handles the wrap (and any
 // increment that doesn't evenly divide the window) without a separate
 // "if exceeds, reset" branch.
+//
+// The drift exists so an account doesn't publish at exactly the same minute
+// every single day, which reads as automation. Windows are deliberately
+// narrow (~10 minutes) because eight accounts now share the same peak hours:
+// a wider drift would buy more variation at the cost of accounts colliding
+// with each other, which is the more telling pattern of the two.
 
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -21,11 +27,16 @@ function toHHMM(totalMinutes: number): string {
 // (re)set to its base times, incrementing by 1 each successful daily build.
 export function computeSlotTimes(baseTimes: string[], incrementMinutes: number, capTime: string, dayIndex: number): string[] {
   if (baseTimes.length === 0) return [];
-  const lastBaseMinutes = toMinutes(baseTimes[baseTimes.length - 1]);
+  // The LATEST time, not the last array entry. baseTimes is ordered by
+  // priority (see the schema comment) so the frequency ramp can enable slots
+  // from the front, which means the final element is usually an earlier time
+  // of day. Using it here would compute a window spanning most of the day and
+  // send the whole pattern drifting hours out of place.
+  const latestBaseMinutes = Math.max(...baseTimes.map(toMinutes));
   const capMinutes = toMinutes(capTime);
-  const window = capMinutes - lastBaseMinutes;
+  const window = capMinutes - latestBaseMinutes;
   if (window <= 0) {
-    throw new Error(`capTime (${capTime}) harus setelah base time terakhir (${baseTimes[baseTimes.length - 1]}).`);
+    throw new Error(`capTime (${capTime}) harus setelah base time paling akhir dalam sehari.`);
   }
   const offset = ((dayIndex * incrementMinutes) % window + window) % window;
   return baseTimes.map((t) => toHHMM(toMinutes(t) + offset));

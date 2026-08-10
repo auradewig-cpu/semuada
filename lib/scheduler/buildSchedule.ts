@@ -13,7 +13,29 @@ export function todayISOInTimezone(timeZone: string): string {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-export type BuildResult = { status: "already_built" } | { status: "built"; slotsBuilt: number; slotsSkipped: number };
+export type BuildResult =
+  | { status: "already_built" }
+  | { status: "built"; slotsBuilt: number; slotsSkipped: number; slotsAllowed: number };
+
+// Days at each posting frequency before stepping up: 1/day for the first 30
+// days, 2/day for the next 30, then 3/day from day 60 on.
+export const RAMP_PHASE_DAYS = 30;
+
+// How many of an account's baseTimes are live today. Slots are enabled from
+// the FRONT of baseTimes, which is why that array is ordered by priority
+// rather than by clock -- a once-a-day account should be posting in its best
+// hour, not merely its earliest.
+//
+// An account with no rampStartedAt uses every slot it has, so existing
+// accounts (and anyone editing times by hand) keep working unchanged.
+export function activeSlotCount(account: Pick<SchedulerAccount, "baseTimes" | "rampStartedAt">, now: Date): number {
+  if (!account.rampStartedAt) return account.baseTimes.length;
+  const daysLive = Math.floor((now.getTime() - account.rampStartedAt.getTime()) / (24 * 60 * 60 * 1000));
+  // Clamped at 1 so a rampStartedAt in the future (a scheduled launch, or
+  // clock skew) still posts once a day rather than going silent.
+  const phase = Math.max(1, Math.floor(daysLive / RAMP_PHASE_DAYS) + 1);
+  return Math.min(phase, account.baseTimes.length);
+}
 
 // Builds today's queue for ONE account: rotated slot times -> claim that many
 // videos from the pool -> insert queued scheduled_posts rows -> advance
@@ -31,7 +53,12 @@ export async function buildScheduleForAccount(account: SchedulerAccount, todayIS
     return { status: "already_built" };
   }
 
-  const slotTimes = computeSlotTimes(account.baseTimes, account.incrementMinutes, account.capTime, account.rotationDayIndex);
+  // Ramp first, rotate second: the drift window is derived from the latest
+  // baseTime, which is baseTimes[0] under the priority ordering, so slicing
+  // before rotating keeps the window identical across all three phases.
+  const allowed = activeSlotCount(account, new Date());
+  const rampedBaseTimes = account.baseTimes.slice(0, allowed);
+  const slotTimes = computeSlotTimes(rampedBaseTimes, account.incrementMinutes, account.capTime, account.rotationDayIndex);
   const platforms = resolveConfiguredPlatforms(account);
   const claimedVideos = await claimNextVideos(account.category, slotTimes.length);
 
@@ -58,5 +85,5 @@ export async function buildScheduleForAccount(account: SchedulerAccount, todayIS
     .set({ rotationDayIndex: account.rotationDayIndex + 1, lastBuiltDate: todayISO })
     .where(eq(schedulerAccounts.id, account.id));
 
-  return { status: "built", slotsBuilt: built, slotsSkipped: slotTimes.length - built };
+  return { status: "built", slotsBuilt: built, slotsSkipped: slotTimes.length - built, slotsAllowed: allowed };
 }
