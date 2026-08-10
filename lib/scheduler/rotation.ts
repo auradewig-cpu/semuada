@@ -15,13 +15,24 @@
 // days, 2/day for the next 30, then 3/day from day 60 on.
 export const RAMP_PHASE_DAYS = 30;
 
+// Hard ceiling on posts per day, whatever an account's baseTimes say. The
+// ramp's own cap used to be the number of baseTimes, which made "max 3"
+// merely a consequence of every account happening to have three -- add a
+// fourth time through the admin form and the account would quietly reach
+// 4/day, but only on day 90, long after anyone would connect the two.
+// Enforced here as well as in the form's validation: this guarantees the
+// behaviour, the validation explains it to whoever is typing.
+export const MAX_SLOTS_PER_DAY = 3;
+
 // How many of an account's baseTimes are live today. Slots are enabled from
 // the FRONT of baseTimes, which is why that array is ordered by priority
 // rather than by clock -- a once-a-day account should be posting in its best
 // hour, not merely its earliest.
 //
-// An account with no rampStartedAt uses every slot it has, so hand-edited
-// accounts and anything predating the ramp keep working unchanged.
+// An account with no rampStartedAt skips the warm-up and uses every slot it
+// has, so hand-edited accounts and anything predating the ramp keep working
+// unchanged -- but still never above MAX_SLOTS_PER_DAY, since that ceiling
+// is about the posting cadence itself, not about the ramp.
 //
 // Lives here, alongside the other pure scheduling math, rather than in
 // buildSchedule.ts -- that module imports the database client, so the admin
@@ -35,15 +46,16 @@ export function activeSlotCount(
   account: { baseTimes: string[]; rampStartedAt: Date | string | null },
   now: Date
 ): number {
-  if (!account.rampStartedAt) return account.baseTimes.length;
+  const uncapped = account.baseTimes.length;
+  if (!account.rampStartedAt) return Math.min(uncapped, MAX_SLOTS_PER_DAY);
   const startedAt = account.rampStartedAt instanceof Date ? account.rampStartedAt : new Date(account.rampStartedAt);
-  if (isNaN(startedAt.getTime())) return account.baseTimes.length;
+  if (isNaN(startedAt.getTime())) return Math.min(uncapped, MAX_SLOTS_PER_DAY);
 
   const daysLive = Math.floor((now.getTime() - startedAt.getTime()) / (24 * 60 * 60 * 1000));
   // Clamped at 1 so a rampStartedAt in the future (a scheduled launch, or
   // clock skew) still posts once a day rather than going silent.
   const phase = Math.max(1, Math.floor(daysLive / RAMP_PHASE_DAYS) + 1);
-  return Math.min(phase, account.baseTimes.length);
+  return Math.min(phase, account.baseTimes.length, MAX_SLOTS_PER_DAY);
 }
 
 function toMinutes(hhmm: string): number {

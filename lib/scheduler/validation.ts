@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_SLOTS_PER_DAY } from "./rotation";
 
 // "HH:mm", 24-hour. Same format used for baseTimes entries and capTime.
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Format jam harus HH:mm, mis. 06:00.");
@@ -17,7 +18,13 @@ export const schedulerAccountRequestSchema = z.object({
   youtube_account_id: z.string().nullable().optional(),
   threads_account_id: z.string().nullable().optional(),
   facebook_page_account_id: z.string().nullable().optional(),
-  base_times: z.array(timeSchema).min(1, "Minimal 1 jam dasar."),
+  // Capped so the form rejects a 4th time outright rather than accepting it
+  // and having activeSlotCount() silently ignore it -- which would only
+  // become visible on day 90, when the account failed to step up as expected.
+  base_times: z
+    .array(timeSchema)
+    .min(1, "Minimal 1 jam dasar.")
+    .max(MAX_SLOTS_PER_DAY, `Maksimal ${MAX_SLOTS_PER_DAY} jam dasar (batas ${MAX_SLOTS_PER_DAY}x posting per hari).`),
   increment_minutes: z.number().int().positive("increment_minutes harus lebih dari 0."),
   cap_time: timeSchema,
   is_active: z.boolean().default(true),

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle2, XCircle, Plus, X, Pencil, Trash2 } from 'lucide-react';
+import { MAX_SLOTS_PER_DAY } from "@root/lib/scheduler/rotation";
 import {
   Dialog,
   DialogContent,
@@ -107,7 +108,9 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
   const updateBaseTime = (index: number, value: string) => {
     setBaseTimes((prev) => prev.map((t, i) => (i === index ? value : t)));
   };
-  const addBaseTime = () => setBaseTimes((prev) => [...prev, '12:00']);
+  // Capped at MAX_SLOTS_PER_DAY to match the server-side validation, so the
+  // limit is visible in the UI rather than surfacing as a save error.
+  const addBaseTime = () => setBaseTimes((prev) => (prev.length >= MAX_SLOTS_PER_DAY ? prev : [...prev, '12:00']));
   const removeBaseTime = (index: number) => setBaseTimes((prev) => prev.filter((_, i) => i !== index));
 
   const handleSave = () => {
@@ -272,7 +275,7 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
               <div className="space-y-1.5">
                 <Label>Jam Dasar &mdash; urut prioritas, bukan urut jam</Label>
                 <p className="text-xs text-muted-foreground">
-                  Akun baru mulai 1x/hari dan naik tiap 30 hari (maks 3x/hari). Slot diaktifkan dari atas,
+                  Akun baru mulai 1x/hari dan naik tiap 30 hari, maksimal {MAX_SLOTS_PER_DAY}x/hari. Slot diaktifkan dari atas,
                   jadi <strong>letakkan jam terbaik di urutan pertama</strong> (malam paling kuat untuk audiens Indonesia).
                 </p>
                 <div className="space-y-1.5">
@@ -286,9 +289,11 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
                       )}
                     </div>
                   ))}
-                  <Button type="button" size="sm" variant="outline" onClick={addBaseTime}>
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Tambah jam
-                  </Button>
+                  {baseTimes.length < MAX_SLOTS_PER_DAY && (
+                    <Button type="button" size="sm" variant="outline" onClick={addBaseTime}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Tambah jam
+                    </Button>
+                  )}
                 </div>
               </div>
 
