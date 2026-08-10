@@ -119,6 +119,16 @@ export function useInfiniteProducts(filters?: FilterState) {
     },
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    // Every route that renders this grid prefetches its first page server-side
+    // (app/page.tsx, app/[category]/**). Those pages are ISR-cached, so their
+    // dehydrated dataUpdatedAt is the prerender time -- always "stale" by the
+    // time a visitor mounts, which made react-query re-fetch page 0 over HTTP
+    // on EVERY page view purely to get back what the RSC payload had already
+    // delivered. Freshness is the server's job here (revalidate = 60).
+    // Filter/sort combinations that were never prefetched have no cached data
+    // at all, so they still fetch normally -- this only suppresses the
+    // redundant re-fetch of already-hydrated data.
+    refetchOnMount: false,
   });
 }
 
@@ -133,6 +143,9 @@ export function useFeaturedProducts(category?: string) {
     },
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    // Same reasoning as useInfiniteProducts -- and this one is the expensive
+    // case, since it pulls up to 100 full product rows.
+    refetchOnMount: false,
   });
 }
 
