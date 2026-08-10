@@ -40,10 +40,21 @@ export function ProductImageCarousel({ images, alt, className, priority }: Produ
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [canScrollPrev, setCanScrollPrev] = useState(false);
   const [canScrollNext, setCanScrollNext] = useState(false);
+  // Off-screen slides are only clipped by `overflow-hidden`; their boxes still
+  // sit inside the viewport, so loading="lazy" never skipped them and a 20-card
+  // grid downloaded ~4 full-size images PER CARD up front (measured: 84-119
+  // <img> per page). Only the visible slide is rendered until the user shows
+  // intent on this particular carousel -- then its neighbours come along too.
+  const [primed, setPrimed] = useState(false);
+  const prime = useCallback(() => setPrimed(true), []);
 
   const onSelect = useCallback(() => {
     if (!emblaApi) return;
-    setSelectedIndex(emblaApi.selectedScrollSnap());
+    const index = emblaApi.selectedScrollSnap();
+    // Guarded on index: this also runs once on init (at 0), where priming would
+    // defeat the whole point.
+    if (index !== 0) setPrimed(true);
+    setSelectedIndex(index);
     setCanScrollPrev(emblaApi.canScrollPrev());
     setCanScrollNext(emblaApi.canScrollNext());
   }, [emblaApi]);
@@ -53,11 +64,16 @@ export function ProductImageCarousel({ images, alt, className, priority }: Produ
     onSelect();
     emblaApi.on('select', onSelect);
     emblaApi.on('reInit', onSelect);
+    // Embla's own pointerDown is the most reliable "user is about to drag"
+    // signal across mouse and touch -- it fires before the drag threshold, so
+    // the neighbouring image starts downloading as the swipe begins.
+    emblaApi.on('pointerDown', prime);
     return () => {
       emblaApi.off('select', onSelect);
       emblaApi.off('reInit', onSelect);
+      emblaApi.off('pointerDown', prime);
     };
-  }, [emblaApi, onSelect]);
+  }, [emblaApi, onSelect, prime]);
 
   // Single image: plain <img>, no carousel overhead/controls.
   if (slides.length <= 1) {
@@ -79,22 +95,30 @@ export function ProductImageCarousel({ images, alt, className, priority }: Produ
   }
 
   return (
-    <div className={`relative overflow-hidden ${className ?? ''}`}>
+    <div
+      className={`relative overflow-hidden ${className ?? ''}`}
+      onMouseEnter={prime}
+      onPointerDown={prime}
+      onTouchStart={prime}
+      onFocus={prime}
+    >
       <div className="h-full overflow-hidden" ref={emblaRef}>
         <div className="flex h-full">
           {slides.map((src, i) => (
-            <div key={i} className="relative min-w-0 shrink-0 grow-0 basis-full h-full">
-              <Image
-                src={src}
-                alt={`${alt} - foto ${i + 1}`}
-                fill
-                sizes="(max-width: 640px) 45vw, 220px"
-                quality={70}
-                className={IMAGE_CLASS}
-                onError={handleImageError}
-                priority={priority && i === 0}
-                unoptimized
-              />
+            <div key={i} className="relative min-w-0 shrink-0 grow-0 basis-full h-full bg-muted">
+              {(i === selectedIndex || (primed && Math.abs(i - selectedIndex) <= 1)) && (
+                <Image
+                  src={src}
+                  alt={`${alt} - foto ${i + 1}`}
+                  fill
+                  sizes="(max-width: 640px) 45vw, 220px"
+                  quality={70}
+                  className={IMAGE_CLASS}
+                  onError={handleImageError}
+                  priority={priority && i === 0}
+                  unoptimized
+                />
+              )}
             </div>
           ))}
         </div>
