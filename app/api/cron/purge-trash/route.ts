@@ -5,6 +5,7 @@ import { db } from "@root/lib/db";
 import { videoContents } from "@shared/schema";
 import { requireCronSecret } from "@root/lib/cronAuth";
 import { removeVideo } from "@root/lib/videoStorage";
+import { deleteMetricsForExpiredPosts } from "@root/lib/scheduler/metrics";
 
 const TRASH_RETENTION_DAYS = 30;
 
@@ -44,5 +45,10 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, purged, deleted, failed });
+  // Performance metrics share this cron's 30-day threshold on purpose: they
+  // describe a post, so they expire with it, keeping the dashboard on a
+  // rolling 30-day window with a single retention rule in a single place.
+  const metricsDeleted = await deleteMetricsForExpiredPosts(cutoff);
+
+  return NextResponse.json({ ok: true, purged, deleted, failed, metricsDeleted });
 }

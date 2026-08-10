@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, numeric, integer, boolean, timestamp, uuid, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, numeric, integer, boolean, timestamp, uuid, jsonb, date, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -229,6 +229,58 @@ export const scheduledPosts = pgTable("scheduled_posts", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
+// Daily performance snapshots per (post, platform), pulled from Buffer and
+// Zernio by the sync-metrics cron. One row per calendar day (see the unique
+// constraint) rather than one per sync run, so syncing several times a day
+// refreshes that day's row instead of piling up duplicates.
+//
+// A time series rather than a single "latest" row because raw counts can't
+// rank videos on their own -- a post from 3 days ago always out-measures one
+// from 3 hours ago. Comparing videos fairly needs their numbers at the SAME
+// age (views at 24h, 72h), which is only recoverable from history. History
+// can't be backfilled either: whatever isn't captured as it happens is gone.
+//
+// ON DELETE CASCADE (unlike scheduled_posts' own FK, which deliberately has
+// none) because these are purely derived numbers with no independent value:
+// if the post they describe is removed, they should follow it rather than
+// block its deletion -- exactly the failure that broke the video purge.
+export const postMetrics = pgTable(
+  "post_metrics",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    scheduledPostId: uuid("scheduled_post_id")
+      .notNull()
+      .references(() => scheduledPosts.id, { onDelete: "cascade" }),
+    platform: text("platform").notNull(),
+    // The calendar day this snapshot belongs to (Asia/Jakarta, matching the
+    // scheduler's own timezone) -- part of the unique key, so it's stored
+    // explicitly rather than derived from capturedAt at query time.
+    capturedOn: date("captured_on").notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).defaultNow().notNull(),
+    // When the PROVIDER last refreshed these numbers, not when we fetched
+    // them. Buffer only re-ingests once a day, so its values can be ~24h
+    // behind the network; without this there's no way to tell a genuinely
+    // flat metric from a stale one.
+    providerUpdatedAt: timestamp("provider_updated_at", { withTimezone: true }),
+    views: integer("views"),
+    impressions: integer("impressions"),
+    reach: integer("reach"),
+    reactions: integer("reactions"),
+    comments: integer("comments"),
+    shares: integer("shares"),
+    saves: integer("saves"),
+    clicks: integer("clicks"),
+    follows: integer("follows"),
+    engagementRate: numeric("engagement_rate"),
+    // Whatever the provider returned that isn't modelled above (e.g. Zernio's
+    // igReelsAvgWatchTime, Buffer's LinkedIn-only fields). Kept so a metric
+    // we didn't anticipate isn't lost -- it can be promoted to a real column
+    // later without having to re-fetch history that no longer exists.
+    raw: jsonb("raw"),
+  },
+  (table) => [unique("post_metrics_post_platform_day").on(table.scheduledPostId, table.platform, table.capturedOn)]
+);
+
 export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
   createdAt: true,
@@ -309,3 +361,5 @@ export type SchedulerAccount = typeof schedulerAccounts.$inferSelect;
 export type InsertSchedulerAccount = z.infer<typeof insertSchedulerAccountSchema>;
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
 export type InsertScheduledPost = z.infer<typeof insertScheduledPostSchema>;
+export type PostMetric = typeof postMetrics.$inferSelect;
+export type InsertPostMetric = typeof postMetrics.$inferInsert;

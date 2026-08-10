@@ -1,6 +1,6 @@
 import type { SchedulerAccount, VideoContent } from "@shared/schema";
 import { ACCOUNT_ID_FIELD } from "../platforms";
-import type { SchedulerPlatform, ProviderResults } from "../types";
+import type { SchedulerPlatform, ProviderResults, MetricsSnapshot, MetricsByPostId } from "../types";
 
 // Buffer's GraphQL API. Base URL confirmed against Buffer's own guide:
 // GraphQL requests POST directly to https://api.buffer.com (no /graphql
@@ -44,6 +44,108 @@ const CREATE_POST_MUTATION = `
 
 function captionText(video: VideoContent): string {
   return [video.caption, ...(video.hashtags ?? []).map((h) => `#${h}`)].filter(Boolean).join("\n\n");
+}
+
+// Fetches performance numbers for every post this Buffer account sent since
+// `since`, in ONE paginated query rather than one call per post.
+//
+// Confirmed against the live API (2026-08-10): `posts` accepts
+// filter.status/filter.dueAt and returns `metrics` inline, so a real account
+// with 11 recent posts came back in a single request. Per-post `post(input:)`
+// lookups would have meant hundreds of round-trips per sync for the same data.
+//
+// Note the date comparator is `{ start, end }` -- NOT the `gte`/`lte` shape
+// GraphQL APIs usually use, which the schema rejects outright.
+const POSTS_METRICS_QUERY = `
+  query PostMetrics($orgId: OrganizationId!, $since: DateTime!, $after: String) {
+    posts(
+      input: { organizationId: $orgId, filter: { status: sent, dueAt: { start: $since } } }
+      first: 50
+      after: $after
+    ) {
+      edges {
+        node {
+          id
+          metricsUpdatedAt
+          metrics { type value }
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+`;
+
+// Buffer reports metrics as a flat list of {type, value} rather than named
+// fields, so they're folded into our own shape here. Unmapped types are kept
+// in `raw` instead of dropped -- Buffer's enum includes network-specific
+// entries (saves, quotes, totalTimeWatched, ...) we don't model as columns.
+function toSnapshot(metrics: Array<{ type: string; value: number }>, metricsUpdatedAt: string | null): MetricsSnapshot {
+  const byType = new Map(metrics.map((m) => [m.type, m.value]));
+  const take = (type: string) => (byType.has(type) ? byType.get(type) : undefined);
+
+  const mapped = new Set(["views", "impressions", "reach", "reactions", "comments", "shares", "saves", "clicks", "follows", "engagementRate"]);
+  const raw: Record<string, unknown> = {};
+  for (const [type, value] of byType) {
+    if (!mapped.has(type)) raw[type] = value;
+  }
+
+  return {
+    views: take("views"),
+    impressions: take("impressions"),
+    reach: take("reach"),
+    reactions: take("reactions"),
+    comments: take("comments"),
+    shares: take("shares"),
+    saves: take("saves"),
+    clicks: take("clicks"),
+    follows: take("follows"),
+    engagementRate: take("engagementRate"),
+    providerUpdatedAt: metricsUpdatedAt ? new Date(metricsUpdatedAt) : undefined,
+    raw: Object.keys(raw).length > 0 ? raw : undefined,
+  };
+}
+
+export async function fetchBufferMetrics(account: SchedulerAccount, since: Date): Promise<MetricsByPostId> {
+  const results: MetricsByPostId = new Map();
+  if (!account.bufferApiKey) return results;
+
+  const call = async (query: string, variables: Record<string, unknown>) => {
+    const response = await fetch(BUFFER_GRAPHQL_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${account.bufferApiKey}` },
+      body: JSON.stringify({ query, variables }),
+    });
+    return response.json();
+  };
+
+  // The organization id isn't stored on our side -- it belongs to whoever
+  // owns the API key, so it's resolved per account rather than assumed.
+  const accountRes = await call(`{ account { organizations { id } } }`, {});
+  const orgId: string | undefined = accountRes?.data?.account?.organizations?.[0]?.id;
+  if (!orgId) return results;
+
+  let after: string | null = null;
+  // Bounded so a pagination bug on either side can't spin forever; 20 pages
+  // x 50 posts is far beyond what this account volume can produce.
+  for (let page = 0; page < 20; page++) {
+    const res = await call(POSTS_METRICS_QUERY, { orgId, since: since.toISOString(), after });
+    const connection = res?.data?.posts;
+    if (!connection) break;
+
+    for (const edge of connection.edges ?? []) {
+      const node = edge?.node;
+      // Buffer returns metrics: null until its daily ingestion has run --
+      // skip rather than recording a row of zeroes that would look like real
+      // "no engagement" data.
+      if (!node?.id || !node.metrics) continue;
+      results.set(node.id, toSnapshot(node.metrics, node.metricsUpdatedAt ?? null));
+    }
+
+    if (!connection.pageInfo?.hasNextPage) break;
+    after = connection.pageInfo.endCursor;
+  }
+
+  return results;
 }
 
 // YouTube and Instagram are the only two platforms Buffer rejects without

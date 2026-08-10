@@ -1,6 +1,6 @@
 import type { SchedulerAccount, VideoContent } from "@shared/schema";
 import { ACCOUNT_ID_FIELD } from "../platforms";
-import type { SchedulerPlatform, ProviderResults } from "../types";
+import type { SchedulerPlatform, ProviderResults, MetricsSnapshot, MetricsByPostId } from "../types";
 
 // Zernio, unlike Buffer, does NOT accept an arbitrary external URL in a post
 // request -- confirmed via https://docs.zernio.com/guides/media-uploads:
@@ -39,6 +39,20 @@ const ZERNIO_PLATFORM_KEY: Record<"threads" | "facebook_page", string> = {
 
 function captionText(video: VideoContent): string {
   return [video.caption, ...(video.hashtags ?? []).map((h) => `#${h}`)].filter(Boolean).join("\n\n");
+}
+
+// Zernio isn't consistent about which key carries a post's id (`_id` in the
+// analytics payload, possibly `id`/`postId` elsewhere), and the exact
+// create-post response shape still isn't confirmed against a live call --
+// so try each rather than betting on one and silently storing nothing.
+function zernioPostId(source: unknown): string | undefined {
+  if (!source || typeof source !== "object") return undefined;
+  const record = source as Record<string, unknown>;
+  for (const key of ["_id", "id", "postId"]) {
+    const value = record[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return undefined;
 }
 
 async function uploadVideoToZernio(apiKey: string, videoUrl: string): Promise<string> {
@@ -134,10 +148,17 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
         }
         // Defensive: fall back to a flat "ok" if the response doesn't break
         // results out per platform (shape not confirmed -- see file header).
+        //
+        // The id is read through several candidate keys because the original
+        // `json?.id` alone silently captured nothing: Zernio's own analytics
+        // payload keys its posts as `_id`, and all 18 real Threads/Facebook
+        // posts ended up stored with no postId at all, leaving them
+        // unmatchable to their performance data. Buffer's side stored one
+        // every time, which is what made the gap obvious.
         const perPlatform = json?.results?.[ZERNIO_PLATFORM_KEY[t.platform]];
         results[t.platform] = perPlatform
-          ? { ok: perPlatform.status !== "failed", postId: perPlatform.id, error: perPlatform.error }
-          : { ok: true, postId: json?.id };
+          ? { ok: perPlatform.status !== "failed", postId: zernioPostId(perPlatform), error: perPlatform.error }
+          : { ok: true, postId: zernioPostId(json) };
       } catch (err) {
         results[t.platform] = { ok: false, error: err instanceof Error ? err.message : "Gagal memanggil Zernio API." };
       }
@@ -145,4 +166,120 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
   );
 
   return results;
+}
+
+// Metric keys Zernio returns per post AND per platform, mapped onto our own
+// shape. Confirmed against a real GET /v1/analytics response (2026-08-10) on
+// the current plan -- this base endpoint needs no paid Analytics add-on,
+// unlike the /analytics/daily-metrics and per-platform *-insights endpoints.
+const ZERNIO_MAPPED_KEYS = new Set([
+  "views", "impressions", "reach", "likes", "comments", "shares", "saves", "clicks", "follows", "engagementRate", "lastUpdated",
+]);
+
+function toSnapshot(analytics: Record<string, unknown>): MetricsSnapshot {
+  const num = (key: string): number | undefined => {
+    const value = analytics[key];
+    return typeof value === "number" ? value : undefined;
+  };
+
+  const raw: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(analytics)) {
+    // Keeps Zernio-only fields (igReelsAvgWatchTime, videoDurationSeconds,
+    // ...) rather than discarding them -- they can't be re-fetched later
+    // once the post ages out of the analytics window.
+    if (!ZERNIO_MAPPED_KEYS.has(key) && value !== null && value !== undefined) raw[key] = value;
+  }
+
+  // Zernio's `lastUpdated` is a plain "YYYY-MM-DD HH:mm:ss" string with no
+  // timezone marker, so it's normalised to ISO before parsing rather than
+  // left to the engine's locale-dependent fallback.
+  const lastUpdated = typeof analytics.lastUpdated === "string" ? new Date(analytics.lastUpdated.replace(" ", "T") + "Z") : undefined;
+
+  return {
+    views: num("views"),
+    impressions: num("impressions"),
+    reach: num("reach"),
+    // Zernio names it `likes`; our column follows Buffer's cross-network
+    // "reactions" naming so both providers land in the same field.
+    reactions: num("likes"),
+    comments: num("comments"),
+    shares: num("shares"),
+    saves: num("saves"),
+    clicks: num("clicks"),
+    follows: num("follows"),
+    engagementRate: num("engagementRate"),
+    providerUpdatedAt: lastUpdated && !isNaN(lastUpdated.getTime()) ? lastUpdated : undefined,
+    raw: Object.keys(raw).length > 0 ? raw : undefined,
+  };
+}
+
+// Fetches performance data for this Zernio account's recent posts. One
+// listing call covers every post (and its per-platform breakdown), so this
+// is a handful of requests per sync rather than one per post.
+//
+// Returns entries keyed by BOTH the post id and each platform-specific id
+// Zernio reports, because our own stored postId hasn't historically been
+// reliable here (see zernioPostId above) -- indexing every id the response
+// offers gives the matcher more than one way to connect a row.
+export async function fetchZernioMetrics(account: SchedulerAccount, since: Date): Promise<MetricsByPostId> {
+  const results: MetricsByPostId = new Map();
+  if (!account.zernioApiKey) return results;
+
+  const params = new URLSearchParams({ fromDate: since.toISOString().slice(0, 10), limit: "100" });
+  const res = await fetch(`${ZERNIO_API_BASE}/analytics?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${account.zernioApiKey}` },
+  });
+  if (!res.ok) return results;
+
+  const json = await res.json().catch(() => null);
+  for (const post of json?.posts ?? []) {
+    const postAnalytics = post?.analytics;
+    if (postAnalytics) {
+      const snapshot = toSnapshot(postAnalytics);
+      for (const id of [post._id, post.latePostId]) {
+        if (typeof id === "string" && id) results.set(id, snapshot);
+      }
+    }
+    // Per-platform numbers are more precise than the post-level rollup when
+    // one post fans out to several platforms, so they overwrite it.
+    for (const entry of post?.platforms ?? []) {
+      if (!entry?.analytics) continue;
+      const snapshot = toSnapshot(entry.analytics);
+      for (const id of [entry.platformPostId, post._id, post.latePostId]) {
+        if (typeof id === "string" && id) results.set(id, snapshot);
+      }
+    }
+  }
+
+  return results;
+}
+
+// Exposed so the sync job can fall back to time-based matching for the
+// Threads/Facebook posts dispatched before zernioPostId() existed, which
+// have no stored provider id at all. Returns each published post's platform,
+// publish time and metrics so the caller can pair them up by proximity.
+export async function fetchZernioPublishedPosts(
+  account: SchedulerAccount,
+  since: Date
+): Promise<Array<{ platform: string; publishedAt: Date; metrics: MetricsSnapshot }>> {
+  const out: Array<{ platform: string; publishedAt: Date; metrics: MetricsSnapshot }> = [];
+  if (!account.zernioApiKey) return out;
+
+  const params = new URLSearchParams({ fromDate: since.toISOString().slice(0, 10), limit: "100" });
+  const res = await fetch(`${ZERNIO_API_BASE}/analytics?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${account.zernioApiKey}` },
+  });
+  if (!res.ok) return out;
+
+  const json = await res.json().catch(() => null);
+  for (const post of json?.posts ?? []) {
+    const publishedAt = typeof post?.publishedAt === "string" ? new Date(post.publishedAt) : null;
+    if (!publishedAt || isNaN(publishedAt.getTime())) continue;
+    for (const entry of post?.platforms ?? []) {
+      if (!entry?.analytics || typeof entry.platform !== "string") continue;
+      out.push({ platform: entry.platform, publishedAt, metrics: toSnapshot(entry.analytics) });
+    }
+  }
+
+  return out;
 }
