@@ -13,6 +13,7 @@ import {
   BarChart3,
   Film,
   CalendarClock,
+  LayoutDashboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,10 +36,14 @@ import { AnalyticsTab } from "@/components/admin/AnalyticsTab";
 import { ContentGeneratorTab } from "@/components/admin/ContentGeneratorTab";
 import { VideoLibraryTab } from "@/components/admin/VideoLibraryTab";
 import { SchedulerTab } from "@/components/admin/SchedulerTab";
+import { DashboardTab } from "@/components/admin/DashboardTab";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 const NAV_ITEMS = [
+  // Dashboard leads: it's the "how is everything doing" view, and the intended
+  // home for other analytics sources (Google Analytics et al) as they're added.
+  { value: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { value: "products", label: "Products", icon: Package },
   { value: "featured", label: "Featured", icon: Star },
   { value: "content-generator", label: "Content Generator", icon: Sparkles },
@@ -52,7 +57,7 @@ type TabValue = (typeof NAV_ITEMS)[number]["value"];
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabValue>("products");
+  const [activeTab, setActiveTab] = useState<TabValue>("dashboard");
 
   const handleLogout = async () => {
     await signOut({ redirect: false });
@@ -117,6 +122,12 @@ export default function AdminDashboard() {
           </header>
 
           <main className="p-4 md:p-8">
+            {activeTab === "dashboard" && (
+              <ErrorBoundary>
+                <DashboardTab />
+              </ErrorBoundary>
+            )}
+
             {activeTab === "products" && (
               <ErrorBoundary>
                 <ProductManagementTab />
