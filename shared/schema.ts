@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, numeric, integer, boolean, timestamp, uuid, jsonb, date, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, numeric, integer, boolean, timestamp, uuid, jsonb, date, index, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -26,7 +26,24 @@ export const products = pgTable("products", {
   stockAvailable: boolean("stock_available").default(true),
   clicks: integer("clicks").default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-});
+}, (table) => [
+  // Until these, `products` carried nothing but its primary key, so every
+  // storefront read was a sequential scan plus a sort. One index per hot query
+  // shape -- deliberately not one per sort option, since the less-used sorts
+  // (clicks/sales/price) don't justify the write cost on scraper bulk inserts.
+
+  // Category grid: where category = ? and price between ? order by created_at desc
+  index("products_category_created_at_idx").on(table.category, table.createdAt.desc()),
+  // Subcategory grid, and SELECT DISTINCT category, subcategory in
+  // lib/categories.ts + /api/options/item (index-only scan).
+  index("products_category_subcategory_created_at_idx").on(table.category, table.subcategory, table.createdAt.desc()),
+  // Homepage grid: same query without the category predicate.
+  index("products_created_at_idx").on(table.createdAt.desc()),
+  // Featured carousel: where is_featured = true order by featured_order asc
+  index("products_featured_order_idx").on(table.isFeatured, table.featuredOrder),
+  // /api/options/dikirim-dari runs on every page view and only reads this column.
+  index("products_dikirim_dari_idx").on(table.dikirim_dari),
+]);
 
 export const productAnalytics = pgTable("product_analytics", {
   id: uuid("id").defaultRandom().primaryKey(),
