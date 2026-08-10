@@ -4,11 +4,16 @@ import { db } from "@root/lib/db";
 import { products } from "@shared/schema";
 import { toApiProduct } from "@root/lib/mappers";
 import { PRODUCTS_PER_PAGE } from "@/hooks/useProductQueries";
-import { getCategoryHierarchy, resolveCategorySlug } from "@root/lib/categories";
+import { getCategoryHierarchy, getSubcategoryParams, resolveCategorySlug } from "@root/lib/categories";
 import { DEFAULT_PRODUCT_FILTERS } from "@root/lib/productFilters";
 import Home from "@/pages/Home";
 
 export const revalidate = 60;
+
+// Required for `revalidate` above to mean anything -- see getSubcategoryParams().
+export function generateStaticParams() {
+  return getSubcategoryParams();
+}
 
 export default async function Page({ params }: { params: Promise<{ category: string; subcategory: string }> }) {
   const { category: categorySlug, subcategory: subcategorySlug } = await params;

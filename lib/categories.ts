@@ -24,6 +24,29 @@ export async function getCategoryHierarchy(): Promise<Record<string, string[]>> 
   return hierarchy;
 }
 
+// generateStaticParams() feeds for the two category routes. Without these,
+// `export const revalidate = 60` on a dynamic segment does NOTHING -- Next
+// marks the route `ƒ Dynamic` and serves it with
+// `Cache-Control: private, no-cache, no-store`, i.e. a full server render
+// (measured 94-287ms) on every single category click. With them the routes
+// become `● SSG`/ISR (`s-maxage=60`, `x-nextjs-cache: HIT`, ~4ms).
+// dynamicParams stays at its default `true`, so categories added after a
+// build still work -- they're rendered on demand and cached from then on.
+export async function getCategoryParams(): Promise<{ category: string }[]> {
+  const hierarchy = await getCategoryHierarchy();
+  return Object.keys(hierarchy).map((name) => ({ category: slugify(name) }));
+}
+
+export async function getSubcategoryParams(): Promise<{ category: string; subcategory: string }[]> {
+  const hierarchy = await getCategoryHierarchy();
+  return Object.entries(hierarchy).flatMap(([category, subcategories]) =>
+    subcategories.map((subcategory) => ({
+      category: slugify(category),
+      subcategory: slugify(subcategory),
+    }))
+  );
+}
+
 // Mirrors CategoryContext.tsx's categorySlugMap/subcategorySlugMap
 // construction -- kept in sync manually since one runs on the server
 // (resolving a URL param before the client mounts) and the other on the
