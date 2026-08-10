@@ -21,6 +21,15 @@ interface ProductImageCarouselProps {
 const FALLBACK_IMAGE = 'https://via.placeholder.com/300';
 const IMAGE_CLASS = 'object-cover group-hover:scale-110 transition-transform duration-300';
 
+// unoptimized: every product image is a hotlinked, ever-growing set of
+// distinct scraped Shopee URLs (thousands and counting) -- Vercel's Image
+// Optimization bills/limits by unique SOURCE image, so a big scraping run
+// can blow through the plan's quota and every /_next/image request starts
+// returning 402 site-wide (real incident, 2026-08-10). Serving these
+// as-is sidesteps that quota entirely; the source is already compressed
+// webp, so the loss is just responsive srcset/format conversion, not raw
+// image quality.
+
 function handleImageError(e: React.SyntheticEvent<HTMLImageElement>) {
   e.currentTarget.src = FALLBACK_IMAGE;
 }
@@ -63,6 +72,7 @@ export function ProductImageCarousel({ images, alt, className, priority }: Produ
           className={IMAGE_CLASS}
           onError={handleImageError}
           priority={priority}
+          unoptimized
         />
       </div>
     );
@@ -83,6 +93,7 @@ export function ProductImageCarousel({ images, alt, className, priority }: Produ
                 className={IMAGE_CLASS}
                 onError={handleImageError}
                 priority={priority && i === 0}
+                unoptimized
               />
             </div>
           ))}

@@ -96,7 +96,10 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
               }`}
               data-testid={`carousel-slide-${index}`}
             >
-              {/* Background image with overlay */}
+              {/* Background image with overlay. unoptimized: same reason as
+                  ProductImageCarousel.tsx -- hotlinked, ever-growing set of
+                  scraped Shopee URLs would otherwise blow through Vercel's
+                  Image Optimization quota (real incident, 2026-08-10). */}
               <Image
                 src={bgUrl}
                 alt=""
@@ -107,6 +110,7 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                 className="object-cover"
                 priority={index === 0}
                 loading={index === 0 ? 'eager' : 'lazy'}
+                unoptimized
               />
               <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-black/60" />
 
@@ -190,6 +194,7 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                       quality={70}
                       loading={index === 0 ? 'eager' : 'lazy'}
                       className="rounded-2xl shadow-2xl object-cover transform hover:scale-105 transition-transform duration-300"
+                      unoptimized
                     />
                   </div>
                 </div>
