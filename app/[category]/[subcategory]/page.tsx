@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { db } from "@root/lib/db";
@@ -23,14 +24,21 @@ export default async function Page({ params }: { params: Promise<{ category: str
   const hierarchy = await getCategoryHierarchy();
   const { category, subcategory } = resolveCategorySlug(hierarchy, categorySlug, subcategorySlug);
 
+  // Same soft-404 fix as app/[category]/page.tsx, and it matters more here:
+  // this route is what caught every unmatched two-segment URL. Requiring BOTH
+  // to resolve also rejects a valid-looking pair whose subcategory belongs to
+  // a different category (resolveCategorySlug now scopes the lookup), which
+  // used to render an empty grid at 200.
+  if (!category || !subcategory) notFound();
+
   const filters = { ...DEFAULT_PRODUCT_FILTERS, category, subcategory };
 
   const productConditions = [
     gte(products.price, String(filters.priceMin)),
     lte(products.price, String(filters.priceMax)),
+    eq(products.category, category),
+    eq(products.subcategory, subcategory),
   ];
-  if (category) productConditions.push(eq(products.category, category));
-  if (subcategory) productConditions.push(eq(products.subcategory, subcategory));
 
   const queryClient = new QueryClient();
 
@@ -38,7 +46,7 @@ export default async function Page({ params }: { params: Promise<{ category: str
     db
       .select()
       .from(products)
-      .where(category ? and(eq(products.isFeatured, true), eq(products.category, category)) : eq(products.isFeatured, true))
+      .where(and(eq(products.isFeatured, true), eq(products.category, category)))
       .orderBy(asc(products.featuredOrder))
       .limit(100),
     db

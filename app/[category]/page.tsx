@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { db } from "@root/lib/db";
@@ -28,13 +29,24 @@ export default async function Page({ params }: { params: Promise<{ category: str
   const hierarchy = await getCategoryHierarchy();
   const { category } = resolveCategorySlug(hierarchy, categorySlug);
 
+  // An unknown slug used to fall through to the unfiltered "Semua Produk"
+  // view, so ANY two-word URL answered 200 with the full catalogue --
+  // /asdfghjkl, /ngawur/banget, even /api/apa-saja. A soft 404: the same
+  // content served at unbounded distinct URLs, which search engines read as
+  // duplicate pages. Harmless-ish while those responses were `no-store`;
+  // once the route became ISR-cached each junk URL also earned its own edge
+  // cache entry. The hierarchy is read live per request, so a category added
+  // after the last build still resolves here -- only genuinely absent slugs
+  // reach this.
+  if (!category) notFound();
+
   const filters = { ...DEFAULT_PRODUCT_FILTERS, category, subcategory: undefined };
 
   const productConditions = [
     gte(products.price, String(filters.priceMin)),
     lte(products.price, String(filters.priceMax)),
+    eq(products.category, category),
   ];
-  if (category) productConditions.push(eq(products.category, category));
 
   const queryClient = new QueryClient();
 
@@ -42,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ category: str
     db
       .select()
       .from(products)
-      .where(category ? and(eq(products.isFeatured, true), eq(products.category, category)) : eq(products.isFeatured, true))
+      .where(and(eq(products.isFeatured, true), eq(products.category, category)))
       .orderBy(asc(products.featuredOrder))
       .limit(100),
     db
