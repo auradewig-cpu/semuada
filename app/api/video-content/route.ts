@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { videoContents } from "@shared/schema";
 import { toApiVideoContent } from "@root/lib/mappers";
@@ -14,9 +14,15 @@ export async function GET(request: NextRequest) {
 
   const category = request.nextUrl.searchParams.get("category");
 
+  // Purged videos are tombstones -- their Cloudinary asset is gone, so
+  // rendering them would only produce broken players. They're kept in the
+  // table purely to satisfy scheduled_posts' FK and preserve the posting
+  // log's context (see removeVideo() in lib/videoStorage.ts), never shown.
+  const notPurged = isNull(videoContents.purgedAt);
+
   const rows = category
-    ? await db.select().from(videoContents).where(eq(videoContents.category, category)).orderBy(desc(videoContents.createdAt))
-    : await db.select().from(videoContents).orderBy(desc(videoContents.createdAt));
+    ? await db.select().from(videoContents).where(and(eq(videoContents.category, category), notPurged)).orderBy(desc(videoContents.createdAt))
+    : await db.select().from(videoContents).where(notPurged).orderBy(desc(videoContents.createdAt));
 
   return NextResponse.json({ items: rows.map(toApiVideoContent) });
 }

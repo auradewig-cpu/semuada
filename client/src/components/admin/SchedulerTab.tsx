@@ -194,8 +194,16 @@ export function SchedulerTab() {
                 const failedPlatforms = getFailedPlatforms(post);
                 return (
                   <Card key={post.id} className="overflow-hidden">
-                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <video src={post.video_url} controls className="w-full aspect-[9/16] bg-black object-contain" />
+                    {post.video_purged ? (
+                      <div className="w-full aspect-[9/16] bg-muted flex items-center justify-center p-4 text-center">
+                        <p className="text-xs text-muted-foreground">
+                          Video sudah dihapus permanen setelah 30 hari di sampah. Riwayat postingan ini tetap tersimpan.
+                        </p>
+                      </div>
+                    ) : (
+                      /* eslint-disable-next-line jsx-a11y/media-has-caption */
+                      <video src={post.video_url} controls className="w-full aspect-[9/16] bg-black object-contain" />
+                    )}
                     <CardContent className="p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-medium bg-muted rounded px-2 py-0.5 truncate">

@@ -5,7 +5,7 @@ import { db } from "@root/lib/db";
 import { videoContents } from "@shared/schema";
 import { toApiVideoContent } from "@root/lib/mappers";
 import { requireAuth } from "@root/lib/apiAuth";
-import { destroyVideoAsset } from "@root/lib/videoStorage";
+import { removeVideo } from "@root/lib/videoStorage";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const unauthorized = await requireAuth();
@@ -36,15 +36,16 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
   const { id } = await params;
 
-  const [row] = await db.delete(videoContents).where(eq(videoContents.id, id)).returning();
+  const [row] = await db.select().from(videoContents).where(eq(videoContents.id, id));
   if (!row) {
     return NextResponse.json({ error: "Video tidak ditemukan." }, { status: 404 });
   }
 
-  // Best-effort Cloudinary cleanup -- don't fail the request over an
-  // already-gone or slow remote asset. See destroyVideoAsset() for why
-  // credentials are passed per-call rather than via global .config().
-  await destroyVideoAsset(row);
+  // Destroys the Cloudinary asset, then deletes the row only when nothing
+  // references it. This used to be a bare db.delete(), which meant deleting
+  // any video that had ever been posted failed outright with a foreign-key
+  // violation from scheduled_posts -- see removeVideo() for the full story.
+  await removeVideo(row);
 
   return NextResponse.json({ ok: true });
 }

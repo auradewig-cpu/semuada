@@ -144,10 +144,20 @@ export const videoContents = pgTable("video_contents", {
   // trashedAt set -- see below).
   status: text("status").default("uploaded"),
   // Set when a post using this video succeeds. Starts the 30-day countdown
-  // before the trash-purge cron permanently deletes the row + Cloudinary
-  // asset (see destroyVideoAsset() in lib/videoStorage.ts). Null = not yet
-  // posted / not in trash.
+  // before the trash-purge cron destroys the Cloudinary asset (see
+  // destroyVideoAsset() in lib/videoStorage.ts). Null = not yet posted / not
+  // in trash.
   trashedAt: timestamp("trashed_at", { withTimezone: true }),
+  // Set once the Cloudinary asset has actually been destroyed. The row is
+  // kept as a lightweight tombstone rather than deleted, because
+  // scheduled_posts.video_content_id references it (ON DELETE NO ACTION) --
+  // deleting a video that was ever posted raises a foreign-key violation,
+  // which is exactly what broke both the purge cron and the manual-delete
+  // route. Keeping the row also preserves the posting log's context
+  // (caption/prompt/category) for later performance analysis, at a cost of a
+  // few thousand text rows per year. Purged rows are filtered out of the
+  // video-library API so they stay invisible in the admin UI.
+  purgedAt: timestamp("purged_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 

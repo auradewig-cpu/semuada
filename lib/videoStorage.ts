@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { v2 as cloudinary } from "cloudinary";
 import { db } from "@root/lib/db";
-import { videoStorageAccounts, type VideoContent } from "@shared/schema";
+import { scheduledPosts, videoContents, videoStorageAccounts, type VideoContent } from "@shared/schema";
 
 // Every category without its own Cloudinary account falls back to this one
 // -- the account already live in production before multi-account storage
@@ -47,4 +47,39 @@ export async function destroyVideoAsset(video: Pick<VideoContent, "storageAccoun
   } catch {
     // ignore -- best-effort cleanup
   }
+}
+
+// Removes a video for good: destroys the Cloudinary asset, then either
+// hard-deletes the row or leaves a tombstone, depending on whether any
+// scheduled_posts row still references it.
+//
+// The distinction matters because scheduled_posts.video_content_id is a
+// plain FK (ON DELETE NO ACTION), so deleting a video that was ever posted
+// raises a foreign-key violation. That broke BOTH callers of this: the
+// manual delete route 500'd on any already-posted video, and the daily
+// purge-trash cron would have started failing ~30 days after the scheduler
+// went live (every posted video has a scheduled_posts row, so the very
+// first one it tried would throw and abort the whole run -- after already
+// destroying its Cloudinary asset, leaving the row orphaned but undeletable).
+//
+// Tombstoning instead of deleting keeps the posting log intact (schema.ts
+// calls scheduled_posts "the permanent log of what was posted where") and
+// preserves each post's caption/prompt context for later performance
+// analysis. Videos that were never posted have nothing referencing them, so
+// those are still removed outright rather than accumulating as clutter.
+export async function removeVideo(video: VideoContent): Promise<"deleted" | "purged"> {
+  await destroyVideoAsset(video);
+
+  const [{ referencing }] = await db
+    .select({ referencing: sql<number>`count(*)::int` })
+    .from(scheduledPosts)
+    .where(eq(scheduledPosts.videoContentId, video.id));
+
+  if (referencing > 0) {
+    await db.update(videoContents).set({ purgedAt: new Date() }).where(eq(videoContents.id, video.id));
+    return "purged";
+  }
+
+  await db.delete(videoContents).where(eq(videoContents.id, video.id));
+  return "deleted";
 }

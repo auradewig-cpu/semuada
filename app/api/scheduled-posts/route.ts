@@ -30,6 +30,11 @@ export async function GET(request: NextRequest) {
       video_url: video.videoUrl,
       caption: video.caption,
       hashtags: video.hashtags,
+      // The 30-day trash purge destroys the Cloudinary asset but keeps the
+      // row (see removeVideo()), so video_url still points at something that
+      // no longer exists. Flagged so the UI shows a placeholder rather than
+      // a permanently-spinning video player on older posts.
+      video_purged: video.purgedAt !== null,
     })),
   });
 }

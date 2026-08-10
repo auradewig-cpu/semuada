@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { count } from "drizzle-orm";
+import { count, isNull } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { videoContents } from "@shared/schema";
 import { requireAuth } from "@root/lib/apiAuth";
@@ -8,9 +8,13 @@ export async function GET() {
   const unauthorized = await requireAuth();
   if (unauthorized) return unauthorized;
 
+  // Excludes purged tombstones for the same reason the library listing does
+  // -- they're retained only to keep scheduled_posts' FK valid, and counting
+  // them would inflate this indicator with videos that no longer exist.
   const rows = await db
     .select({ category: videoContents.category, count: count() })
     .from(videoContents)
+    .where(isNull(videoContents.purgedAt))
     .groupBy(videoContents.category);
 
   const total = rows.reduce((sum, r) => sum + r.count, 0);
