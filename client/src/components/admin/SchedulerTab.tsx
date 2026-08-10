@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Settings2, TriangleAlert, CheckCircle2, XCircle, Clock, Zap, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,25 @@ const STATUS_BADGE: Record<ScheduledPost['status'], { label: string; className: 
   failed: { label: 'Gagal', className: 'bg-destructive/10 text-destructive' },
 };
 
+// Card size is really a column count -- the videos are 9:16, so fitting more
+// per row is what actually makes them smaller. Written as complete class
+// strings because Tailwind only ships classes it can find literally in the
+// source; assembling them at runtime would leave the styles unbuilt.
+const VIDEO_SIZES = {
+  kecil: { label: 'Kecil', grid: 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-6' },
+  sedang: { label: 'Sedang', grid: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4' },
+  besar: { label: 'Besar', grid: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' },
+} as const;
+
+type VideoSize = keyof typeof VIDEO_SIZES;
+
+const VIDEO_SIZE_STORAGE_KEY = 'schedulerVideoSize';
+const DEFAULT_VIDEO_SIZE: VideoSize = 'sedang';
+
+function isVideoSize(value: string | null): value is VideoSize {
+  return value === 'kecil' || value === 'sedang' || value === 'besar';
+}
+
 function isToday(iso: string): boolean {
   const d = new Date(iso);
   const now = new Date();
@@ -63,6 +82,23 @@ export function SchedulerTab() {
   const [pickerForPost, setPickerForPost] = useState<ScheduledPost | null>(null);
   const [confirmBuildNow, setConfirmBuildNow] = useState(false);
   const [confirmRetryPost, setConfirmRetryPost] = useState<ScheduledPost | null>(null);
+
+  // Starts at the default and is restored from localStorage after mount
+  // rather than read during render -- this page is prerendered, so reading
+  // browser storage on the first pass would render different markup on the
+  // server than on the client. Same approach as Home.tsx's filter panel.
+  const [videoSize, setVideoSize] = useState<VideoSize>(DEFAULT_VIDEO_SIZE);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(VIDEO_SIZE_STORAGE_KEY);
+    if (isVideoSize(stored)) setVideoSize(stored);
+  }, []);
+
+  const handleVideoSizeChange = (value: string) => {
+    if (!isVideoSize(value)) return;
+    setVideoSize(value);
+    localStorage.setItem(VIDEO_SIZE_STORAGE_KEY, value);
+  };
 
   const accounts = accountsData?.items ?? [];
   const posts = postsData?.items ?? [];
@@ -154,6 +190,16 @@ export function SchedulerTab() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={videoSize} onValueChange={handleVideoSizeChange}>
+                <SelectTrigger className="w-32" aria-label="Ukuran video">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(VIDEO_SIZES).map(([value, { label }]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {selectedAccount && (
                 <Button type="button" size="sm" variant="outline" onClick={() => setConfirmBuildNow(true)} disabled={buildScheduleNow.isPending}>
                   <Zap className="h-4 w-4 mr-1" /> {buildScheduleNow.isPending ? 'Memposting...' : 'Jadwalkan & Post Sekarang'}
@@ -187,7 +233,7 @@ export function SchedulerTab() {
           ) : posts.length === 0 ? (
             <p className="text-sm text-muted-foreground">Belum ada jadwal. Jadwal dibuat otomatis tiap hari dari video yang tersedia di Video Library.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className={`grid ${VIDEO_SIZES[videoSize].grid} gap-4`}>
               {posts.map((post) => {
                 const account = accounts.find((a) => a.id === post.scheduler_account_id);
                 const badge = STATUS_BADGE[post.status];
