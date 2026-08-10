@@ -1,11 +1,11 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { postMetrics, scheduledPosts, schedulerAccounts, type ScheduledPost, type SchedulerAccount } from "@shared/schema";
-import { fetchBufferMetrics } from "./providers/buffer";
+import { fetchBufferPosts } from "./providers/buffer";
 import { fetchZernioMetrics, fetchZernioPublishedPosts } from "./providers/zernio";
 import { BUFFER_PLATFORMS, ZERNIO_PLATFORMS } from "./platforms";
 import { TIMEZONE, todayISOInTimezone } from "./buildSchedule";
-import type { MetricsByPostId, MetricsSnapshot, ProviderResults, SchedulerPlatform } from "./types";
+import type { MetricsByPostId, MetricsSnapshot, ProviderPostsById, ProviderResults, SchedulerPlatform } from "./types";
 
 // How far back to keep refreshing a post's numbers. Engagement on this kind
 // of short-form content is overwhelmingly front-loaded, so past this point a
@@ -82,6 +82,55 @@ function toRow(post: ScheduledPost, platform: SchedulerPlatform, snapshot: Metri
   };
 }
 
+// Rewrites provider_results to reflect what the provider says actually
+// happened, rather than what we assumed at hand-off time.
+//
+// A successful dispatch only means Buffer ACCEPTED the post -- publishing
+// happens afterwards and can still fail. Measured against real accounts when
+// this was written: 25 of 54 platform-posts we had recorded as ok:true had
+// in fact failed to publish (YouTube 15/18, mostly "Invalid Credentials";
+// the rest transient TikTok/Instagram errors). Every one of them displayed a
+// green checkmark and was excluded from retry, because platformsNeedingDispatch()
+// only considers platforms without ok:true.
+//
+// Flipping those to ok:false therefore does two things at once: it stops the
+// UI lying, and it makes the existing per-post retry button pick them up
+// automatically without any change to the retry path.
+//
+// Only an explicit `error` status counts as failure. "scheduled"/"sending"
+// are healthy in-flight states -- posts handed over with a future
+// scheduledAt legitimately sit in them until their slot arrives, and
+// treating those as failures would retry posts that are about to publish
+// normally, duplicating them.
+function reconcileResults(post: ScheduledPost, bufferPosts: ProviderPostsById): ProviderResults | null {
+  const results = (post.providerResults as ProviderResults | null) ?? {};
+  let changed = false;
+  const next: ProviderResults = { ...results };
+
+  for (const platform of post.platforms as SchedulerPlatform[]) {
+    if (!BUFFER_PLATFORMS.includes(platform)) continue;
+    const entry = results[platform];
+    if (!entry?.postId) continue;
+
+    const state = bufferPosts.get(entry.postId)?.state;
+    if (!state) continue;
+
+    if (state.status === "error" && entry.ok !== false) {
+      next[platform] = { ok: false, postId: entry.postId, error: state.errorMessage ?? "Gagal dipublikasikan oleh Buffer." };
+      changed = true;
+    } else if (state.status === "sent" && entry.ok !== true) {
+      // The reverse case: a platform we recorded as failed that Buffer
+      // actually published (e.g. a retry that errored on our side after the
+      // provider had already accepted it). Correcting this prevents a retry
+      // from posting it a second time.
+      next[platform] = { ok: true, postId: entry.postId };
+      changed = true;
+    }
+  }
+
+  return changed ? next : null;
+}
+
 async function syncAccount(account: SchedulerAccount, since: Date, capturedOn: string) {
   const posts = await db
     .select()
@@ -98,20 +147,42 @@ async function syncAccount(account: SchedulerAccount, since: Date, capturedOn: s
   // Both providers are hit once for the whole account rather than once per
   // post -- Buffer's `posts` query and Zernio's /analytics listing each
   // return every recent post in one (paginated) response.
-  const [bufferMetrics, zernioMetrics, zernioPublished] = await Promise.all([
-    fetchBufferMetrics(account, since).catch((): MetricsByPostId => new Map()),
+  const [bufferPosts, zernioMetrics, zernioPublished] = await Promise.all([
+    fetchBufferPosts(account, since).catch((): ProviderPostsById => new Map()),
     fetchZernioMetrics(account, since).catch((): MetricsByPostId => new Map()),
     fetchZernioPublishedPosts(account, since).catch(() => []),
   ]);
+
+  // Correct the recorded outcomes BEFORE collecting metrics, so a post that
+  // turns out to have failed doesn't also get a metrics row written for it.
+  let reconciled = 0;
+  for (const post of posts) {
+    const next = reconcileResults(post, bufferPosts);
+    if (!next) continue;
+
+    const outcomes = Object.values(next);
+    const allFailed = outcomes.length > 0 && outcomes.every((r) => !r.ok);
+    await db
+      .update(scheduledPosts)
+      .set({
+        providerResults: next,
+        // Mirrors dispatchScheduledPost's own rule: "posted" means at least
+        // one platform succeeded, "failed" means none did.
+        status: allFailed ? "failed" : "posted",
+        errorMessage: allFailed ? outcomes.map((r) => r.error).filter(Boolean).join("; ") : null,
+      })
+      .where(eq(scheduledPosts.id, post.id));
+    post.providerResults = next;
+    reconciled++;
+  }
 
   const rows: ReturnType<typeof toRow>[] = [];
   for (const post of posts) {
     for (const platform of succeededPlatforms(post)) {
       const isBuffer = BUFFER_PLATFORMS.includes(platform);
-      const byId = isBuffer ? bufferMetrics : zernioMetrics;
 
       const id = providerPostId(post, platform);
-      let snapshot = id ? byId.get(id) : undefined;
+      let snapshot = id ? (isBuffer ? bufferPosts.get(id)?.metrics ?? undefined : zernioMetrics.get(id)) : undefined;
 
       // Time-based fallback is Zernio-only: Buffer has always stored an id,
       // so a miss there means the post genuinely has no metrics yet (its
@@ -151,7 +222,7 @@ async function syncAccount(account: SchedulerAccount, since: Date, capturedOn: s
       });
   }
 
-  return { posts: posts.length, rows: rows.length };
+  return { posts: posts.length, rows: rows.length, reconciled };
 }
 
 // Captures one day's performance snapshot for every recently-posted item
@@ -171,7 +242,7 @@ export async function syncPostMetrics() {
         const result = await syncAccount(account, since, capturedOn);
         return { account: account.label, ...result };
       } catch (err) {
-        return { account: account.label, posts: 0, rows: 0, error: err instanceof Error ? err.message : String(err) };
+        return { account: account.label, posts: 0, rows: 0, reconciled: 0, error: err instanceof Error ? err.message : String(err) };
       }
     })
   );

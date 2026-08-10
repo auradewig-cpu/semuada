@@ -1,6 +1,6 @@
 import type { SchedulerAccount, VideoContent } from "@shared/schema";
 import { ACCOUNT_ID_FIELD } from "../platforms";
-import type { SchedulerPlatform, ProviderResults, MetricsSnapshot, MetricsByPostId } from "../types";
+import type { SchedulerPlatform, ProviderResults, MetricsSnapshot, ProviderPostsById } from "../types";
 
 // Buffer's GraphQL API. Base URL confirmed against Buffer's own guide:
 // GraphQL requests POST directly to https://api.buffer.com (no /graphql
@@ -56,16 +56,25 @@ function captionText(video: VideoContent): string {
 //
 // Note the date comparator is `{ start, end }` -- NOT the `gte`/`lte` shape
 // GraphQL APIs usually use, which the schema rejects outright.
-const POSTS_METRICS_QUERY = `
-  query PostMetrics($orgId: OrganizationId!, $since: DateTime!, $after: String) {
+// Deliberately NOT filtered to status: sent -- the whole point of reading
+// `status`/`error` back is to catch posts that Buffer accepted but never
+// managed to publish, and filtering to sent would hide exactly those.
+//
+// `error` is an object (PostPublishingError), so it needs a subfield
+// selection; asking for it as a bare field fails validation outright.
+const POSTS_QUERY = `
+  query PostsWithMetrics($orgId: OrganizationId!, $since: DateTime!, $after: String) {
     posts(
-      input: { organizationId: $orgId, filter: { status: sent, dueAt: { start: $since } } }
+      input: { organizationId: $orgId, filter: { dueAt: { start: $since } } }
       first: 50
       after: $after
     ) {
       edges {
         node {
           id
+          status
+          sentAt
+          error { message rawError }
           metricsUpdatedAt
           metrics { type value }
         }
@@ -105,8 +114,8 @@ function toSnapshot(metrics: Array<{ type: string; value: number }>, metricsUpda
   };
 }
 
-export async function fetchBufferMetrics(account: SchedulerAccount, since: Date): Promise<MetricsByPostId> {
-  const results: MetricsByPostId = new Map();
+export async function fetchBufferPosts(account: SchedulerAccount, since: Date): Promise<ProviderPostsById> {
+  const results: ProviderPostsById = new Map();
   if (!account.bufferApiKey) return results;
 
   const call = async (query: string, variables: Record<string, unknown>) => {
@@ -128,17 +137,28 @@ export async function fetchBufferMetrics(account: SchedulerAccount, since: Date)
   // Bounded so a pagination bug on either side can't spin forever; 20 pages
   // x 50 posts is far beyond what this account volume can produce.
   for (let page = 0; page < 20; page++) {
-    const res = await call(POSTS_METRICS_QUERY, { orgId, since: since.toISOString(), after });
+    const res = await call(POSTS_QUERY, { orgId, since: since.toISOString(), after });
     const connection = res?.data?.posts;
     if (!connection) break;
 
     for (const edge of connection.edges ?? []) {
       const node = edge?.node;
-      // Buffer returns metrics: null until its daily ingestion has run --
-      // skip rather than recording a row of zeroes that would look like real
-      // "no engagement" data.
-      if (!node?.id || !node.metrics) continue;
-      results.set(node.id, toSnapshot(node.metrics, node.metricsUpdatedAt ?? null));
+      if (!node?.id) continue;
+      results.set(node.id, {
+        // Buffer returns metrics: null until its daily ingestion has run.
+        // Kept as null rather than an empty snapshot so the caller can skip
+        // it instead of recording a row of zeroes that would be
+        // indistinguishable from real "no engagement" data.
+        metrics: node.metrics ? toSnapshot(node.metrics, node.metricsUpdatedAt ?? null) : null,
+        state: {
+          status: node.status,
+          // rawError is the underlying cause ("Invalid Credentials"), message
+          // is Buffer's user-facing wording -- both are kept because the raw
+          // one is what actually identifies the problem.
+          errorMessage: node.error ? [node.error.message, node.error.rawError].filter(Boolean).join(" | ") : undefined,
+          sentAt: node.sentAt ? new Date(node.sentAt) : undefined,
+        },
+      });
     }
 
     if (!connection.pageInfo?.hasNextPage) break;
