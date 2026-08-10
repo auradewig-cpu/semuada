@@ -1,13 +1,23 @@
+import { cache } from "react";
 import { db } from "@root/lib/db";
 import { products } from "@shared/schema";
 import { slugify } from "@/lib/utils";
 
-// Mirrors GET /api/categories' grouping logic. Shared by app/layout.tsx
-// (global CategoryProvider prefetch) and the [category]/[subcategory] pages
-// (resolving the URL slug back to the real category/subcategory name for
-// their own server-side product prefetch).
-export async function getCategoryHierarchy(): Promise<Record<string, string[]>> {
-  const rows = await db.select({ category: products.category, subcategory: products.subcategory }).from(products);
+// The category tree, backing GET /api/categories, app/layout.tsx's global
+// CategoryProvider prefetch, and the [category]/[subcategory] pages (which
+// resolve the URL slug back to the real category/subcategory name for their
+// own server-side product prefetch).
+//
+// selectDistinct: this used to pull every product row (1,097 rows / ~75 KB /
+// ~130ms measured) just to derive 18 categories and 93 subcategories -- the
+// grouping loop below was throwing away ~98% of what it fetched.
+//
+// cache(): layout.tsx and the page under it both call this on the same
+// request, so without it every category render paid for the query twice.
+export const getCategoryHierarchy = cache(async (): Promise<Record<string, string[]>> => {
+  const rows = await db
+    .selectDistinct({ category: products.category, subcategory: products.subcategory })
+    .from(products);
   const hierarchy: Record<string, string[]> = {};
   const seen: Record<string, Set<string>> = {};
   for (const row of rows) {
@@ -22,6 +32,29 @@ export async function getCategoryHierarchy(): Promise<Record<string, string[]>> 
     }
   }
   return hierarchy;
+});
+
+// generateStaticParams() feeds for the two category routes. Without these,
+// `export const revalidate = 60` on a dynamic segment does NOTHING -- Next
+// marks the route `ƒ Dynamic` and serves it with
+// `Cache-Control: private, no-cache, no-store`, i.e. a full server render
+// (measured 94-287ms) on every single category click. With them the routes
+// become `● SSG`/ISR (`s-maxage=60`, `x-nextjs-cache: HIT`, ~4ms).
+// dynamicParams stays at its default `true`, so categories added after a
+// build still work -- they're rendered on demand and cached from then on.
+export async function getCategoryParams(): Promise<{ category: string }[]> {
+  const hierarchy = await getCategoryHierarchy();
+  return Object.keys(hierarchy).map((name) => ({ category: slugify(name) }));
+}
+
+export async function getSubcategoryParams(): Promise<{ category: string; subcategory: string }[]> {
+  const hierarchy = await getCategoryHierarchy();
+  return Object.entries(hierarchy).flatMap(([category, subcategories]) =>
+    subcategories.map((subcategory) => ({
+      category: slugify(category),
+      subcategory: slugify(subcategory),
+    }))
+  );
 }
 
 // Mirrors CategoryContext.tsx's categorySlugMap/subcategorySlugMap

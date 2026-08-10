@@ -92,6 +92,13 @@
       "when": 1786076953848,
       "tag": "0012_empty_microchip",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786383595971,
+      "tag": "0013_purple_nextwave",
+      "breakpoints": true
     }
   ]
 }

@@ -84,6 +84,17 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
           const bgUrl = product.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=1200&h=600&fit=crop&crop=center';
           const companionImageUrl = product.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=600&h=600&fit=crop&crop=center';
 
+          // Every slide is `absolute inset-0`, i.e. stacked inside the viewport,
+          // so loading="lazy" deferred exactly nothing -- all 20 featured
+          // products downloaded 2 full-size images each on first paint. Render
+          // only the current slide plus its immediate neighbours; auto-advance
+          // is 4s apart, so the next one is always fetched well before it shows.
+          const distance = Math.min(
+            Math.abs(index - currentSlide),
+            products.length - Math.abs(index - currentSlide)
+          );
+          const isNearby = distance <= 1;
+
           return (
             <div
               key={product.id}
@@ -100,18 +111,20 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                   ProductImageCarousel.tsx -- hotlinked, ever-growing set of
                   scraped Shopee URLs would otherwise blow through Vercel's
                   Image Optimization quota (real incident, 2026-08-10). */}
-              <Image
-                src={bgUrl}
-                alt=""
-                aria-hidden="true"
-                fill
-                sizes="100vw"
-                quality={70}
-                className="object-cover"
-                priority={index === 0}
-                loading={index === 0 ? 'eager' : 'lazy'}
-                unoptimized
-              />
+              {isNearby && (
+                <Image
+                  src={bgUrl}
+                  alt=""
+                  aria-hidden="true"
+                  fill
+                  sizes="100vw"
+                  quality={70}
+                  className="object-cover"
+                  priority={index === 0}
+                  loading={index === 0 ? 'eager' : 'lazy'}
+                  unoptimized
+                />
+              )}
               <div className="absolute inset-0 bg-gradient-to-b from-black/40 to-black/60" />
 
               <div className="relative z-10 container mx-auto px-4 h-full flex items-center pb-20 md:pb-0">
@@ -186,16 +199,18 @@ export function FeaturedCarousel({ onProductClick, activeCategory }: FeaturedCar
                   </div>
                   
                   <div className="hidden md:block relative w-full max-w-md mx-auto aspect-square">
-                    <Image
-                      src={companionImageUrl}
-                      alt={product.product_name}
-                      fill
-                      sizes="448px"
-                      quality={70}
-                      loading={index === 0 ? 'eager' : 'lazy'}
-                      className="rounded-2xl shadow-2xl object-cover transform hover:scale-105 transition-transform duration-300"
-                      unoptimized
-                    />
+                    {isNearby && (
+                      <Image
+                        src={companionImageUrl}
+                        alt={product.product_name}
+                        fill
+                        sizes="448px"
+                        quality={70}
+                        loading={index === 0 ? 'eager' : 'lazy'}
+                        className="rounded-2xl shadow-2xl object-cover transform hover:scale-105 transition-transform duration-300"
+                        unoptimized
+                      />
+                    )}
                   </div>
                 </div>
               </div>

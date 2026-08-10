@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect } from "react";
+import { useCallback, useState, useEffect, useLayoutEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Search, Loader2, Store, Facebook, Twitter, Instagram, Mail, Phone, MapPin } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FeaturedCarousel } from '@/components/FeaturedCarousel';
@@ -44,6 +45,7 @@ export default function Home({ categorySlug, subcategorySlug, initialCategory, i
   // (category clicks navigate to /[category], which remounts this component).
   const [showFilters, setShowFilters] = useState(false);
   const { hierarchy, isLoading: isCategoryLoading, categorySlugMap, subcategorySlugMap } = useCategoryContext();
+  const router = useRouter();
   const { data: settings } = useSettings();
   const siteName = settings?.site_name || 'SEMUADA';
 
@@ -53,50 +55,71 @@ export default function Home({ categorySlug, subcategorySlug, initialCategory, i
     }
   }, []);
 
+  // The route is the single source of truth for category/subcategory --
+  // FilterSidebar's click handlers only navigate, they no longer set these.
+  // Returning `prevFilters` unchanged matters: on mount the props already match
+  // what the server prefetched, and producing a fresh object here would cost an
+  // extra render for nothing.
   useEffect(() => {
     const categoryName = categorySlug ? categorySlugMap.get(categorySlug) : undefined;
     const subcategoryName = subcategorySlug ? subcategorySlugMap.get(subcategorySlug) : undefined;
 
-    setFilters(prevFilters => ({
-      ...prevFilters,
-      category: categoryName,
-      subcategory: subcategoryName,
-    }));
-    
+    setFilters(prevFilters => {
+      if (prevFilters.category === categoryName && prevFilters.subcategory === subcategoryName) {
+        return prevFilters;
+      }
+      return {
+        ...prevFilters,
+        category: categoryName,
+        subcategory: subcategoryName,
+        // `item` options are scoped to a category/subcategory, so carrying one
+        // across a category change would silently empty the grid.
+        item: undefined,
+      };
+    });
   }, [categorySlug, subcategorySlug, categorySlugMap, subcategorySlugMap]);
 
-  const { 
-    data, 
-    fetchNextPage, 
-    hasNextPage, 
-    isFetchingNextPage, 
-    isLoading: isProductsLoading 
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isProductsLoading
   } = useInfiniteProducts(filters);
-  const trackProductClick = useTrackProductClick();
+  const { mutate: trackProductClick } = useTrackProductClick();
 
   const allProducts = data?.pages.flatMap(page => page) ?? [];
 
-  const handleFiltersChange = (newFilters: FilterState) => {
+  // Stable identities: FilterSidebar's price-debounce effect depends on
+  // onFiltersChange, so a new function every render would restart its timer.
+  const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
-  };
+  }, []);
 
-  const handleSearchChange = (search: string) => {
+  const handleSearchChange = useCallback((search: string) => {
     setFilters(prev => ({ ...prev, search }));
-  };
+  }, []);
 
-  const toggleFilters = () => {
+  const toggleFilters = useCallback(() => {
     setShowFilters(prev => {
       const next = !prev;
       sessionStorage.setItem('showMobileFilters', next ? '1' : '0');
       return next;
     });
-  };
+  }, []);
 
-  const handleProductClick = (productId: string) => {
-    trackProductClick.mutate(productId);
-  };
+  const handleProductClick = useCallback((productId: string) => {
+    trackProductClick(productId);
+  }, [trackProductClick]);
 
   const resetAllFilters = () => {
+    // On a category route the category lives in the URL, so clearing it in
+    // state alone would leave the two disagreeing (and the next route-driven
+    // sync would just put it back). Navigating home resets everything.
+    if (categorySlug || subcategorySlug) {
+      router.push('/', { scroll: false });
+      return;
+    }
     handleFiltersChange({
       search: '',
       priceMin: 0,

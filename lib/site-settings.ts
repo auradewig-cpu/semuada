@@ -25,3 +25,16 @@ export const getSiteSettings = cache(async () => {
     maintenanceMessage: row?.maintenanceMessage || null,
   };
 });
+
+// Deliberately NOT wrapped in `cache()`: this one is called from middleware.ts,
+// which runs outside any React render, where `cache()` has no request scope to
+// dedupe against. It also selects a single boolean column instead of the whole
+// row -- middleware only ever needs the gate, and it pays for this read on
+// every cache miss.
+export async function getMaintenanceFlag(): Promise<boolean> {
+  const [row] = await db
+    .select({ maintenanceMode: settings.maintenanceMode })
+    .from(settings)
+    .where(eq(settings.id, SETTINGS_ID));
+  return row?.maintenanceMode ?? false;
+}

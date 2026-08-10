@@ -1,7 +1,7 @@
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Tag, Folder, RotateCcw, SlidersHorizontal, Truck, ArrowUpDown } from 'lucide-react';
+import { Tag, Folder, Loader2, RotateCcw, SlidersHorizontal, Truck, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -26,15 +26,48 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
   const { data: settings, isLoading: isLoadingSettings } = useSettings();
   const { data: pengirimanOptions, isLoading: isLoadingPengiriman } = usePengirimanOptions();
   const params = useParams<{ category?: string; subcategory?: string }>();
-  const categorySlug = params.category;
-  const subcategorySlug = params.subcategory;
   const router = useRouter();
-  const navigate = (path: string) => router.push(path, { scroll: false });
 
-  // Get item options for the currently active subcategory
+  const [isPending, startTransition] = useTransition();
+  // The destination URL of an in-flight category/subcategory click. Rendering
+  // from this instead of waiting for useParams() to catch up is what makes the
+  // checkbox tick on the same frame as the click -- before this, `checked` was
+  // derived purely from the URL, so a click produced NO visible feedback at all
+  // until the navigation had committed.
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+
+  const [categorySlug, subcategorySlug] = useMemo(() => {
+    if (pendingPath === null) return [params.category, params.subcategory] as const;
+    const [category, subcategory] = pendingPath.split('/').filter(Boolean);
+    return [category, subcategory] as const;
+  }, [pendingPath, params.category, params.subcategory]);
+
+  // Drop the optimistic slug once the real URL it was predicting has landed.
+  useEffect(() => {
+    setPendingPath(null);
+  }, [params.category, params.subcategory]);
+
+  const navigate = useCallback(
+    (path: string) => {
+      setPendingPath(path);
+      // A transition keeps the CURRENT products on screen while the next route
+      // streams in, instead of tearing them down for a skeleton.
+      startTransition(() => {
+        router.push(path, { scroll: false });
+      });
+    },
+    [router]
+  );
+
   const activeCategoryName = categorySlug ? categorySlugMap.get(categorySlug) : undefined;
   const activeSubcategoryName = subcategorySlug ? subcategorySlugMap.get(subcategorySlug) : undefined;
-  const { data: activeSubcategoryItems, isLoading: isLoadingActiveSubcategoryItems } = useItemOptionsByCategory(activeCategoryName, activeSubcategoryName);
+  // Item options are only ever RENDERED under an expanded subcategory, but this
+  // used to fire whenever a category was set too -- one wasted request on every
+  // category page view, for data nothing displayed.
+  const { data: activeSubcategoryItems, isLoading: isLoadingActiveSubcategoryItems } = useItemOptionsByCategory(
+    activeSubcategoryName ? activeCategoryName : undefined,
+    activeSubcategoryName
+  );
 
   const [localPriceMin, setLocalPriceMin] = useState(filters.priceMin);
   const [localPriceMax, setLocalPriceMax] = useState(filters.priceMax);
@@ -44,39 +77,46 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
     setLocalPriceMax(filters.priceMax);
   }, [filters.priceMin, filters.priceMax]);
 
+  // Read the live filters through a ref rather than depending on them: with
+  // `filters` in the dep array this effect re-ran on EVERY render, tearing down
+  // and recreating the 500ms timer each time.
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+
   useEffect(() => {
+    const current = filtersRef.current;
+    if (localPriceMin === current.priceMin && localPriceMax === current.priceMax) return;
+
     const timeout = setTimeout(() => {
-      if (localPriceMin !== filters.priceMin || localPriceMax !== filters.priceMax) {
-        onFiltersChange({
-          ...filters,
-          priceMin: localPriceMin,
-          priceMax: localPriceMax
-        });
-      }
+      onFiltersChange({
+        ...filtersRef.current,
+        priceMin: localPriceMin,
+        priceMax: localPriceMax,
+      });
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [localPriceMin, localPriceMax, filters, onFiltersChange]);
+  }, [localPriceMin, localPriceMax, onFiltersChange]);
 
-  // Update filters when URL params change
-  useEffect(() => {
-    const categoryName = categorySlug ? categorySlugMap.get(categorySlug) : undefined;
-    const subcategoryName = subcategorySlug ? subcategorySlugMap.get(subcategorySlug) : undefined;
-
-    // Only update if the values are different from current filters
-    if (categoryName !== filters.category || subcategoryName !== filters.subcategory) {
-      onFiltersChange({
-        ...filters,
-        category: categoryName,
-        subcategory: subcategoryName,
-        // Reset item filter when category/subcategory changes
-        item: categoryName !== filters.category || subcategoryName !== filters.subcategory ? undefined : filters.item,
-      });
-    }
-  }, [categorySlug, subcategorySlug, categorySlugMap, subcategorySlugMap, filters, onFiltersChange]);
+  // NOTE: there is deliberately no URL -> filters effect here anymore. Home.tsx
+  // owns `filters` and already syncs them from the route (see its effect on
+  // categorySlug/subcategorySlug). Having both do it meant that clicking a
+  // category set filters.category optimistically, this effect immediately saw
+  // useParams() still pointing at the OLD url and reset it back, and the
+  // navigation then set it a third time -- two discarded /api/products fetches
+  // and a skeleton flash per click.
 
   const resetFilters = () => {
-    const resetState = {
+    if (params.category || params.subcategory) {
+      // Leaving a category route remounts Home with server-rendered defaults,
+      // which resets every filter anyway -- changing them here first would only
+      // buy an extra discarded fetch.
+      navigate('/');
+      return;
+    }
+    setLocalPriceMin(0);
+    setLocalPriceMax(20000000);
+    onFiltersChange({
       search: '',
       priceMin: 0,
       priceMax: 20000000,
@@ -85,11 +125,7 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
       subcategory: undefined,
       dikirim_dari: undefined,
       item: undefined,
-    };
-    setLocalPriceMin(0);
-    setLocalPriceMax(20000000);
-    onFiltersChange(resetState);
-    navigate('/');
+    });
   };
 
   const handlePriceSliderChange = (values: number[]) => {
@@ -127,28 +163,12 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
       return null;
     }
 
-    const activeCategoryName = categorySlug ? categorySlugMap.get(categorySlug) : undefined;
-
+    // Category/subcategory live in the URL, so a click only navigates -- it no
+    // longer touches `filters`. Home.tsx re-derives them from the route, and
+    // the destination page arrives with its products already server-rendered,
+    // so setting them here would just fire a fetch that gets thrown away.
     const handleCategoryClick = (categoryName: string) => {
-      if (categoryName === activeCategoryName) {
-        // Toggle off: reset category and subcategory filters
-        onFiltersChange({
-          ...filters,
-          category: undefined,
-          subcategory: undefined,
-          item: undefined, // Also reset item filter
-        });
-        navigate('/'); // Toggle off if clicking the active category
-      } else {
-        // Toggle on: set category filter
-        onFiltersChange({
-          ...filters,
-          category: categoryName,
-          subcategory: undefined, // Reset subcategory when changing category
-          item: undefined, // Reset item when changing category
-        });
-        navigate(`/${slugify(categoryName)}`);
-      }
+      navigate(categoryName === activeCategoryName ? '/' : `/${slugify(categoryName)}`);
     };
 
     return (
@@ -162,45 +182,40 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
             const subcategories = Array.from(hierarchy.get(categoryName) || []).sort();
             const currentCategorySlug = slugify(categoryName);
             const isCategoryOpen = activeCategoryName === categoryName;
+            const categoryPath = `/${currentCategorySlug}`;
 
             return (
               <div key={categoryName}>
-                <div className="flex items-center space-x-3">
-                  <Checkbox 
-                    id={categoryName} 
+                <div
+                  className="flex items-center space-x-3"
+                  // Warm the route before the click lands. On touch devices
+                  // pointerenter still fires just ahead of the tap.
+                  onPointerEnter={() => router.prefetch(categoryPath)}
+                  onFocus={() => router.prefetch(categoryPath)}
+                >
+                  <Checkbox
+                    id={categoryName}
                     checked={isCategoryOpen}
                     onCheckedChange={() => handleCategoryClick(categoryName)}
                     className="rounded-full data-[state=checked]:bg-emerald data-[state=checked]:text-white"
                   />
-                  <Label 
-                    htmlFor={categoryName} 
-                    className="cursor-pointer hover:text-emerald transition-colors w-full"
+                  <Label
+                    htmlFor={categoryName}
+                    className="cursor-pointer hover:text-emerald transition-colors w-full flex items-center gap-2"
                   >
                     {categoryName}
+                    {isPending && isCategoryOpen && !subcategorySlug && (
+                      <Loader2 className="h-3 w-3 animate-spin text-emerald" aria-hidden="true" />
+                    )}
                   </Label>
                 </div>
                 {isCategoryOpen && subcategories.length > 0 && (() => {
                   const handleSubcategoryClick = (clickedSubcategorySlug: string) => {
-                    if (clickedSubcategorySlug === subcategorySlug) {
-                      // Toggle off: navigate to parent category and reset subcategory filter
-                      onFiltersChange({
-                        ...filters,
-                        subcategory: undefined,
-                        item: undefined, // Also reset item filter
-                      });
-                      navigate(`/${currentCategorySlug}`);
-                    } else {
-                      // Toggle on: navigate to subcategory and set subcategory filter
-                      const subcategoryName = subcategories.find(sub =>
-                        slugify(sub) === clickedSubcategorySlug
-                      );
-                      onFiltersChange({
-                        ...filters,
-                        subcategory: subcategoryName,
-                        item: undefined, // Reset item when changing subcategory
-                      });
-                      navigate(`/${currentCategorySlug}/${clickedSubcategorySlug}`);
-                    }
+                    navigate(
+                      clickedSubcategorySlug === subcategorySlug
+                        ? categoryPath
+                        : `${categoryPath}/${clickedSubcategorySlug}`
+                    );
                   };
 
                   return (
@@ -208,9 +223,14 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
                       {subcategories.map(subcategoryName => {
                         const currentSubcategorySlug = slugify(subcategoryName);
                         const isSubcategoryActive = subcategorySlug === currentSubcategorySlug;
+                        const subcategoryPath = `${categoryPath}/${currentSubcategorySlug}`;
                         return (
                           <li key={subcategoryName} className="space-y-2">
-                            <div className="flex items-center space-x-3">
+                            <div
+                              className="flex items-center space-x-3"
+                              onPointerEnter={() => router.prefetch(subcategoryPath)}
+                              onFocus={() => router.prefetch(subcategoryPath)}
+                            >
                               <Checkbox
                                 id={`subcategory-${currentSubcategorySlug}`}
                                 checked={isSubcategoryActive}
@@ -219,9 +239,12 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
                               />
                               <Label
                                 htmlFor={`subcategory-${currentSubcategorySlug}`}
-                                className={`cursor-pointer hover:text-emerald transition-colors text-sm ${isSubcategoryActive ? 'text-emerald font-bold' : 'text-muted-foreground'}`}
+                                className={`cursor-pointer hover:text-emerald transition-colors text-sm flex items-center gap-2 ${isSubcategoryActive ? 'text-emerald font-bold' : 'text-muted-foreground'}`}
                               >
                                 {subcategoryName}
+                                {isPending && isSubcategoryActive && (
+                                  <Loader2 className="h-3 w-3 animate-spin text-emerald" aria-hidden="true" />
+                                )}
                               </Label>
                             </div>
                             {isSubcategoryActive && (
@@ -298,7 +321,7 @@ export function FilterSidebar({ filters, onFiltersChange, showFilters, onToggleF
       </div>
 
       <div className={`lg:block ${showFilters ? 'block' : 'hidden'}`}>
-        <div className="bg-card rounded-xl border border-border p-6 sticky top-24 shadow-xl ring-1 ring-black/5 transition-all">
+        <div className="bg-card rounded-xl border border-border p-6 sticky top-24 shadow-xl ring-1 ring-black/5 transition-all" aria-busy={isPending}>
           <div className="flex items-center justify-between mb-6">
             <h3 className="font-bold text-lg">Filter Produk</h3>
             <Button
