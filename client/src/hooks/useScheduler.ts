@@ -17,6 +17,9 @@ export interface SchedulerAccount {
   cap_time: string;
   rotation_day_index: number;
   last_built_date: string | null;
+  // When this account's frequency ramp began; null means no ramp (all
+  // baseTimes are live). See activeSlotCount() in lib/scheduler/rotation.ts.
+  ramp_started_at: string | null;
   is_active: boolean;
   updated_at: string | null;
 }

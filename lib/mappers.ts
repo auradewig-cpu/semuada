@@ -138,6 +138,11 @@ export function toApiSchedulerAccount(row: DbSchedulerAccount) {
     cap_time: row.capTime,
     rotation_day_index: row.rotationDayIndex,
     last_built_date: row.lastBuiltDate,
+    // Exposed so the admin UI can apply the same frequency-ramp rule the
+    // build cron does -- without it the scheduler tab assumes every account
+    // fills all of its baseTimes daily and warns about a video shortage that
+    // isn't real.
+    ramp_started_at: row.rampStartedAt,
     is_active: row.isActive,
     updated_at: row.updatedAt,
   };

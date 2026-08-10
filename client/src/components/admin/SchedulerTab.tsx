@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSchedulerAccounts, useScheduledPosts, useBuildScheduleNow, useSwapScheduledPostVideo, useRetryScheduledPost, type ScheduledPost } from "@/hooks/useScheduler";
+import { activeSlotCount } from "@root/lib/scheduler/rotation";
 import { SchedulerAccountsDialog } from "@/components/admin/content-generator/SchedulerAccountsDialog";
 import { VideoPickerDialog } from "@/components/admin/content-generator/VideoPickerDialog";
 
@@ -155,17 +156,28 @@ export function SchedulerTab() {
   };
 
   // Compares today's queued+posted rows per account against how many slots
-  // its base_times pattern expects -- a shortfall means the pool ran dry
-  // when build-schedule last ran for that account.
+  // that account is actually expected to fill today -- a shortfall means the
+  // pool ran dry when build-schedule last ran for it.
+  //
+  // Expected comes from activeSlotCount(), NOT base_times.length: accounts
+  // ramp up from one post a day to three over 60 days, so an account still
+  // in its first phase legitimately fills 1 of its 3 base_times. Counting
+  // all of them would flag every account as short of video every single day
+  // for the first two months.
   const poolWarnings = useMemo(() => {
     const todaysCountByAccount = new Map<string, number>();
     for (const p of posts) {
       if (!isToday(p.scheduled_for)) continue;
       todaysCountByAccount.set(p.scheduler_account_id, (todaysCountByAccount.get(p.scheduler_account_id) ?? 0) + 1);
     }
+    const now = new Date();
     return accounts
       .filter((a) => a.is_active)
-      .map((a) => ({ account: a, todayCount: todaysCountByAccount.get(a.id) ?? 0, expected: a.base_times.length }))
+      .map((a) => ({
+        account: a,
+        todayCount: todaysCountByAccount.get(a.id) ?? 0,
+        expected: activeSlotCount({ baseTimes: a.base_times, rampStartedAt: a.ramp_started_at }, now),
+      }))
       .filter((w) => w.todayCount < w.expected);
   }, [accounts, posts]);
 

@@ -63,6 +63,8 @@ export async function POST(request: NextRequest) {
   };
 
   if (id) {
+    // rampStartedAt is deliberately absent from `values`, so editing an
+    // account never restarts (or silently clears) its warm-up.
     const [row] = await db.update(schedulerAccounts).set(values).where(eq(schedulerAccounts.id, id)).returning();
     if (!row) {
       return NextResponse.json({ error: "Akun scheduler tidak ditemukan." }, { status: 404 });
@@ -70,6 +72,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(toApiSchedulerAccount(row));
   }
 
-  const [row] = await db.insert(schedulerAccounts).values(values).returning();
+  // A new account starts its own frequency ramp from now: one post a day,
+  // stepping up every RAMP_PHASE_DAYS. Without this the column defaults to
+  // null, activeSlotCount() falls back to "use every baseTime", and a
+  // brand-new account would begin at full cadence -- exactly the pattern the
+  // ramp exists to avoid, and the case that matters most since a fresh
+  // account is the one most likely to be flagged.
+  const [row] = await db.insert(schedulerAccounts).values({ ...values, rampStartedAt: new Date() }).returning();
   return NextResponse.json(toApiSchedulerAccount(row), { status: 201 });
 }

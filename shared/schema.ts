@@ -205,8 +205,10 @@ export const schedulerAccounts = pgTable("scheduler_accounts", {
   // Null = no ramp, use every baseTime (backwards-compatible default).
   rampStartedAt: timestamp("ramp_started_at", { withTimezone: true }),
   incrementMinutes: integer("increment_minutes").notNull().default(5),
-  // The ceiling the LAST baseTimes entry drifts toward before the whole
-  // pattern wraps back to baseTimes -- also "HH:mm".
+  // The ceiling the LATEST baseTimes entry drifts toward before the whole
+  // pattern wraps back to baseTimes -- also "HH:mm". Latest by clock, not
+  // last in the array: baseTimes is priority-ordered, so its final element
+  // is usually an earlier time of day (see computeSlotTimes).
   capTime: text("cap_time").notNull(),
   // Advances by 1 each time the daily build-schedule cron successfully runs
   // for this account -- NOT derived from calendar-date difference, so a

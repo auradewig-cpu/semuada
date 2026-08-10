@@ -31,7 +31,12 @@ interface SchedulerAccountsDialogProps {
   onOpenChange: (isOpen: boolean) => void;
 }
 
-const DEFAULT_BASE_TIMES = ['06:00', '12:00', '19:00'];
+// Ordered by PRIORITY, not by clock. A new account ramps up from one post a
+// day, and slots are enabled from the front of this list -- so the first
+// entry is the evening peak (strongest window for an Indonesian audience),
+// then lunch, then mid-afternoon. Listing them chronologically would make a
+// once-a-day account post at 06:00, its weakest hour, for its first month.
+const DEFAULT_BASE_TIMES = ['19:00', '12:00', '16:00'];
 
 // Platform-to-provider is fixed by which free-tier connections the user
 // actually has (Buffer: TikTok/Instagram/YouTube, Zernio: Threads/Facebook
@@ -265,7 +270,11 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
               </div>
 
               <div className="space-y-1.5">
-                <Label>Jam Dasar (rotasi bertambah tiap hari)</Label>
+                <Label>Jam Dasar &mdash; urut prioritas, bukan urut jam</Label>
+                <p className="text-xs text-muted-foreground">
+                  Akun baru mulai 1x/hari dan naik tiap 30 hari (maks 3x/hari). Slot diaktifkan dari atas,
+                  jadi <strong>letakkan jam terbaik di urutan pertama</strong> (malam paling kuat untuk audiens Indonesia).
+                </p>
                 <div className="space-y-1.5">
                   {baseTimes.map((t, i) => (
                     <div key={i} className="flex items-center gap-2">

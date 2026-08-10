@@ -11,6 +11,41 @@
 // a wider drift would buy more variation at the cost of accounts colliding
 // with each other, which is the more telling pattern of the two.
 
+// Days at each posting frequency before stepping up: 1/day for the first 30
+// days, 2/day for the next 30, then 3/day from day 60 on.
+export const RAMP_PHASE_DAYS = 30;
+
+// How many of an account's baseTimes are live today. Slots are enabled from
+// the FRONT of baseTimes, which is why that array is ordered by priority
+// rather than by clock -- a once-a-day account should be posting in its best
+// hour, not merely its earliest.
+//
+// An account with no rampStartedAt uses every slot it has, so hand-edited
+// accounts and anything predating the ramp keep working unchanged.
+//
+// Lives here, alongside the other pure scheduling math, rather than in
+// buildSchedule.ts -- that module imports the database client, so the admin
+// UI could not import from it without pulling server-only code into the
+// browser bundle. The UI needs this to show how many slots an account is
+// actually expected to fill today.
+//
+// rampStartedAt accepts a string as well as a Date because it arrives as
+// JSON from the API on the client and as a Date from Drizzle on the server.
+export function activeSlotCount(
+  account: { baseTimes: string[]; rampStartedAt: Date | string | null },
+  now: Date
+): number {
+  if (!account.rampStartedAt) return account.baseTimes.length;
+  const startedAt = account.rampStartedAt instanceof Date ? account.rampStartedAt : new Date(account.rampStartedAt);
+  if (isNaN(startedAt.getTime())) return account.baseTimes.length;
+
+  const daysLive = Math.floor((now.getTime() - startedAt.getTime()) / (24 * 60 * 60 * 1000));
+  // Clamped at 1 so a rampStartedAt in the future (a scheduled launch, or
+  // clock skew) still posts once a day rather than going silent.
+  const phase = Math.max(1, Math.floor(daysLive / RAMP_PHASE_DAYS) + 1);
+  return Math.min(phase, account.baseTimes.length);
+}
+
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
