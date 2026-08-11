@@ -11,75 +11,34 @@ import {
   type SocialAccount,
   type SocialMetricRow,
 } from "@/hooks/useSchedulerMetrics";
+import {
+  columnValue,
+  engagementOf,
+  fmt,
+  formatColumn,
+  METRIC_GROUPS,
+  PLATFORM_LABELS,
+  PLATFORM_ORDER,
+  platformReports,
+  sumOrNull,
+  type MetricColumn,
+  type MetricGroupId,
+} from "@/lib/socialMetrics";
 
-const PLATFORM_LABELS: Record<string, string> = {
-  tiktok: "TikTok",
-  instagram: "Instagram",
-  youtube: "YouTube",
-  threads: "Threads",
-  facebook_page: "Facebook Page",
-};
-
-// Which columns each provider actually reports. Anything outside its list
-// arrives as NULL forever, so a per-platform view renders "—" instead of a 0
-// that would read as "nobody saved this" rather than "this can't be measured".
-const PLATFORM_COVERAGE: Record<string, string[]> = {
-  tiktok: ["views", "reach", "reactions", "comments", "shares"],
-  instagram: ["views", "reach", "reactions", "comments", "shares", "saves", "follows"],
-  youtube: ["views", "reactions", "comments"],
-  threads: ["views", "impressions", "reach", "reactions", "comments", "shares", "saves", "clicks", "follows"],
-  facebook_page: ["views", "impressions", "reach", "reactions", "comments", "shares", "saves", "clicks", "follows"],
-};
-
-type SortKey = "posted_at" | "views" | "engagement" | "engagement_rate";
-
-/** Sum that stays null when nothing in the group reported the metric at all. */
-function sumOrNull(rows: SocialMetricRow[], key: keyof SocialMetricRow): number | null {
-  let total = 0;
-  let seen = false;
-  for (const row of rows) {
-    const value = row[key];
-    if (typeof value === "number") {
-      total += value;
-      seen = true;
-    }
-  }
-  return seen ? total : null;
-}
-
-/** Reactions + comments + shares + saves -- the interactions, minus passive views. */
-function engagementOf(row: SocialMetricRow): number {
-  return (row.reactions ?? 0) + (row.comments ?? 0) + (row.shares ?? 0) + (row.saves ?? 0);
-}
-
-function fmt(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  return value.toLocaleString("id-ID");
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+/** One line of the Akun x Platform table. */
+interface AccountPlatformRow {
+  account: SocialAccount;
+  platform: string;
+  connected: boolean;
+  targeted: number;
+  published: number;
+  failed: number;
+  rows: SocialMetricRow[];
 }
 
 function StatCard({
-  title,
-  value,
-  hint,
-  icon: Icon,
-  loading,
-}: {
-  title: string;
-  value: string;
-  hint?: string;
-  icon: typeof Eye;
-  loading: boolean;
-}) {
+  title, value, hint, icon: Icon, loading,
+}: { title: string; value: string; hint?: string; icon: typeof Eye; loading: boolean }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -87,9 +46,7 @@ function StatCard({
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="h-8 w-24 bg-muted rounded animate-pulse" />
-        ) : (
+        {loading ? <div className="h-8 w-24 bg-muted rounded animate-pulse" /> : (
           <>
             <div className="text-2xl font-bold">{value}</div>
             {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
@@ -100,34 +57,42 @@ function StatCard({
   );
 }
 
+/** A metric cell that keeps "not measurable" and "no data yet" distinguishable. */
+function MetricCell({ rows, platform, column }: { rows: SocialMetricRow[]; platform: string; column: MetricColumn }) {
+  if (column.key !== "views_per_post" && !platformReports(platform, column.key)) {
+    return <span className="text-muted-foreground/50" title="Platform ini tidak melaporkan metrik tersebut">—</span>;
+  }
+  if (rows.length === 0) {
+    return <span className="text-muted-foreground/50" title="Belum ada metrik tersinkron">·</span>;
+  }
+  return <>{formatColumn(columnValue(rows, column), column)}</>;
+}
+
 export function DashboardTab() {
   const [period, setPeriod] = useState<MetricsPeriod>("all");
   const [category, setCategory] = useState<string>("all");
   const [platform, setPlatform] = useState<string>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("views");
+  const [metricGroup, setMetricGroup] = useState<MetricGroupId>("jangkauan");
+  const [sortKey, setSortKey] = useState<string>("views");
+  const [videoSort, setVideoSort] = useState<string>("views");
   const { data, isLoading, isFetching, refetch } = useSchedulerMetrics(period);
+
+  const columns = METRIC_GROUPS[metricGroup].columns;
 
   const allRows = useMemo(() => data?.items ?? [], [data]);
   const allAccounts = useMemo(() => data?.accounts ?? [], [data]);
+  const allPublishing = useMemo(() => data?.publishing ?? [], [data]);
 
-  // Categories come from the ACCOUNT list, not from the metric rows: a
-  // category whose accounts haven't been synced yet must still be listed.
+  // Categories and platforms come from configuration, not from the metric
+  // rows: an account whose posts haven't been synced yet must still be listed.
   const categories = useMemo(
     () => Array.from(new Set(allAccounts.map((a) => a.category))).sort(),
     [allAccounts]
   );
-  const platforms = useMemo(
-    () => Array.from(new Set(allRows.map((r) => r.platform))).sort(),
-    [allRows]
-  );
 
   const rows = useMemo(
-    () =>
-      allRows.filter(
-        (r) =>
-          (category === "all" || r.category === category) &&
-          (platform === "all" || r.platform === platform)
-      ),
+    () => allRows.filter((r) =>
+      (category === "all" || r.category === category) && (platform === "all" || r.platform === platform)),
     [allRows, category, platform]
   );
 
@@ -136,43 +101,70 @@ export function DashboardTab() {
     [allAccounts, category]
   );
 
-  const totals = useMemo(
-    () => ({
-      views: sumOrNull(rows, "views"),
-      engagement: rows.reduce((sum, r) => sum + engagementOf(r), 0),
-      posts: new Set(rows.map((r) => r.post_id)).size,
-      videos: new Set(rows.map((r) => r.video_id)).size,
-      accounts: accounts.length,
-      accountsWithData: new Set(rows.map((r) => r.account_id)).size,
-    }),
-    [rows, accounts]
-  );
-
-  // Category -> account, built from the ACCOUNT list so every account shows up
-  // even with no metrics attached. Several accounts share one category (see
-  // scheduler_accounts.category), which is the grouping the user thinks in.
-  const byCategory = useMemo(() => {
-    const rowsByAccount = new Map<string, SocialMetricRow[]>();
+  // Spine of the main table: every account crossed with every platform it is
+  // connected to OR has ever been posted to. The union matters both ways --
+  // a connected platform with no posts is a silent account, and a posted
+  // platform that is no longer connected is a lost channel (Akun 1's YouTube
+  // earned 214 views before its account id was cleared).
+  const accountPlatformRows = useMemo<AccountPlatformRow[]>(() => {
+    const metricsByKey = new Map<string, SocialMetricRow[]>();
     for (const row of rows) {
-      if (!rowsByAccount.has(row.account_id)) rowsByAccount.set(row.account_id, []);
-      rowsByAccount.get(row.account_id)!.push(row);
+      const key = `${row.account_id}|${row.platform}`;
+      if (!metricsByKey.has(key)) metricsByKey.set(key, []);
+      metricsByKey.get(key)!.push(row);
     }
 
-    const grouped = new Map<string, SocialAccount[]>();
+    const publishingByKey = new Map(allPublishing.map((p) => [`${p.account_id}|${p.platform}`, p]));
+
+    const out: AccountPlatformRow[] = [];
     for (const account of accounts) {
-      if (!grouped.has(account.category)) grouped.set(account.category, []);
-      grouped.get(account.category)!.push(account);
+      const seen = new Set<string>([
+        ...account.platforms,
+        ...allPublishing.filter((p) => p.account_id === account.id).map((p) => p.platform),
+      ]);
+      const ordered = PLATFORM_ORDER.filter((p) => seen.has(p)).concat(
+        Array.from(seen).filter((p) => !PLATFORM_ORDER.includes(p))
+      );
+      for (const p of ordered) {
+        if (platform !== "all" && p !== platform) continue;
+        const pub = publishingByKey.get(`${account.id}|${p}`);
+        out.push({
+          account,
+          platform: p,
+          connected: account.platforms.includes(p),
+          targeted: pub?.targeted ?? 0,
+          published: pub?.published ?? 0,
+          failed: pub?.failed ?? 0,
+          rows: metricsByKey.get(`${account.id}|${p}`) ?? [],
+        });
+      }
     }
+    return out;
+  }, [accounts, allPublishing, rows, platform]);
 
-    return Array.from(grouped.entries())
-      .map(([name, categoryAccounts]) => {
-        const withRows = categoryAccounts
-          .map((account) => ({ account, rows: rowsByAccount.get(account.id) ?? [] }))
-          .sort((a, b) => (sumOrNull(b.rows, "views") ?? 0) - (sumOrNull(a.rows, "views") ?? 0));
-        return { name, accounts: withRows, rows: withRows.flatMap((a) => a.rows) };
-      })
-      .sort((a, b) => (sumOrNull(b.rows, "views") ?? 0) - (sumOrNull(a.rows, "views") ?? 0));
-  }, [rows, accounts]);
+  const sortedAccountPlatform = useMemo(() => {
+    const copy = [...accountPlatformRows];
+    const value = (r: AccountPlatformRow) => {
+      if (sortKey === "failed") return r.failed;
+      if (sortKey === "published") return r.published;
+      if (sortKey === "targeted") return r.targeted;
+      if (sortKey === "measured") return r.rows.length;
+      const column = columns.find((c) => c.key === sortKey);
+      return column ? columnValue(r.rows, column) ?? -1 : -1;
+    };
+    copy.sort((a, b) => value(b) - value(a));
+    return copy;
+  }, [accountPlatformRows, sortKey, columns]);
+
+  const totals = useMemo(() => ({
+    views: sumOrNull(rows, "views"),
+    engagement: rows.reduce((sum, r) => sum + engagementOf(r), 0),
+    posts: new Set(rows.map((r) => r.post_id)).size,
+    videos: new Set(rows.map((r) => r.video_id)).size,
+    accounts: accounts.length,
+    accountsWithData: new Set(rows.map((r) => r.account_id)).size,
+    failed: accountPlatformRows.reduce((sum, r) => sum + r.failed, 0),
+  }), [rows, accounts, accountPlatformRows]);
 
   const byPlatform = useMemo(() => {
     const map = new Map<string, SocialMetricRow[]>();
@@ -185,33 +177,37 @@ export function DashboardTab() {
       .sort((a, b) => (sumOrNull(b.rows, "views") ?? 0) - (sumOrNull(a.rows, "views") ?? 0));
   }, [rows]);
 
-  const sortedRows = useMemo(() => {
+  const sortedVideos = useMemo(() => {
     const copy = [...rows];
     copy.sort((a, b) => {
-      if (sortKey === "posted_at") {
-        return (b.posted_at ?? "").localeCompare(a.posted_at ?? "");
-      }
-      if (sortKey === "engagement") return engagementOf(b) - engagementOf(a);
-      if (sortKey === "engagement_rate") return (b.engagement_rate ?? -1) - (a.engagement_rate ?? -1);
-      return (b.views ?? -1) - (a.views ?? -1);
+      if (videoSort === "posted_at") return (b.posted_at ?? "").localeCompare(a.posted_at ?? "");
+      if (videoSort === "engagement") return engagementOf(b) - engagementOf(a);
+      const column = columns.find((c) => c.key === videoSort) ?? columns[0];
+      return (columnValue([b], column) ?? -1) - (columnValue([a], column) ?? -1);
     });
     return copy;
-  }, [rows, sortKey]);
+  }, [rows, videoSort, columns]);
 
   const coverage = data?.coverage;
   const thinHistory = (coverage?.distinct_days ?? 0) < 7;
 
+  const SortableHead = ({ id, label, active, onSort }: { id: string; label: string; active: string; onSort: (v: string) => void }) => (
+    <TableHead className="text-right">
+      <button type="button" onClick={() => onSort(id)}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${active === id ? "text-foreground font-semibold" : ""}`}>
+        {label}
+        <ArrowUpDown className="h-3 w-3 opacity-50" />
+      </button>
+    </TableHead>
+  );
+
   return (
     <div className="space-y-6">
-      {/* Controls */}
+      {/* One control bar drives every table below, so no two of them can drift
+          into showing different columns for the same thing. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <ToggleGroup
-            type="single"
-            value={period}
-            onValueChange={(v) => v && setPeriod(v as MetricsPeriod)}
-            aria-label="Rentang waktu"
-          >
+          <ToggleGroup type="single" value={period} onValueChange={(v) => v && setPeriod(v as MetricsPeriod)} aria-label="Rentang waktu">
             <ToggleGroupItem value="7d" aria-label="7 hari terakhir">7H</ToggleGroupItem>
             <ToggleGroupItem value="30d" aria-label="30 hari terakhir">30H</ToggleGroupItem>
             <ToggleGroupItem value="90d" aria-label="90 hari terakhir">90H</ToggleGroupItem>
@@ -219,7 +215,7 @@ export function DashboardTab() {
           </ToggleGroup>
 
           <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="w-[220px]"><SelectValue placeholder="Semua kategori" /></SelectTrigger>
+            <SelectTrigger className="w-[210px]"><SelectValue placeholder="Semua kategori" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua kategori</SelectItem>
               {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -227,20 +223,26 @@ export function DashboardTab() {
           </Select>
 
           <Select value={platform} onValueChange={setPlatform}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Semua platform" /></SelectTrigger>
+            <SelectTrigger className="w-[170px]"><SelectValue placeholder="Semua platform" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Semua platform</SelectItem>
-              {platforms.map((p) => (
-                <SelectItem key={p} value={p}>{PLATFORM_LABELS[p] ?? p}</SelectItem>
-              ))}
+              {PLATFORM_ORDER.map((p) => <SelectItem key={p} value={p}>{PLATFORM_LABELS[p]}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <ToggleGroup type="single" value={metricGroup} aria-label="Kelompok metrik"
+            onValueChange={(v) => { if (v) { setMetricGroup(v as MetricGroupId); setSortKey(METRIC_GROUPS[v as MetricGroupId].columns[0].key); setVideoSort(METRIC_GROUPS[v as MetricGroupId].columns[0].key); } }}>
+            {(Object.keys(METRIC_GROUPS) as MetricGroupId[]).map((g) => (
+              <ToggleGroupItem key={g} value={g}>{METRIC_GROUPS[g].label}</ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* How much history exists. Comparative judgements ("this video is
@@ -255,9 +257,7 @@ export function DashboardTab() {
             ) : (
               <>
                 Riwayat metrik: <strong className="text-foreground">{coverage.distinct_days} hari</strong>
-                {coverage.first_captured_on && coverage.last_captured_on && (
-                  <> ({coverage.first_captured_on} s/d {coverage.last_captured_on})</>
-                )}
+                {coverage.first_captured_on && coverage.last_captured_on && (<> ({coverage.first_captured_on} s/d {coverage.last_captured_on})</>)}
                 . Angka di bawah adalah snapshot <strong className="text-foreground">terbaru</strong> tiap post, bukan penjumlahan antar-hari.
                 {thinHistory && " Terlalu dini untuk membandingkan performa antar-video — butuh sekitar 2 minggu agar 'bagus' dan 'jelek' punya pembanding yang adil."}
               </>
@@ -266,231 +266,187 @@ export function DashboardTab() {
         </div>
       )}
 
-      {/* Ringkasan */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Views" value={fmt(totals.views)} icon={Eye} loading={isLoading}
-          hint={`${totals.videos} video`} />
-        <StatCard title="Total Interaksi" value={fmt(totals.engagement)} icon={Heart} loading={isLoading}
-          hint="like + komentar + share + save" />
+        <StatCard title="Total Views" value={fmt(totals.views)} icon={Eye} loading={isLoading} hint={`${totals.videos} video`} />
+        <StatCard title="Total Interaksi" value={fmt(totals.engagement)} icon={Heart} loading={isLoading} hint="like + komentar + share + save" />
         <StatCard title="Post Terbit" value={fmt(totals.posts)} icon={BarChart3} loading={isLoading}
-          hint={`${rows.length} baris post x platform`} />
+          hint={totals.failed > 0 ? `${totals.failed} gagal terbit` : `${rows.length} baris post x platform`} />
         <StatCard title="Akun" value={fmt(totals.accounts)} icon={Users} loading={isLoading}
           hint={`${totals.accountsWithData} sudah ada metrik · ${categories.length} kategori`} />
       </div>
 
       {isLoading ? (
-        <div className="space-y-3">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-32 bg-muted rounded-lg animate-pulse" />)}
-        </div>
+        <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-32 bg-muted rounded-lg animate-pulse" />)}</div>
       ) : (
         <>
-          {/* Per kategori -> per akun. Rendered even with zero metrics: the
-              account list itself answers "which accounts exist and are any of
-              them silent?", which is half the question this tab is for. */}
+          {/* Akun x Platform -- the main view. Publish outcome sits beside the
+              metrics because "0 views" means something completely different
+              depending on whether the post ever went out. */}
           <Card>
             <CardHeader>
-              <CardTitle>Performa per Kategori &amp; Akun</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {byCategory.map((cat) => (
-                <div key={cat.name}>
-                  <div className="flex items-baseline justify-between mb-2 pb-2 border-b border-border">
-                    <h4 className="font-semibold">{cat.name}</h4>
-                    <span className="text-sm text-muted-foreground">
-                      {fmt(sumOrNull(cat.rows, "views"))} views &middot;{" "}
-                      {fmt(cat.rows.reduce((s, r) => s + engagementOf(r), 0))} interaksi &middot;{" "}
-                      {cat.accounts.length} akun
-                    </span>
-                  </div>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Akun</TableHead>
-                          <TableHead>Platform</TableHead>
-                          <TableHead className="text-right">Post</TableHead>
-                          <TableHead className="text-right">Views</TableHead>
-                          <TableHead className="text-right">Interaksi</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {cat.accounts.map(({ account, rows: accRows }) => {
-                          const noData = accRows.length === 0;
-                          return (
-                            <TableRow key={account.id} className={noData ? "text-muted-foreground" : undefined}>
-                              <TableCell className="font-medium">
-                                {account.label}
-                                {!account.is_active && (
-                                  <span className="ml-2 text-xs text-muted-foreground">(nonaktif)</span>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-xs text-muted-foreground">
-                                {noData ? (
-                                  // Distinguishes "posted, waiting for the daily
-                                  // sync" from "hasn't posted anything yet" --
-                                  // the two need different responses from you.
-                                  account.posts_published > 0
-                                    ? `${account.posts_published} post terbit, metrik belum tersinkron`
-                                    : "belum ada post terbit"
-                                ) : (
-                                  Array.from(new Set(accRows.map((r) => PLATFORM_LABELS[r.platform] ?? r.platform)))
-                                    .sort()
-                                    .join(", ")
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {noData ? account.posts_published : new Set(accRows.map((r) => r.post_id)).size}
-                              </TableCell>
-                              <TableCell className="text-right font-semibold">
-                                {noData ? "—" : fmt(sumOrNull(accRows, "views"))}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {noData ? "—" : fmt(accRows.reduce((s, r) => s + engagementOf(r), 0))}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {rows.length === 0 && (
-            <Card>
-              <CardContent className="text-center py-16 text-muted-foreground">
-                <BarChart3 className="h-16 w-16 mx-auto mb-4" />
-                <p>Belum ada metrik untuk filter ini.</p>
-                <p className="text-sm mt-1">
-                  Metrik baru muncul setelah post terbit dan cron <code className="text-xs">sync-metrics</code> berjalan (sekali sehari).
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Per platform */}
-          {rows.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Performa per Platform</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Platform</TableHead>
-                      <TableHead className="text-right">Post</TableHead>
-                      <TableHead className="text-right">Views</TableHead>
-                      <TableHead className="text-right">Like</TableHead>
-                      <TableHead className="text-right">Komentar</TableHead>
-                      <TableHead className="text-right">Share</TableHead>
-                      <TableHead className="text-right">Save</TableHead>
-                      <TableHead className="text-right">Follow</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {byPlatform.map((p) => {
-                      const covered = PLATFORM_COVERAGE[p.name] ?? [];
-                      const cell = (key: keyof SocialMetricRow, name: string) =>
-                        covered.length > 0 && !covered.includes(name) ? (
-                          <span className="text-muted-foreground/50" title="Platform ini tidak melaporkan metrik tersebut">—</span>
-                        ) : (
-                          fmt(sumOrNull(p.rows, key))
-                        );
-                      return (
-                        <TableRow key={p.name}>
-                          <TableCell className="font-medium">{PLATFORM_LABELS[p.name] ?? p.name}</TableCell>
-                          <TableCell className="text-right">{new Set(p.rows.map((r) => r.post_id)).size}</TableCell>
-                          <TableCell className="text-right font-semibold">{cell("views", "views")}</TableCell>
-                          <TableCell className="text-right">{cell("reactions", "reactions")}</TableCell>
-                          <TableCell className="text-right">{cell("comments", "comments")}</TableCell>
-                          <TableCell className="text-right">{cell("shares", "shares")}</TableCell>
-                          <TableCell className="text-right">{cell("saves", "saves")}</TableCell>
-                          <TableCell className="text-right">{cell("follows", "follows")}</TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                &ldquo;—&rdquo; berarti platform tersebut memang tidak melaporkan metrik itu, bukan berarti nol.
-              </p>
-            </CardContent>
-          </Card>
-          )}
-
-          {/* Per video */}
-          {rows.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between flex-wrap gap-3">
-                <span>Detail per Video</span>
-                <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-                  <SelectTrigger className="w-[190px] h-8 text-sm">
-                    <ArrowUpDown className="h-3.5 w-3.5 mr-2 shrink-0" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="views">Views terbanyak</SelectItem>
-                    <SelectItem value="engagement">Interaksi terbanyak</SelectItem>
-                    <SelectItem value="engagement_rate">Engagement rate</SelectItem>
-                    <SelectItem value="posted_at">Terbaru</SelectItem>
-                  </SelectContent>
-                </Select>
-              </CardTitle>
+              <CardTitle>Akun × Platform</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[220px]">Video</TableHead>
-                      <TableHead>Akun</TableHead>
+                      <TableHead className="min-w-[150px]">Akun</TableHead>
                       <TableHead>Platform</TableHead>
-                      <TableHead>Terbit</TableHead>
-                      <TableHead className="text-right">Views</TableHead>
-                      <TableHead className="text-right">Like</TableHead>
-                      <TableHead className="text-right">Komentar</TableHead>
-                      <TableHead className="text-right">Share</TableHead>
-                      <TableHead className="text-right">ER</TableHead>
+                      <SortableHead id="targeted" label="Post" active={sortKey} onSort={setSortKey} />
+                      <SortableHead id="published" label="Terbit" active={sortKey} onSort={setSortKey} />
+                      <SortableHead id="failed" label="Gagal" active={sortKey} onSort={setSortKey} />
+                      <SortableHead id="measured" label="Terukur" active={sortKey} onSort={setSortKey} />
+                      {columns.map((c) => (
+                        <SortableHead key={c.key} id={c.key} label={c.label} active={sortKey} onSort={setSortKey} />
+                      ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortedRows.map((r) => (
-                      <TableRow key={`${r.post_id}-${r.platform}`}>
-                        <TableCell className="max-w-[320px]">
-                          <div className="truncate" title={r.video_caption ?? undefined}>
-                            {r.video_caption?.trim() || <span className="text-muted-foreground">(tanpa caption)</span>}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {r.video_category}
-                            {r.video_subcategory ? ` · ${r.video_subcategory}` : ""}
-                          </div>
+                    {sortedAccountPlatform.map((r) => (
+                      <TableRow key={`${r.account.id}-${r.platform}`}>
+                        <TableCell className="font-medium">
+                          {r.account.label}
+                          <div className="text-xs text-muted-foreground font-normal">{r.account.category}</div>
                         </TableCell>
-                        <TableCell className="text-sm">{r.account_label}</TableCell>
-                        <TableCell className="text-sm">{PLATFORM_LABELS[r.platform] ?? r.platform}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                          {fmtDate(r.posted_at)}
+                        <TableCell className="text-sm whitespace-nowrap">
+                          {PLATFORM_LABELS[r.platform] ?? r.platform}
+                          {!r.connected && (
+                            <span className="ml-2 text-xs text-yellow" title="Platform ini tidak lagi terhubung di pengaturan akun">
+                              tidak terhubung
+                            </span>
+                          )}
                         </TableCell>
-                        <TableCell className="text-right font-semibold">{fmt(r.views)}</TableCell>
-                        <TableCell className="text-right">{fmt(r.reactions)}</TableCell>
-                        <TableCell className="text-right">{fmt(r.comments)}</TableCell>
-                        <TableCell className="text-right">{fmt(r.shares)}</TableCell>
-                        <TableCell className="text-right">
-                          {r.engagement_rate === null ? "—" : `${r.engagement_rate.toFixed(2)}%`}
+                        <TableCell className="text-right">{r.targeted || "—"}</TableCell>
+                        <TableCell className="text-right">{r.published || "—"}</TableCell>
+                        <TableCell className={`text-right ${r.failed > 0 ? "text-red-500 font-semibold" : ""}`}>
+                          {r.failed || "—"}
                         </TableCell>
+                        {/* Denominator of the per-post averages. Without it,
+                            "Post 7" next to "Views/post 177,3" for 532 views
+                            reads as arithmetic that doesn't add up -- the gap
+                            is posts published after the last daily sync. */}
+                        <TableCell className="text-right text-muted-foreground"
+                          title="Post yang metriknya sudah tersinkron — ini pembagi kolom per-post">
+                          {r.rows.length || "—"}
+                        </TableCell>
+                        {columns.map((c) => (
+                          <TableCell key={c.key} className="text-right">
+                            <MetricCell rows={r.rows} platform={r.platform} column={c} />
+                          </TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                &ldquo;—&rdquo; platform tidak melaporkan metrik itu &middot; &ldquo;·&rdquo; belum ada metrik tersinkron.
+                Kolom <strong>Gagal</strong> berarti post tidak pernah terbit — beda dengan terbit tapi nol views.
+              </p>
             </CardContent>
           </Card>
-          )}
+
+          {/* Global rollup, same columns as above by construction. */}
+          <Card>
+            <CardHeader><CardTitle>Ringkasan per Platform</CardTitle></CardHeader>
+            <CardContent>
+              {byPlatform.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">Belum ada metrik untuk filter ini.</p>
+              ) : (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Platform</TableHead>
+                        <TableHead className="text-right">Post</TableHead>
+                        {columns.map((c) => <TableHead key={c.key} className="text-right">{c.label}</TableHead>)}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {byPlatform.map((p) => (
+                        <TableRow key={p.name}>
+                          <TableCell className="font-medium">{PLATFORM_LABELS[p.name] ?? p.name}</TableCell>
+                          <TableCell className="text-right">{new Set(p.rows.map((r) => r.post_id)).size}</TableCell>
+                          {columns.map((c) => (
+                            <TableCell key={c.key} className="text-right">
+                              <MetricCell rows={p.rows} platform={p.name} column={c} />
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between flex-wrap gap-3">
+                <span>Detail per Video</span>
+                <Select value={videoSort} onValueChange={setVideoSort}>
+                  <SelectTrigger className="w-[190px] h-8 text-sm">
+                    <ArrowUpDown className="h-3.5 w-3.5 mr-2 shrink-0" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {columns.map((c) => <SelectItem key={c.key} value={c.key}>{c.label} tertinggi</SelectItem>)}
+                    <SelectItem value="engagement">Interaksi terbanyak</SelectItem>
+                    <SelectItem value="posted_at">Terbaru</SelectItem>
+                  </SelectContent>
+                </Select>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sortedVideos.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground">
+                  <BarChart3 className="h-16 w-16 mx-auto mb-4" />
+                  <p>Belum ada metrik untuk filter ini.</p>
+                  <p className="text-sm mt-1">Metrik muncul setelah post terbit dan cron <code className="text-xs">sync-metrics</code> berjalan.</p>
+                </div>
+              ) : (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="min-w-[220px]">Video</TableHead>
+                        <TableHead>Akun</TableHead>
+                        <TableHead>Platform</TableHead>
+                        <TableHead>Terbit</TableHead>
+                        {columns.map((c) => <TableHead key={c.key} className="text-right">{c.label}</TableHead>)}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedVideos.map((r) => (
+                        <TableRow key={`${r.post_id}-${r.platform}`}>
+                          <TableCell className="max-w-[320px]">
+                            <div className="truncate" title={r.video_caption ?? undefined}>
+                              {r.video_caption?.trim() || <span className="text-muted-foreground">(tanpa caption)</span>}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {r.video_category}{r.video_subcategory ? ` · ${r.video_subcategory}` : ""}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm">{r.account_label}</TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">{PLATFORM_LABELS[r.platform] ?? r.platform}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {r.posted_at ? new Date(r.posted_at).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+                          </TableCell>
+                          {columns.map((c) => (
+                            <TableCell key={c.key} className="text-right">
+                              <MetricCell rows={[r]} platform={r.platform} column={c} />
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
