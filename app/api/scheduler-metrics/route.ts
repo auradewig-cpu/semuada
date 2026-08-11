@@ -114,13 +114,26 @@ export async function GET(request: NextRequest) {
   const accountRows = await db.execute(sql`
     SELECT
       sa.id, sa.label, sa.category, sa.is_active,
+      -- Which platforms this account is actually wired up to. Without it the
+      -- UI cannot tell "connected but no data yet" from "not connected at
+      -- all" -- and those differ: Akun 1 earned 214 YouTube views and then
+      -- lost its youtube_account_id, which reads as a silent zero otherwise.
+      ARRAY_REMOVE(ARRAY[
+        CASE WHEN sa.tiktok_account_id        IS NOT NULL THEN 'tiktok'        END,
+        CASE WHEN sa.instagram_account_id     IS NOT NULL THEN 'instagram'     END,
+        CASE WHEN sa.youtube_account_id       IS NOT NULL THEN 'youtube'       END,
+        CASE WHEN sa.threads_account_id       IS NOT NULL THEN 'threads'       END,
+        CASE WHEN sa.facebook_page_account_id IS NOT NULL THEN 'facebook_page' END
+      ], NULL) AS platforms,
       COUNT(sp.id) FILTER (
         WHERE sp.status = 'posted'
         ${since ? sql`AND COALESCE(sp.posted_at, sp.scheduled_for) >= ${since.toISOString()}` : sql``}
       )::int AS posts_published
     FROM scheduler_accounts sa
     LEFT JOIN scheduled_posts sp ON sp.scheduler_account_id = sa.id
-    GROUP BY sa.id, sa.label, sa.category, sa.is_active
+    GROUP BY sa.id, sa.label, sa.category, sa.is_active,
+             sa.tiktok_account_id, sa.instagram_account_id, sa.youtube_account_id,
+             sa.threads_account_id, sa.facebook_page_account_id
     ORDER BY sa.category, sa.label
   `);
 
@@ -129,7 +142,41 @@ export async function GET(request: NextRequest) {
     label: r.label as string,
     category: r.category as string,
     is_active: r.is_active as boolean,
+    platforms: (r.platforms as string[] | null) ?? [],
     posts_published: Number(r.posts_published ?? 0),
+  }));
+
+  // Publish outcome per (account, platform), read straight from
+  // provider_results. This is the difference between a post that never went
+  // out and a post that went out to nobody -- both look like "0 views"
+  // otherwise, and they need opposite responses. Akun 3 currently fails 4 of
+  // its 8 TikTok posts, which was invisible on the dashboard.
+  //
+  // `ok` is authoritative because the metrics sync reconciles it against
+  // Buffer's real publish status (see reconcileResults in
+  // lib/scheduler/metrics.ts) -- it is no longer just "the provider accepted
+  // the hand-off".
+  const publishingRows = await db.execute(sql`
+    SELECT
+      sp.scheduler_account_id AS account_id,
+      p.platform,
+      COUNT(*)::int AS targeted,
+      COUNT(*) FILTER (WHERE sp.provider_results -> p.platform ->> 'ok' = 'true')::int  AS published,
+      COUNT(*) FILTER (WHERE sp.provider_results -> p.platform ->> 'ok' = 'false')::int AS failed,
+      COUNT(*) FILTER (WHERE sp.provider_results -> p.platform IS NULL)::int            AS pending
+    FROM scheduled_posts sp
+    CROSS JOIN LATERAL unnest(sp.platforms) AS p(platform)
+    ${since ? sql`WHERE COALESCE(sp.posted_at, sp.scheduled_for) >= ${since.toISOString()}` : sql``}
+    GROUP BY sp.scheduler_account_id, p.platform
+  `);
+
+  const publishing = (publishingRows.rows as Record<string, unknown>[]).map((r) => ({
+    account_id: r.account_id as string,
+    platform: r.platform as string,
+    targeted: Number(r.targeted ?? 0),
+    published: Number(r.published ?? 0),
+    failed: Number(r.failed ?? 0),
+    pending: Number(r.pending ?? 0),
   }));
 
   // The oldest/newest capture dates tell the UI how much history actually
@@ -140,6 +187,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     items,
     accounts,
+    publishing,
     coverage: {
       first_captured_on: captureDates[0] ?? null,
       last_captured_on: captureDates[captureDates.length - 1] ?? null,

@@ -42,12 +42,31 @@ export interface SocialAccount {
   label: string;
   category: string;
   is_active: boolean;
+  /** Platforms this account is currently wired up to. A platform with metrics
+   *  but missing here was disconnected after posting -- worth flagging, not
+   *  hiding. */
+  platforms: string[];
   posts_published: number;
+}
+
+/**
+ * Publish outcome per (account, platform) -- separates "never went out" from
+ * "went out to nobody". Both read as zero views otherwise, and they call for
+ * opposite responses.
+ */
+export interface PublishingRow {
+  account_id: string;
+  platform: string;
+  targeted: number;
+  published: number;
+  failed: number;
+  pending: number;
 }
 
 export interface SocialMetricsResponse {
   items: SocialMetricRow[];
   accounts: SocialAccount[];
+  publishing: PublishingRow[];
   coverage: {
     first_captured_on: string | null;
     last_captured_on: string | null;
