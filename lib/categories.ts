@@ -61,9 +61,11 @@ export async function getSubcategoryParams(): Promise<{ category: string; subcat
 // construction -- kept in sync manually since one runs on the server
 // (resolving a URL param before the client mounts) and the other on the
 // client (resolving nav clicks), but both must agree on which slug maps to
-// which real category/subcategory name. Returns undefined for an unmatched
-// slug, same as CategoryContext's Map.get() would -- callers then fall back
-// to the unfiltered ("Semua Produk") view, matching existing client behavior.
+// which real category/subcategory name.
+//
+// Returns undefined for an unmatched slug. Callers MUST treat that as a 404
+// rather than falling through to the unfiltered view -- see the pages, and
+// the note on notFound() there.
 export function resolveCategorySlug(
   hierarchy: Record<string, string[]>,
   categorySlug?: string,
@@ -73,11 +75,16 @@ export function resolveCategorySlug(
     ? Object.keys(hierarchy).find((name) => slugify(name) === categorySlug)
     : undefined;
 
-  const subcategory = subcategorySlug
-    ? Object.values(hierarchy)
-        .flat()
-        .find((name) => slugify(name) === subcategorySlug)
-    : undefined;
+  // Scoped to the resolved category rather than searched across the whole
+  // hierarchy: a subcategory belonging to a DIFFERENT category is not a valid
+  // pair. 98 (category, subcategory) pairs share only 93 distinct subcategory
+  // names, so the flat search really could match the wrong branch -- and
+  // /pakaian-pria/perawatan-wajah resolved to a real-looking page with zero
+  // products instead of a 404.
+  const subcategory =
+    subcategorySlug && category
+      ? (hierarchy[category] ?? []).find((name) => slugify(name) === subcategorySlug)
+      : undefined;
 
   return { category, subcategory };
 }
