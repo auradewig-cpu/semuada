@@ -138,6 +138,7 @@ export default function Home({ categorySlug, subcategorySlug, initialCategory, i
         searchQuery={filters.search}
         onSearchChange={handleSearchChange}
         onMenuToggle={toggleFilters}
+        activeCategory={filters.category}
       />
 
       <FeaturedCarousel onProductClick={handleProductClick} activeCategory={filters.category} />

@@ -1,37 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { getSearchKeywords } from '@/lib/searchKeywords';
 
 interface SearchBarProps {
   value?: string;
   onChange?: (value: string) => void;
   placeholder?: string;
   className?: string;
+  category?: string;
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({
   value = '',
   onChange,
   placeholder,
-  className = ''
+  className = '',
+  category
 }) => {
-  const placeholders = [
-    "skincare",
-    "fashion wanita",
-    "elektronik & gadget",
-    "perlengkapan rumah tangga",
-    "aksesoris HP",
-    "smartwatch",
-    "springbed",
-    "meja gaming",
-    "kursi gaming",
-    "powerbank"
-  ];
+  const placeholders = getSearchKeywords(category);
 
   const [currentPlaceholder, setCurrentPlaceholder] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Category switch means `placeholders` is a different array -- restart
+  // from its first keyword instead of carrying over an index that may be
+  // out of range (or just showing an unrelated leftover keyword mid-rotation).
+  useEffect(() => {
+    setCurrentPlaceholder(0);
+  }, [category]);
 
   useEffect(() => {
     if (isPaused) return;

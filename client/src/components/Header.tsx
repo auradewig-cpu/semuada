@@ -13,9 +13,10 @@ interface HeaderProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onMenuToggle: () => void;
+  activeCategory?: string;
 }
 
-export function Header({ searchQuery, onSearchChange, onMenuToggle }: HeaderProps) {
+export function Header({ searchQuery, onSearchChange, onMenuToggle, activeCategory }: HeaderProps) {
   const { data: settings } = useSettings();
   const siteName = settings?.site_name || 'SEMUADA';
 
@@ -43,6 +44,7 @@ export function Header({ searchQuery, onSearchChange, onMenuToggle }: HeaderProp
             <SearchBar
               value={searchQuery}
               onChange={onSearchChange}
+              category={activeCategory}
             />
           </div>
           
