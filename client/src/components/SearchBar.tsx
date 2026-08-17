@@ -35,15 +35,19 @@ const SearchBar: React.FC<SearchBarProps> = ({
   useEffect(() => {
     if (isPaused) return;
 
+    let fadeTimeout: ReturnType<typeof setTimeout>;
     const interval = setInterval(() => {
       setIsVisible(false);
-      setTimeout(() => {
+      fadeTimeout = setTimeout(() => {
         setCurrentPlaceholder((prev) => (prev + 1) % placeholders.length);
         setIsVisible(true);
       }, 300);
     }, 2000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(fadeTimeout);
+    };
   }, [placeholders.length, isPaused]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -95,7 +99,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
               isVisible ? 'opacity-100' : 'opacity-0'
             }`}
           >
-            {placeholders[currentPlaceholder]}
+            {placeholders[currentPlaceholder % placeholders.length]}
           </div>
         )}
       </div>
