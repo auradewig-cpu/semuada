@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { ContentStyleId } from "@/hooks/useContentGenerator";
 
 const STYLES: { id: ContentStyleId; label: string; description: string }[] = [
+  { id: 'auto', label: 'Auto (Pilihkan)', description: 'Creative Director memilihkan gaya paling cocok untuk produk ini.' },
   { id: 'direct_response', label: 'Direct Response / Iklan', description: 'Hook -> Body -> CTA keras. Klasik untuk affiliate.' },
   { id: 'vlog_daily', label: 'Vlog / Day-in-Life', description: 'Cerita personal natural, tanpa hard-sell.' },
   { id: 'tutorial_howto', label: 'Tutorial / How-To', description: 'Ajarkan 1 skill/cara spesifik, langkah bernomor.' },

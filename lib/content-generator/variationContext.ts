@@ -1,6 +1,6 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@root/lib/db";
-import { contentGenerations } from "@shared/schema";
+import { contentGenerations, products } from "@shared/schema";
 import { HOOK_ARCHETYPES } from "./hookPatterns";
 import type { HookArchetype } from "./types";
 
@@ -36,6 +36,84 @@ export function suggestHookArchetype(recent: RecentGeneration[], fallback: HookA
   const recentIds = new Set(recent.map((r) => r.hookArchetype).filter(Boolean));
   const candidates = Object.keys(HOOK_ARCHETYPES) as HookArchetype[];
   return candidates.find((id) => !recentIds.has(id)) ?? fallback;
+}
+
+// Usage counts per creative dimension, for the rotation/fatigue layer of the
+// Creative Director. Returns { [id]: count } over the last `limit` generations
+// in the given scope. These feed pickWeighted() in rotation.ts -- they do NOT
+// include the (lighter) per-product history, which stays handled by
+// buildAvoidRepetitionBlock.
+
+export interface CreativeUsageCounts {
+  styles: Record<string, number>;
+  hooks: Record<string, number>;
+  ctaTypes: Record<string, number>;
+  tones: Record<string, number>;
+  mechanisms: Record<string, number>;
+}
+
+function toUsageCounts(rows: { value: string | null }[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const r of rows) {
+    if (!r.value) continue;
+    counts[r.value] = (counts[r.value] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function toDimensionCounts(
+  rows: { style: string | null; hook: string | null; cta: string | null; tone: string | null; mechanism: string | null }[]
+): CreativeUsageCounts {
+  return {
+    styles: toUsageCounts(rows.map((r) => ({ value: r.style }))),
+    hooks: toUsageCounts(rows.map((r) => ({ value: r.hook }))),
+    ctaTypes: toUsageCounts(rows.map((r) => ({ value: r.cta }))),
+    tones: toUsageCounts(rows.map((r) => ({ value: r.tone }))),
+    mechanisms: toUsageCounts(rows.map((r) => ({ value: r.mechanism }))),
+  };
+}
+
+// content_generations has no category column, so category-scoped usage is
+// derived by joining through products on product_id -- product_id is text while
+// products.id is uuid, hence the ::text casts on both sides.
+async function usageWithin(category: string | undefined, limit: number): Promise<CreativeUsageCounts> {
+  const select = {
+    style: contentGenerations.style,
+    hook: contentGenerations.hookArchetype,
+    cta: contentGenerations.ctaType,
+    tone: contentGenerations.languageTone,
+    mechanism: contentGenerations.mechanism,
+  };
+
+  if (category) {
+    const rows = await db
+      .select(select)
+      .from(contentGenerations)
+      .innerJoin(products, sql`${contentGenerations.productId}::text = ${products.id}::text`)
+      .where(eq(products.category, category))
+      .orderBy(desc(contentGenerations.createdAt))
+      .limit(limit);
+    return toDimensionCounts(rows);
+  }
+
+  const rows = await db
+    .select(select)
+    .from(contentGenerations)
+    .orderBy(desc(contentGenerations.createdAt))
+    .limit(limit);
+  return toDimensionCounts(rows);
+}
+
+/** Last `limit` generations in the same category (this is the genuinely new
+ *  scope -- 4 different products all on before_after still feels uniform to a
+ *  viewer, so category-level fatigue matters). */
+export async function getCategoryUsageCounts(category: string, limit = 20): Promise<CreativeUsageCounts> {
+  return usageWithin(category, limit);
+}
+
+/** Last `limit` generations across all categories. */
+export async function getGlobalUsageCounts(limit = 20): Promise<CreativeUsageCounts> {
+  return usageWithin(undefined, limit);
 }
 
 // Empty string when there's no history -- keeps the prompt byte-identical to

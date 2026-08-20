@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { LanguageTone } from "@/hooks/useContentGenerator";
 
 const TONES: { id: LanguageTone; label: string; blurb: string }[] = [
+  { id: 'auto', label: 'Auto (Pilihkan)', blurb: 'Creative Director memilihkan nada bicara.' },
   { id: 'formal_netral', label: 'Formal/Netral', blurb: 'Bahasa baku namun ramah -- baseline.' },
   { id: 'santai_ngobrol', label: 'Santai/Ngobrol', blurb: 'Kayak ngobrol sama temen deket.' },
   { id: 'gaul_kekinian', label: 'Gaul/Kekinian', blurb: 'Slang anak muda Indonesia 2026.' },

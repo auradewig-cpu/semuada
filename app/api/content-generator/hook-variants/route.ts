@@ -15,6 +15,8 @@ import { getRecentGenerations, buildAvoidRepetitionBlock } from "@root/lib/conte
 import { makeSeed } from "@root/lib/content-generator/exampleBank";
 import { requiredPromptTokens } from "@root/lib/content-generator/promptFragments";
 import { resolveVisualDictionary } from "@root/lib/content-generator/cinematography";
+import { buildProductFacts } from "@root/lib/content-generator/productFacts";
+import { getCategoryBible } from "@root/lib/content-generator/categoryCreative";
 import type { AiProvider, SceneOutput } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
@@ -46,6 +48,12 @@ export async function POST(request: NextRequest) {
   } = parsed.data;
   const currentScene = parsed.data.currentScene as unknown as SceneOutput;
 
+  // "auto" should never arrive here (the client locks the concrete chosen
+  // values before regenerate/variants), but coerce defensively anyway.
+  const effStyle = style === "auto" ? "direct_response" : style;
+  const effTone = languageTone === "auto" ? "gaul_kekinian" : languageTone;
+  const effCurrentArchetype = currentArchetype === "auto" ? "pov_realism" : currentArchetype;
+
   const [product] = await db.select().from(products).where(eq(products.id, productId));
   if (!product) {
     return NextResponse.json({ error: "Produk tidak ditemukan." }, { status: 404 });
@@ -69,28 +77,48 @@ export async function POST(request: NextRequest) {
     deepseekApiKey: settingsRow.deepseekApiKey,
   };
 
-  const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180, languageTone);
+  const narrationWpm = resolveNarrationWpm(effStyle, settingsRow.narrationWpm ?? 180, effTone);
   // Variants are alternate scene 1s for the SAME video, so they get the same
   // anti-repetition history the main generate flow uses -- novelty is the whole
   // point of this endpoint, and it previously had no history at all.
   const avoidRepetitionBlock = buildAvoidRepetitionBlock(await getRecentGenerations(productId));
 
+  // Realism profile defaults to the category bible (same as the main generate
+  // flow's fallback) so variants match the video's look.
+  const realismProfile = getCategoryBible(product.category, product.subcategory).defaultRealism;
+
   // Same source of truth compileHookVariantsPrompt uses to declare these
   // mandatory, so instruction and validation can't drift apart.
-  const requiredTokens = requiredPromptTokens(aiTool, resolveVisualDictionary(languageTone, style));
+  const requiredTokens = requiredPromptTokens(aiTool, resolveVisualDictionary(effTone, effStyle), realismProfile);
 
   const variantCount = 3;
+  const productFactsLine = buildProductFacts(
+    {
+      productName: product.productName,
+      price: product.price,
+      sales: product.sales,
+      rating: product.rating,
+      category: product.category,
+      subcategory: product.subcategory,
+      toko: product.toko,
+      dikirim_dari: product.dikirim_dari,
+    },
+    includePrice
+  ).promptLine;
+
   const prompt = compileHookVariantsPrompt({
     productName: product.productName,
     category: product.category,
     price: product.price,
+    productFactsLine,
+    realismProfile,
     sceneDuration,
     productImageUrl,
     currentScene,
-    currentArchetype,
+    currentArchetype: effCurrentArchetype,
     contentGoal,
-    languageTone,
-    style,
+    languageTone: effTone,
+    style: effStyle,
     aiTool,
     platform,
     aspectRatio,

@@ -107,6 +107,19 @@ export const contentGenerations = pgTable("content_generations", {
   characterId: uuid("character_id"),
   style: text("style").notNull(),
   output: text("output").notNull(),
+  // Fingerprint of the creative choices that produced this generation, kept as
+  // real columns (not parsed out of `output`'s JSON) so the learning pipeline
+  // (Phase 5) can GROUP BY them cheaply. All nullable: old rows predate these
+  // and are never backfilled. auto_selected marks whether the choice came from
+  // the Creative Director (Stage A) or was picked manually by the user.
+  mechanism: text("mechanism"),
+  languageTone: text("language_tone"),
+  aiTool: text("ai_tool"),
+  platform: text("platform"),
+  realismProfile: text("realism_profile"),
+  sceneCount: integer("scene_count"),
+  totalDuration: integer("total_duration"),
+  autoSelected: boolean("auto_selected").default(false),
   // Denormalized copies of fields already inside `output`'s JSON -- kept as
   // real columns (rather than parsing the blob) so lib/content-generator/
   // variationContext.ts can cheaply query recent generations per product to
@@ -155,6 +168,13 @@ export const videoContents = pgTable("video_contents", {
   // upload time (see sign/route.ts), never re-resolved later, so adding a
   // dedicated account for a category afterward doesn't strand old videos.
   storageAccountId: uuid("storage_account_id").references(() => videoStorageAccounts.id),
+  // Links a Content Generator output to the video uploaded from it -- the
+  // fingerprint/learning pipeline (Phase 5) reads performance through this FK
+  // instead of matching by caption text, which silently misattributes ~15% of
+  // videos. Nullable because manual uploads genuinely have no generation.
+  // content_generations.product_id is text while video_contents.product_id is
+  // uuid -- both store products.id, so joins must cast one side with ::text.
+  contentGenerationId: uuid("content_generation_id").references(() => contentGenerations.id, { onDelete: "set null" }),
   // Lifecycle: "uploaded" (available in the scheduler's video pool) ->
   // "scheduled" (claimed by one scheduled_posts row, prevents double-claim
   // across accounts sharing a category) -> "posted" (successfully posted,

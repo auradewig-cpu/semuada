@@ -56,6 +56,9 @@ interface SceneOutputPanelProps {
   affiliateUrl: string | null;
   productCategory: string;
   productSubcategory: string | null;
+  // DB id of the generation that produced `result` -- passed to VideoUploadPanel
+  // so the uploaded video is FK'd back to this generation.
+  contentGenerationId: string | null;
 }
 
 // Defensive cleanup for display/copy -- the prompt instructs the AI to keep
@@ -77,7 +80,7 @@ async function downloadAs(url: string, filename: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function SceneOutputPanel({ result, onResultChange, warnings, onWarningsChange, context, scenePlan, affiliateUrl, productCategory, productSubcategory }: SceneOutputPanelProps) {
+export function SceneOutputPanel({ result, onResultChange, warnings, onWarningsChange, context, scenePlan, affiliateUrl, productCategory, productSubcategory, contentGenerationId }: SceneOutputPanelProps) {
   const { toast } = useToast();
   const regenerateScene = useRegenerateScene();
   const hookVariants = useHookVariants();
@@ -345,6 +348,7 @@ export function SceneOutputPanel({ result, onResultChange, warnings, onWarningsC
         caption={result.caption}
         hashtags={result.hashtags}
         promptSnapshot={result.scenes.map((s) => `Scene ${s.scene_number}:\n${s.ai_ready_prompt}`).join('\n\n')}
+        contentGenerationId={contentGenerationId}
       />
     </div>
   );

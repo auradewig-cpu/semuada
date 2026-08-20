@@ -16,6 +16,9 @@ export interface VideoContent {
   // lib/scheduler/dispatch.ts) -- starts the 30-day countdown before the
   // purge-trash cron permanently deletes it. Null = not in trash.
   trashed_at: string | null;
+  // FK to the Content Generator output that produced this video (null for
+  // manual uploads). Drives the Phase 5 learning pipeline.
+  content_generation_id: string | null;
   created_at: string;
 }
 
@@ -87,6 +90,7 @@ export function useCreateVideoContent() {
       video_url: string;
       cloudinary_public_id: string;
       storage_account_id?: string;
+      content_generation_id?: string | null;
     }) => {
       const res = await apiRequest('POST', '/api/video-content', payload);
       return res.json() as Promise<VideoContent>;

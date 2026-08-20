@@ -5,6 +5,7 @@ import { getPlatformSpec, buildPlatformBehavior } from "./platforms";
 import { buildCtaInstruction, resolveCtaForGoal, resolveCtaForPlatform } from "./ctaTypes";
 import { getLanguageTone, buildLanguageToneRule } from "./languageTones";
 import { buildCinematographyRule, buildSingleTakeRule, resolveVisualDictionary } from "./cinematography";
+import { getCategoryBible } from "./categoryCreative";
 import { buildNegativePromptBlock, buildSpokenNumberRule } from "./negativePrompt";
 import { pickExamples, deriveSeed, CAPTION_SHARE_BANK } from "./exampleBank";
 import { buildVoiceDescriptor } from "./voiceCasting";
@@ -24,12 +25,15 @@ import {
   buildWordCountSelfCheckRule,
   buildRequiredTokensRule,
 } from "./promptFragments";
-import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, LanguageTone, NarrationMode, NarratorVoice, PlatformTarget, SceneInput } from "./types";
+import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, CtaTypeId, HookArchetype, LanguageTone, NarrationMode, NarratorVoice, PlatformTarget, RealismProfileId, SceneInput } from "./types";
 
-interface MasterPromptInput {
+export interface MasterPromptInput {
   productName: string;
   category: string;
   price: string;
+  /** One-line FAKTA PRODUK block from productFacts.ts -- the only figures the
+   *  AI may cite. Empty when the product has no usable facts. */
+  productFactsLine?: string;
   scenes: SceneInput[];
   style: ContentStyleId;
   aiTool: AiToolId;
@@ -50,6 +54,9 @@ interface MasterPromptInput {
   // native-audio tools cast; without it Veo 3 picks a different voice per
   // generate and one video's scenes come back sounding like different people.
   narratorVoice: NarratorVoice;
+  // Realism profile (Phase 4) -- the 5-tier production-polish target. Defaults
+  // to the category bible's defaultRealism; Stage A may override it.
+  realismProfile?: RealismProfileId;
   // Rotates every concrete example phrase in the prompt (tone vocabulary, hook
   // openers, CTA phrasings, spoken-price example) so consecutive generations of
   // the same product don't converge on identical wording. See exampleBank.ts.
@@ -58,6 +65,16 @@ interface MasterPromptInput {
   // for a product's first-ever generation, so the prompt is byte-identical
   // to before this field existed when there's no history yet.
   avoidRepetitionBlock?: string;
+  // The Creative Director's brief (Stage A) -- binds the chosen mechanism/
+  // environment/reasoning and the per-scene primary actions so Stage B follows
+  // one direction instead of drifting. Null when Stage A failed / rotation was
+  // used; the prompt is then generated as before (no brief block).
+  creativeBrief?: {
+    mechanism: string;
+    environment: string;
+    reasoning: string;
+    scene_plan: { scene_number: number; beat: string; primary_action: string }[];
+  } | null;
 }
 
 export function compileMasterPrompt(input: MasterPromptInput): string {
@@ -75,20 +92,43 @@ export function compileMasterPrompt(input: MasterPromptInput): string {
   const toneSpec = getLanguageTone(input.languageTone);
   const dictionary = resolveVisualDictionary(input.languageTone, input.style);
   const voiceDescriptor = buildVoiceDescriptor(input.narratorVoice, input.languageTone, input.seed);
+  // Category Creative Bible -- the source of the category-specific visual
+  // grammar and interaction verbs (falls back to GENERIC_BIBLE for small/new
+  // categories).
+  const bible = getCategoryBible(input.category);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
-  const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
+  const productAnchorRule = buildProductAnchorRule(input.productName, input.category, bible.productInteractions);
+
+  // Creative Director brief -- binds the direction. This genuinely REPLACES
+  // rather than stacks: the per-scene beats/actions are folded into the single
+  // INSTRUKSI PER SCENE list below (they used to be printed twice, once here
+  // and once there), and `reasoning` is deliberately NOT sent to the model --
+  // it explains the choice to the human and is returned separately in the
+  // route's `chosen.reasoning` for the UI.
+  const creativeBriefBlock = input.creativeBrief
+    ? `\nKONSEP KREATIF (WAJIB DIJADIKAN ARAH, JANGAN DITIMBANG ULANG):
+- Mechanism: ${input.creativeBrief.mechanism}
+- Lingkungan: ${input.creativeBrief.environment}\n`
+    : "";
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   const priceRule = buildPriceRule(input.includePrice, sceneCount, input.contentGoal);
 
   // Per-scene narration/camera instructions -- each scene resolves its own
   // override (or falls back to the request-level default), so e.g. scene 1
-  // can be voiceover B-roll while scene 2 is lipsync talking head.
+  // can be voiceover B-roll while scene 2 is lipsync talking head. When a
+  // brief exists its beat + dominant action ride along on the SAME line
+  // instead of being repeated in a separate block above.
+  const briefScenes = input.creativeBrief?.scene_plan ?? [];
   const perSceneDirection = input.scenes
     .map((scene, i) => {
       const narrationMode = scene.narrationMode ?? input.narrationMode;
       const cameraPattern = scene.cameraPattern ?? input.cameraPattern;
-      return `Scene ${i + 1} (${scene.duration}s): ${buildDialogueRule(input.aiTool, narrationMode, hasCharacter, input.seed, voiceDescriptor)} ${buildCameraPatternRule(cameraPattern)}`;
+      const planned = briefScenes[i];
+      const beatPart = planned
+        ? ` BEAT: "${planned.beat}". AKSI DOMINAN (satu klausa, tanpa "lalu"/"sambil"/"kemudian"): "${planned.primary_action}".`
+        : "";
+      return `Scene ${i + 1} (${scene.duration}s):${beatPart} ${buildDialogueRule(input.aiTool, narrationMode, hasCharacter, input.seed, voiceDescriptor)} ${buildCameraPatternRule(cameraPattern)}`;
     })
     .join("\n");
 
@@ -138,7 +178,8 @@ PRODUK:
 - Nama: ${input.productName}
 - Kategori: ${input.category}
 ${priceLine}
-
+${input.productFactsLine ? `\n${input.productFactsLine}\n` : ""}
+${creativeBriefBlock}
 ${characterBlock}
 
 GAYA VIDEO: ${style.label}
@@ -160,11 +201,11 @@ ${buildPromptBudgetRule(input.aiTool, hasCharacter)}
 
 ${buildAiReadyPromptStructureRule(hasCharacter, input.aspectRatio, toneSpec.genreAnchor)}
 
-${buildCinematographyRule(input.aiTool, dictionary)}
+${buildCinematographyRule(input.aiTool, dictionary, bible, input.realismProfile, input.creativeBrief?.environment)}
 
 ${buildSingleTakeRule(input.aiTool)}
 
-${buildRequiredTokensRule(input.aiTool, dictionary)}
+${buildRequiredTokensRule(input.aiTool, dictionary, input.realismProfile)}
 
 HOOK SCENE 1: ${hookInstruction}
 
@@ -203,6 +244,7 @@ FORMAT OUTPUT -- HANYA JSON valid, TIDAK ADA teks lain di luar JSON, dengan stru
       "script_word_count": number,
       "visual_description": string,
       "camera_direction": string,
+      "primary_action": string,
       "text_overlay": string,
       "transition_to_next": string,
       "ai_ready_prompt": string${negativePromptField}

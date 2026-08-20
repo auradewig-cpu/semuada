@@ -15,6 +15,8 @@ import { checkPolicyCompliance, formatPolicyViolations } from "@root/lib/content
 import { rephraseSceneViolations } from "@root/lib/content-generator/autoRephrase";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
 import { regenerateSceneRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
+import { buildProductFacts } from "@root/lib/content-generator/productFacts";
+import { getCategoryBible } from "@root/lib/content-generator/categoryCreative";
 import type { AiProvider, SceneOutput } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
@@ -50,6 +52,14 @@ export async function POST(request: NextRequest) {
   const previousScene = parsed.data.previousScene as SceneOutput | null;
   const nextScene = parsed.data.nextScene as SceneOutput | null;
 
+  // The main generate flow resolves "auto" to a concrete value and the client
+  // locks it in for regenerate, so "auto" should never arrive here -- but
+  // coerce defensively rather than crash a scene edit on a bad payload.
+  const effStyle = style === "auto" ? "direct_response" : style;
+  const effHook = hookArchetype === "auto" ? "pov_realism" : hookArchetype;
+  const effCta = ctaType === "auto" ? "save_for_later" : ctaType;
+  const effTone = languageTone === "auto" ? "gaul_kekinian" : languageTone;
+
   const [product] = await db.select().from(products).where(eq(products.id, productId));
   if (!product) {
     return NextResponse.json({ error: "Produk tidak ditemukan." }, { status: 404 });
@@ -73,26 +83,46 @@ export async function POST(request: NextRequest) {
     deepseekApiKey: settingsRow.deepseekApiKey,
   };
 
-  const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180, languageTone);
+  const narrationWpm = resolveNarrationWpm(effStyle, settingsRow.narrationWpm ?? 180, effTone);
+
+  const productFactsLine = buildProductFacts(
+    {
+      productName: product.productName,
+      price: product.price,
+      sales: product.sales,
+      rating: product.rating,
+      category: product.category,
+      subcategory: product.subcategory,
+      toko: product.toko,
+      dikirim_dari: product.dikirim_dari,
+    },
+    includePrice
+  ).promptLine;
+
+  // Realism profile defaults to the category bible (same as the main generate
+  // flow's fallback) so a regenerated scene matches its neighbours.
+  const realismProfile = getCategoryBible(product.category, product.subcategory).defaultRealism;
 
   const prompt = compileSceneRegenPrompt({
     productName: product.productName,
     category: product.category,
     price: product.price,
+    productFactsLine,
+    realismProfile,
     sceneIndex,
     totalScenes,
     sceneDuration,
     productImageUrl,
     previousScene,
     nextScene,
-    style,
+    style: effStyle,
     aiTool,
     platform,
     aspectRatio,
-    hookArchetype,
+    hookArchetype: effHook,
     contentGoal,
-    ctaType,
-    languageTone,
+    ctaType: effCta,
+    languageTone: effTone,
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
     narrationWpm,
@@ -116,7 +146,7 @@ export async function POST(request: NextRequest) {
   const priceRequired = includePrice && isLastScene;
   // Same source of truth compileSceneRegenPrompt uses to declare these
   // mandatory, so instruction and validation can't drift apart.
-  const requiredTokens = requiredPromptTokens(aiTool, resolveVisualDictionary(languageTone, style));
+  const requiredTokens = requiredPromptTokens(aiTool, resolveVisualDictionary(effTone, effStyle), realismProfile);
 
   try {
     const response = await generateWithFallback(providerOrder, keys, prompt, images, 0.65);

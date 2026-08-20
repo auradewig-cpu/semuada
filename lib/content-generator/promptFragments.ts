@@ -1,7 +1,7 @@
 import { getAiToolSpec, usesLiteralDialogueConvention } from "./aiTools";
 import { usesNativeAudio, type VisualDictionary } from "./cinematography";
 import { pickExamples, formatExamples, deriveSeed, NARRATOR_AUDIO_BANK, NARRATOR_SPOKEN_BANK } from "./exampleBank";
-import type { AiToolId, CameraPattern, ContentGoal, NarrationMode } from "./types";
+import type { AiToolId, CameraPattern, ContentGoal, NarrationMode, RealismProfileId } from "./types";
 
 // Shared prompt fragments used by masterPrompt.ts, sceneRegen.ts, and
 // hookVariants.ts -- extracted so the character-anchor and dialogue-language
@@ -100,8 +100,12 @@ export function buildCameraPatternRule(pattern: CameraPattern): string {
 // Anchors scene content to the actual selected product. The old version named a
 // counter-example product and an unrelated activity, which is the classic
 // "don't think of an elephant" construction sitting inside the anti-drift rule.
-export function buildProductAnchorRule(productName: string, category: string): string {
-  return `SETIAP "ai_ready_prompt" dan "visual_description" WAJIB secara eksplisit tentang produk "${productName}" (kategori ${category}) -- sebutkan jenis produknya dengan jelas di kalimat pertama. DILARANG KERAS menggantinya dengan produk lain, aktivitas lain, atau skenario yang tidak berhubungan dengan produk ini.`;
+export function buildProductAnchorRule(productName: string, category: string, productInteractions?: string[]): string {
+  const interactionLine =
+    productInteractions && productInteractions.length > 0
+      ? ` Interaksi wajar kategori ini: ${productInteractions.join("; ")}.`
+      : "";
+  return `SETIAP "ai_ready_prompt" dan "visual_description" WAJIB secara eksplisit tentang produk "${productName}" (kategori ${category}) -- sebutkan jenis produknya dengan jelas di kalimat pertama. DILARANG KERAS menggantinya dengan produk lain, aktivitas lain, atau skenario yang tidak berhubungan dengan produk ini.${interactionLine}`;
 }
 
 // Line shown in the PRODUK block -- omits the price entirely when the user
@@ -175,15 +179,30 @@ export function buildRealismRule(dictionary: VisualDictionary): string {
 // about what "required" means. Deliberately short: every entry here becomes a
 // hard failure that can trigger a repair call, so only the tokens that
 // demonstrably change the rendered video earn a slot.
-export function requiredPromptTokens(aiTool: AiToolId, dictionary: VisualDictionary): string[] {
+// Profiles that read as "self-filmed" keep the phone-footage token; the more
+// produced profiles (lifestyle/commercial) drop it -- a "shot on a smartphone"
+// token on a commercial shot would fight the requested polish. Explicit map so
+// the profile <-> token relationship can't silently drift.
+const PHONE_TOKEN_PROFILES: RealismProfileId[] = ["raw_phone", "creator_ugc", "premium_ugc"];
+
+export function requiredPromptTokens(
+  aiTool: AiToolId,
+  dictionary: VisualDictionary,
+  realismProfile?: RealismProfileId
+): string[] {
   const tokens = ["single continuous shot"];
   if (usesNativeAudio(aiTool)) tokens.push("no subtitles");
-  if (dictionary === "ugc") tokens.push("shot on a smartphone");
+  const usePhoneToken = realismProfile ? PHONE_TOKEN_PROFILES.includes(realismProfile) : dictionary === "ugc";
+  if (usePhoneToken) tokens.push("shot on a smartphone");
   return tokens;
 }
 
-export function buildRequiredTokensRule(aiTool: AiToolId, dictionary: VisualDictionary): string {
-  const list = requiredPromptTokens(aiTool, dictionary)
+export function buildRequiredTokensRule(
+  aiTool: AiToolId,
+  dictionary: VisualDictionary,
+  realismProfile?: RealismProfileId
+): string {
+  const list = requiredPromptTokens(aiTool, dictionary, realismProfile)
     .map((t) => `"${t}"`)
     .join(", ");
   return `TOKEN WAJIB DI "ai_ready_prompt" (tulis APA ADANYA, huruf kecil, jangan diparafrase/diterjemahkan): ${list}. Output yang tidak memuat semuanya akan ditolak dan diminta ulang.`;
@@ -200,11 +219,14 @@ export function buildWordCountSelfCheckRule(): string {
 // the urgency is much lower than when these were the old 250-600 char values.
 export function buildPromptBudgetRule(aiTool: AiToolId, hasCharacter: boolean): string {
   const { charLimit, label } = getAiToolSpec(aiTool);
-  const anchorNote = hasCharacter
-    ? "anchor karakter (frasa identik antar scene)"
-    : "format faceless yang dipilih (tangan/flat-lay)";
-  return `PANJANG TARGET "ai_ready_prompt" untuk ${label}: sekitar ${charLimit} karakter -- ini target keterbacaan, bukan batas keras (prompt ini ditempel manual ke tool, bukan lewat API). Kalau butuh lebih panjang untuk kejelasan, boleh, tapi jangan bertele-tele tanpa menambah informasi visual baru.
-Kalau harus memangkas, urutan prioritas dari yang PALING BOLEH dibuang ke yang TIDAK BOLEH dibuang: (1) kata sifat mood/gaya, (2) detail lingkungan/latar, (3) detail pencahayaan, (4) detail gerakan kamera, (5) deskripsi aksi, (6) ${anchorNote} dan identitas produk -- DUA INI TIDAK BOLEH DIBUANG dalam kondisi apapun.`;
+  const anchorNote = hasCharacter ? "anchor karakter" : "format faceless yang dipilih";
+  // Kept deliberately short. charLimit is a readability TARGET, not a hard
+  // ceiling (the prompt is pasted into the tool by hand, not sent via API), so
+  // spending a long paragraph teaching the model how to shorten something that
+  // rarely needs shortening was budget better spent on the rules that change
+  // the rendered video. The trim-priority list collapsed to the one thing that
+  // actually matters: what must never be dropped.
+  return `PANJANG TARGET "ai_ready_prompt" untuk ${label}: sekitar ${charLimit} karakter (target keterbacaan, bukan batas keras). Boleh lebih panjang kalau menambah informasi visual nyata. Kalau harus memangkas, buang dulu kata sifat mood/latar/cahaya -- ${anchorNote} dan identitas produk TIDAK BOLEH dibuang dalam kondisi apapun.`;
 }
 
 // The labeled multi-line format below is what real-world prompts that get good

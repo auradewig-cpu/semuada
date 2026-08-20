@@ -1,5 +1,6 @@
 import { getAiToolSpec } from "./aiTools";
-import type { AiToolId, ContentStyleId, LanguageTone } from "./types";
+import type { CategoryCreativeBible } from "./categoryCreative";
+import type { AiToolId, ContentStyleId, LanguageTone, RealismProfileId } from "./types";
 
 // The craft layer that was entirely missing from the prompt system.
 //
@@ -35,6 +36,38 @@ export function resolveVisualDictionary(tone: LanguageTone, style: ContentStyleI
   return CINEMATIC_TONES.includes(tone) ? "cinematic" : "ugc";
 }
 
+// The 5-tier realism profile replaces the binary ugc/cinematic as the target.
+// Default comes from the category bible; Stage A can override it. The profiles
+// are a gradient from "raw phone" to "polished commercial" -- the default is
+// premium naturalism (believable human behavior, still well-composed): "not
+// looking AI" must never mean "looking bad".
+export function resolveRealismProfile(
+  tone: LanguageTone,
+  style: ContentStyleId,
+  defaultProfile: RealismProfileId = "creator_ugc"
+): RealismProfileId {
+  if (CINEMATIC_TONES.includes(tone)) return defaultProfile === "commercial" ? "commercial" : "lifestyle";
+  if (ALWAYS_UGC_STYLES.includes(style)) return defaultProfile === "commercial" ? "premium_ugc" : defaultProfile;
+  return defaultProfile;
+}
+
+// A short prose line per profile describing the level of production polish
+// + the acting/camera note that keeps it believable.
+export function buildRealismDescriptor(profile: RealismProfileId): string {
+  switch (profile) {
+    case "raw_phone":
+      return "RAW PHONE: terasa seperti rekaman HP mentah, framing tidak sempurna, pencahayaan apa adanya, gerakan tangan asli, tanpa grading.";
+    case "creator_ugc":
+      return "CREATOR UGC: terasa buatan creator sendiri (bukan agensi), rapi secukupnya tapi tetap seperti HP, ada satu ketidaksempurnaan kecil yang wajar agar tidak seperti render AI.";
+    case "premium_ugc":
+      return "PREMIUM UGC: creator yang rapi -- komposisi enak dilihat dan cahaya lumayan tapi tetap manusiawi, akting natural, JANGAN sampai steril seperti iklan studio.";
+    case "lifestyle":
+      return "LIFESTYLE: komposisi dan pencahayaan terkelola rapi, nuansa hangat editorial, tetapi perilaku manusia tetap believable (bukan model berpose).";
+    case "commercial":
+      return "COMMERCIAL: hasil akhir rapi/sinematik, tetapi akting dan detail tetap masuk akal -- hindari kesan render AI, sisakan ketidaksempurnaan kecil yang wajar.";
+  }
+}
+
 // Literal English tokens that must survive into ai_ready_prompt. Veo 3's
 // default look is polished; these are the specific phrases documented to pull
 // it toward authentic phone footage. Stated as exact strings rather than
@@ -66,40 +99,51 @@ const UGC_LIGHTING = [
   "bright daylight through a window (siang, dari jendela)",
 ];
 
-const SHOT_SIZES = [
-  "extreme close-up (detail tekstur produk)",
-  "close-up (produk memenuhi frame)",
-  "medium close-up (tangan + produk)",
-  "medium shot (subjek dari pinggang ke atas)",
-  "wide shot (subjek + lingkungan)",
-  "over-the-shoulder (POV dari belakang bahu)",
-  "top-down / flat-lay (dari atas)",
-];
-
-const CAMERA_MOVES = [
-  "static locked-off shot (kamera diam total)",
-  "slow push in / dolly in (mendekat perlahan)",
-  "pull out / dolly out (menjauh)",
-  "orbit / arc around subject (memutari subjek)",
-  "handheld follow (mengikuti, sedikit goyang natural)",
-  "tilt up / tilt down",
-  "pan left / pan right",
-  "rack focus (fokus berpindah antar objek)",
-];
-
-const LIGHTING_TERMS = [
-  "soft natural window light (cahaya jendela, lembut)",
-  "warm indoor practical light (lampu ruangan, hangat)",
-  "overcast diffused daylight (mendung, merata)",
-  "golden hour side light (sore, dari samping)",
-  "bright even daylight (siang, merata)",
-];
+// The category bible's visual grammar REPLACES the generic menus above -- a
+// Handphone video and a Kecantikan video now get genuinely different shot
+// sizes/environments/lighting while the prompt size stays flat (the lists
+// stay ~5/5/4). The constants above remain as the fallback if a bible ever
+// carries empty lists (GENERIC_BIBLE also ships its own copies).
+function pickList<T>(bible: CategoryCreativeBible, key: "shotSizes" | "cameraMoves" | "lighting", fallback: T[]): T[] {
+  const value = bible.visual[key] as T[];
+  return value && value.length > 0 ? value : fallback;
+}
 
 // Composed once and injected into all three builders. Deliberately compact:
 // the instruction budget is already strained, so this teaches vocabulary
 // rather than adding more mandates.
-export function buildCinematographyRule(aiTool: AiToolId, dictionary: VisualDictionary): string {
+export function buildCinematographyRule(
+  aiTool: AiToolId,
+  dictionary: VisualDictionary,
+  bible: CategoryCreativeBible,
+  realismProfile?: RealismProfileId,
+  // Set when the Creative Director already fixed the setting. The menu of
+  // "lingkungan wajar kategori ini" then has nothing left to decide, and the
+  // lighting list can shrink to the two options that read as ordinary room
+  // light -- this is the "replace, don't stack" rule from the plan.
+  briefEnvironment?: string
+): string {
   const spec = getAiToolSpec(aiTool);
+  const shotSizes = pickList(bible, "shotSizes", UGC_SHOT_SIZES);
+  const cameraMoves = pickList(bible, "cameraMoves", UGC_CAMERA_MOVES);
+  const lightingAll = pickList<string>(bible, "lighting", UGC_LIGHTING);
+  const lighting = briefEnvironment ? lightingAll.slice(0, 2) : lightingAll;
+  const environmentLine = briefEnvironment
+    ? ""
+    : `\n- Lingkungan wajar kategori ini: ${bible.visual.environments.join("; ")}.`;
+  // The generic cinematic ban-list and the bible's own `forbidden` used to be
+  // emitted as two separate bullets that overlap heavily. Merged into one, with
+  // duplicates dropped, so a category adding "jangan pakai dolly" doesn't get
+  // the word "dolly" printed to the model twice.
+  const GENERIC_CINEMATIC_BANS = [
+    "dolly", "orbit", "arc shot", "rack focus", "golden hour",
+    "cinematic lighting", "film look", "color grading",
+  ];
+  const bibleBans = bible.forbidden.filter(
+    (f) => !GENERIC_CINEMATIC_BANS.some((g) => f.toLowerCase().includes(g))
+  );
+  const banLine = `\n- DILARANG: ${[...GENERIC_CINEMATIC_BANS, ...bibleBans].join("; ")} -- istilah/pola itu membuat hasilnya terasa seperti iklan.`;
+  const profileNote = realismProfile ? `\n- PROFIL REALISME: ${buildRealismDescriptor(realismProfile)}` : "";
 
   // Deliberately phrased as ADDITIVE, not a standalone audio instruction.
   // The earlier wording competed with buildDialogueRule's narrator-audio
@@ -114,19 +158,18 @@ export function buildCinematographyRule(aiTool: AiToolId, dictionary: VisualDict
     return `KOSAKATA VISUAL: UGC / KONTEN BUATAN CREATOR SENDIRI (BUKAN iklan, BUKAN sinematik).
 Video ini harus terlihat seperti direkam sendiri pakai HP, bukan hasil produksi agensi. AI video tool secara default membuat gambar terlalu rapi/mengkilap -- lawan itu secara eksplisit.
 - WAJIB sertakan token ini APA ADANYA di "ai_ready_prompt": "${UGC_LOOK_TOKENS}".
-- Shot size (WAJIB sebut satu tiap scene): ${UGC_SHOT_SIZES.join("; ")}.
-- Gerakan kamera (WAJIB sebut satu tiap scene): ${UGC_CAMERA_MOVES.join("; ")}.
-- Pencahayaan (pakai cahaya yang memang ada di ruangan, JANGAN studio lighting): ${UGC_LIGHTING.join("; ")}.
-- DILARANG memakai istilah sinematik: dolly, orbit, arc shot, rack focus, golden hour, cinematic lighting, film look, color grading. Istilah-istilah itu justru membuat hasilnya terasa seperti iklan.
-Variasikan shot size antar scene supaya tidak datar.${audioRule}`;
+${environmentLine ? environmentLine.slice(1) + "\n" : ""}- Shot size (WAJIB sebut satu tiap scene): ${shotSizes.join("; ")}.
+- Gerakan kamera (WAJIB sebut satu tiap scene): ${cameraMoves.join("; ")}.
+- Pencahayaan (pakai cahaya yang memang ada di ruangan, JANGAN studio lighting): ${lighting.join("; ")}.${banLine}
+Variasikan shot size antar scene supaya tidak datar.${profileNote}${audioRule}`;
   }
 
   return `KOSAKATA SINEMATOGRAFI (pakai istilah-istilah ini di "camera_direction" dan "ai_ready_prompt" -- JANGAN cuma menulis "kamera bagus"/"cinematic" tanpa menyebut teknik konkret):
-- Shot size (WAJIB sebut satu tiap scene): ${SHOT_SIZES.join("; ")}.
-- Gerakan kamera (WAJIB sebut satu tiap scene): ${CAMERA_MOVES.join("; ")}.
-- Pencahayaan (WAJIB sebut arah/kualitasnya, bukan cuma "natural"): ${LIGHTING_TERMS.join("; ")}.
-- Depth of field: sebut "shallow depth of field, background softly blurred" kalau produknya kecil/detail, atau "deep focus" kalau konteks lingkungan penting.
-Variasikan shot size antar scene -- video yang semua scene-nya memakai ukuran shot sama terasa datar dan amatir.${audioRule}`;
+${environmentLine ? environmentLine.slice(1) + "\n" : ""}- Shot size (WAJIB sebut satu tiap scene): ${shotSizes.join("; ")}.
+- Gerakan kamera (WAJIB sebut satu tiap scene): ${cameraMoves.join("; ")}.
+- Pencahayaan (WAJIB sebut arah/kualitasnya, bukan cuma "natural"): ${lighting.join("; ")}.
+- Depth of field: sebut "shallow depth of field, background softly blurred" kalau produknya kecil/detail, atau "deep focus" kalau konteks lingkungan penting.${bibleBans.length > 0 ? `\n- DILARANG: ${bibleBans.join("; ")}.` : ""}
+Variasikan shot size antar scene -- video yang semua scene-nya memakai ukuran shot sama terasa datar dan amatir.${profileNote}${audioRule}`;
 }
 
 export function usesNativeAudio(aiTool: AiToolId): boolean {

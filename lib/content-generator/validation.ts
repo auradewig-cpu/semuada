@@ -14,6 +14,9 @@ const contentStyleSchema = z.enum([
   "before_after",
   "pattern_break_twist",
   "series_episodic",
+  // "auto" = the Creative Director (Stage A) / rotation picks it; the request
+  // never carries a literal "auto" past the route, which resolves it first.
+  "auto",
 ]);
 
 const aiToolSchema = z.enum(["google_flow", "veo3", "kling_ai", "runway_gen4", "luma_dream", "pika_labs", "sora"]);
@@ -27,6 +30,7 @@ const hookArchetypeSchema = z.enum([
   "relatable",
   "emotional",
   "mistake_warning",
+  "auto",
 ]);
 const contentGoalSchema = z.enum(["conversion", "growth", "engagement"]);
 const ctaTypeSchema = z.enum([
@@ -39,6 +43,7 @@ const ctaTypeSchema = z.enum([
   "limited_urgency",
   "save_for_later",
   "klik_keranjang_kuning",
+  "auto",
 ]);
 const narrationModeSchema = z.enum(["lipsync", "voiceover"]);
 const cameraPatternSchema = z.enum(["single_angle", "aroll_broll"]);
@@ -54,6 +59,7 @@ const languageToneSchema = z.enum([
   "curhat_personal",
   "sarkas_julid",
   "ibu_bapack_relatable",
+  "auto",
 ]);
 
 // Scenes round-trip through our own generate response (previousScene/nextScene/
@@ -89,11 +95,14 @@ export const generateRequestSchema = z.object({
   hookArchetype: hookArchetypeSchema,
   contentGoal: contentGoalSchema,
   ctaType: ctaTypeSchema,
-  languageTone: languageToneSchema.default("gaul_kekinian"),
+  languageTone: languageToneSchema.default("auto"),
   includePrice: z.boolean().default(true),
   narrationMode: narrationModeSchema.default("lipsync"),
   cameraPattern: cameraPatternSchema.default("single_angle"),
   narratorVoice: narratorVoiceSchema.default("wanita"),
+  // Optional explicit mechanism override (from the UI); "auto"/absent = the
+  // Creative Director / rotation picks it.
+  mechanism: z.string().optional(),
 });
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>;

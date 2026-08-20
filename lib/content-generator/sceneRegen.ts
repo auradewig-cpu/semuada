@@ -5,6 +5,7 @@ import { getPlatformSpec, buildPlatformBehavior } from "./platforms";
 import { buildCtaInstruction, resolveCtaForGoal, resolveCtaForPlatform } from "./ctaTypes";
 import { getLanguageTone, buildLanguageToneRule } from "./languageTones";
 import { buildCinematographyRule, buildSingleTakeRule, resolveVisualDictionary } from "./cinematography";
+import { getCategoryBible } from "./categoryCreative";
 import { buildNegativePromptBlock, buildSpokenNumberRule } from "./negativePrompt";
 import { buildVoiceDescriptor } from "./voiceCasting";
 import { spokenWordBudget } from "./jsonParser";
@@ -35,6 +36,7 @@ import type {
   NarrationMode,
   NarratorVoice,
   PlatformTarget,
+  RealismProfileId,
   SceneOutput,
 } from "./types";
 
@@ -42,6 +44,9 @@ export interface SceneRegenInput {
   productName: string;
   category: string;
   price: string;
+  /** FAKTA PRODUK line (see productFacts.ts) -- keeps a regenerated scene on
+   *  the same verified figures as its neighbours. */
+  productFactsLine?: string;
   sceneIndex: number;
   totalScenes: number;
   sceneDuration: number;
@@ -67,6 +72,7 @@ export interface SceneRegenInput {
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
   narratorVoice: NarratorVoice;
+  realismProfile?: RealismProfileId;
   seed: number;
 }
 
@@ -85,10 +91,11 @@ export function compileSceneRegenPrompt(input: SceneRegenInput): string {
   const toneSpec = getLanguageTone(input.languageTone);
   const dictionary = resolveVisualDictionary(input.languageTone, input.style);
   const voiceDescriptor = buildVoiceDescriptor(input.narratorVoice, input.languageTone, input.seed);
+  const bible = getCategoryBible(input.category);
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode, hasCharacter, input.seed, voiceDescriptor);
-  const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
+  const productAnchorRule = buildProductAnchorRule(input.productName, input.category, bible.productInteractions);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   // Only the last scene carries the price mandate here: forcing a price into a
   // middle scene while the sibling scenes shown as context may already state it
@@ -117,7 +124,7 @@ ${input.nextScene ? `\n[SCENE SESUDAHNYA -- konteks, JANGAN diubah]\n${JSON.stri
   return `
 Kamu meregenerate SATU scene (scene ${sceneNumber} dari ${input.totalScenes}) dari sebuah video affiliate produk, TANPA mengubah scene lain.
 
-PRODUK: ${input.productName} (${input.category})${priceLine ? `, ${priceLine.replace(/^- /, '')}` : ''}
+PRODUK: ${input.productName} (${input.category})${priceLine ? `, ${priceLine.replace(/^- /, '')}` : ''}${input.productFactsLine ? `\n${input.productFactsLine}` : ""}
 ${characterBlock}
 
 GAYA VIDEO: ${style.label}
@@ -136,11 +143,11 @@ ${buildPromptBudgetRule(input.aiTool, hasCharacter)}
 
 ${buildAiReadyPromptStructureRule(hasCharacter, input.aspectRatio, toneSpec.genreAnchor)}
 
-${buildCinematographyRule(input.aiTool, dictionary)}
+${buildCinematographyRule(input.aiTool, dictionary, bible, input.realismProfile)}
 
 ${buildSingleTakeRule(input.aiTool)}
 
-${buildRequiredTokensRule(input.aiTool, dictionary)}
+${buildRequiredTokensRule(input.aiTool, dictionary, input.realismProfile)}
 ${hookBlock}
 ${isLastScene ? `CTA scene ini: ${buildCtaInstruction(effectiveCta, input.seed)}` : ""}
 
@@ -171,6 +178,7 @@ OUTPUT -- HANYA SATU OBJEK JSON scene tunggal (bukan array, bukan dibungkus obje
   "script_word_count": number,
   "visual_description": string,
   "camera_direction": string,
+  "primary_action": string,
   "text_overlay": string,
   "transition_to_next": string,
   "ai_ready_prompt": string${negativePromptField}

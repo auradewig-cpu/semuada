@@ -22,7 +22,8 @@ interface CtaTypeSelectorProps {
 }
 
 export function CtaTypeSelector({ value, onChange, contentGoal, platform }: CtaTypeSelectorProps) {
-  const options = contentGoal === 'growth' ? CTA_TYPES.filter((c) => GROWTH_ALLOWED_CTAS.includes(c.id)) : CTA_TYPES;
+  const base = contentGoal === 'growth' ? CTA_TYPES.filter((c) => GROWTH_ALLOWED_CTAS.includes(c.id)) : CTA_TYPES;
+  const options: { id: CtaTypeId; label: string }[] = [{ id: 'auto', label: 'Auto (Pilihkan)' }, ...base];
 
   useEffect(() => {
     if (!options.some((o) => o.id === value)) {
