@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { CategoryProvider } from "@/context/CategoryContext";
 import { TrackingScripts } from "@/components/TrackingScripts";
 import { WhatsAppButton } from "@/components/WhatsAppButton";
+import { BackToTop } from "@/components/layout/BackToTop";
 import { Toaster } from "@/components/ui/toaster";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -28,6 +29,7 @@ export function Providers({ children, dehydratedState }: { children: React.React
                 <TrackingScripts />
                 {children}
                 <WhatsAppButton />
+                <BackToTop />
                 <Toaster />
               </CategoryProvider>
             </ThemeProvider>

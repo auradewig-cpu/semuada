@@ -4,6 +4,13 @@
 
 :root {
   --radius: 0.75rem;
+  /* Live height of the sticky SiteHeader, published by a ResizeObserver in
+     SiteHeader.tsx. Anything that sticks BELOW the header (the catalog SortBar,
+     the desktop filter sidebar) offsets from this instead of hardcoding a
+     number -- the header is ~136px tall on mobile, ~108px once it shrinks on
+     scroll, and ~72px on desktop, so a fixed value hid the SortBar behind it.
+     This declaration is only the pre-hydration fallback. */
+  --header-h: 136px;
   /* Light mode colors */
   --background: hsl(210 40% 98%);
   --foreground: hsl(222 84% 5%);
@@ -63,6 +70,21 @@
   --violet-foreground: hsl(0 0% 100%);
   --yellow: hsl(48 96% 48%);
   --yellow-foreground: hsl(222 84% 5%);
+}
+
+/* Horizontal chip rows (subcategory chips, sort bar, bestseller strip) scroll
+   without showing a bar. Not a stock Tailwind utility and there's no scrollbar
+   plugin installed, so the class the components already use is defined here --
+   otherwise the global ::-webkit-scrollbar styling below shows up under every
+   one of those rows. */
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Custom scrollbar */

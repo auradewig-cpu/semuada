@@ -1,35 +1,88 @@
 import { cache } from "react";
+import { sql } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { products } from "@shared/schema";
 import { slugify } from "@/lib/utils";
 
+export interface CategorySubcategory {
+  name: string;
+  slug: string;
+  productCount: number;
+}
+
+export interface CategoryEntry {
+  name: string;
+  slug: string;
+  productCount: number;
+  subcategories: CategorySubcategory[];
+}
+
+// One grouped query produces everything category-related: the category grid
+// (name + count), the chips row (subcategory names + counts), and the
+// hierarchy map (see getCategoryHierarchy below). Previously each consumer ran
+// its own query; this single SELECT replaces them and carries the counts the
+// "Semua Kategori" grid and the chips need.
+//
+// select category, subcategory, count(*) group by 1,2 -- sorted by total
+// productCount desc then name asc. cache(): layout.tsx, both category pages,
+// and app/page.tsx all call this on the same request, so without it every
+// render paid for the query several times.
+export const getCategoryCatalog = cache(async (): Promise<CategoryEntry[]> => {
+  const rows = await db
+    .select({
+      category: products.category,
+      subcategory: products.subcategory,
+      // ::int is NOT decoration -- Postgres count(*) is bigint, which the Neon
+      // driver hands back as a STRING. Without the cast, `productCount += count`
+      // below concatenates instead of adding (0 + "8" + "2" + "10" -> "08210"),
+      // which broke both the counts rendered in CategoryGrid and the
+      // order-by-popularity sort this whole query exists for.
+      count: sql<number>`count(*)::int`,
+    })
+    .from(products)
+    .where(sql`${products.category} is not null`)
+    .groupBy(products.category, products.subcategory);
+
+  // Aggregate rows into per-category entries, carrying per-subcategory counts.
+  const byCategory = new Map<string, CategoryEntry>();
+  const subCounts = new Map<string, Map<string, number>>();
+
+  for (const row of rows) {
+    if (!row.category) continue;
+    if (!byCategory.has(row.category)) {
+      byCategory.set(row.category, { name: row.category, slug: slugify(row.category), productCount: 0, subcategories: [] });
+      subCounts.set(row.category, new Map());
+    }
+    const entry = byCategory.get(row.category)!;
+    entry.productCount += row.count;
+    if (row.subcategory) {
+      subCounts.get(row.category)!.set(row.subcategory, (subCounts.get(row.category)!.get(row.subcategory) ?? 0) + row.count);
+    }
+  }
+
+  const entries = Array.from(byCategory.values());
+  for (const entry of entries) {
+    entry.subcategories = Array.from(subCounts.get(entry.name)!.entries())
+      .map(([name, productCount]) => ({ name, slug: slugify(name), productCount }))
+      .sort((a, b) => b.productCount - a.productCount || a.name.localeCompare(b.name));
+  }
+  entries.sort((a, b) => b.productCount - a.productCount || a.name.localeCompare(b.name));
+
+  return entries;
+});
+
 // The category tree, backing GET /api/categories, app/layout.tsx's global
 // CategoryProvider prefetch, and the [category]/[subcategory] pages (which
 // resolve the URL slug back to the real category/subcategory name for their
-// own server-side product prefetch).
-//
-// selectDistinct: this used to pull every product row (1,097 rows / ~75 KB /
-// ~130ms measured) just to derive 18 categories and 93 subcategories -- the
-// grouping loop below was throwing away ~98% of what it fetched.
-//
-// cache(): layout.tsx and the page under it both call this on the same
-// request, so without it every category render paid for the query twice.
+// own server-side product prefetch). Derived from getCategoryCatalog() so there
+// is still exactly one query per request -- the shape (Record<string, string[]>)
+// is unchanged, so /api/categories, app/layout.tsx, and CategoryContext's
+// hydration key ["categoryHierarchy"] are untouched.
 export const getCategoryHierarchy = cache(async (): Promise<Record<string, string[]>> => {
-  const rows = await db
-    .selectDistinct({ category: products.category, subcategory: products.subcategory })
-    .from(products);
+  const catalog = await getCategoryCatalog();
   const hierarchy: Record<string, string[]> = {};
-  const seen: Record<string, Set<string>> = {};
-  for (const row of rows) {
-    if (!row.category) continue;
-    if (!seen[row.category]) {
-      seen[row.category] = new Set();
-      hierarchy[row.category] = [];
-    }
-    if (row.subcategory && !seen[row.category].has(row.subcategory)) {
-      seen[row.category].add(row.subcategory);
-      hierarchy[row.category].push(row.subcategory);
-    }
+  for (const entry of catalog) {
+    hierarchy[entry.name] = entry.subcategories.map((s) => s.name);
   }
   return hierarchy;
 });

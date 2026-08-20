@@ -1,5 +1,8 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { Product, FilterState } from '@/types';
+import type { ProductFilters } from '@root/lib/productFilters';
+import { filtersToApiQuery, buildInitialFilters } from '@root/lib/productFilters';
 import { apiRequest } from '@/lib/queryClient';
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -8,15 +11,19 @@ async function fetchJson<T>(url: string): Promise<T> {
   return res.json();
 }
 
-// Fisher-Yates shuffle algorithm for random sorting
-function shuffleArray<T>(array: T[]): T[] {
-  const newArray = [...array];
-  for (let i = newArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-  }
-  return newArray;
-}
+// One seed per client session makes sort=rekomendasi a stable shuffle across
+// pages (GET /api/products orders by md5(id || seed) before pagination). Module
+// scope: generated once per browser session, persisted so a refresh keeps the
+// same order for the session. SSR (no window) falls back to 'default'.
+const SESSION_SEED =
+  typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined'
+    ? (window.sessionStorage.getItem('catalogSeed') ??
+      (() => {
+        const s = Math.random().toString(36).slice(2);
+        window.sessionStorage.setItem('catalogSeed', s);
+        return s;
+      })())
+    : 'default';
 
 export function useProducts(filters?: FilterState) {
   return useQuery<Product[]>({
@@ -73,8 +80,6 @@ export function useProducts(filters?: FilterState) {
         processedData.sort((a, b) => Number(a.price) - Number(b.price));
       } else if (filters?.sortBy === 'harga_tertinggi') {
         processedData.sort((a, b) => Number(b.price) - Number(a.price));
-      } else if (filters?.sortBy === 'rekomendasi') {
-        processedData = shuffleArray(processedData);
       }
       // Default sort is already applied (created_at desc)
 
@@ -89,23 +94,16 @@ export function useProducts(filters?: FilterState) {
 // exact same page size the client's useInfiniteQuery expects.
 export const PRODUCTS_PER_PAGE = 20;
 
-export function useInfiniteProducts(filters?: FilterState) {
+export function useInfiniteProducts(filters?: ProductFilters) {
   return useInfiniteQuery<Product[]>({
-    queryKey: ['products-infinite', filters],
+    queryKey: ['products-infinite', filters ?? buildInitialFilters()],
     queryFn: async ({ pageParam = 0 }) => {
       const offset = (pageParam as number) * PRODUCTS_PER_PAGE;
-      const search = new URLSearchParams();
-      if (filters?.category) search.set('category', filters.category);
-      if (filters?.subcategory) search.set('subcategory', filters.subcategory);
-      if (filters?.dikirim_dari) search.set('dikirimDari', filters.dikirim_dari);
-      if (filters?.item) search.set('item', filters.item);
-      if (filters?.search) search.set('search', filters.search);
-      if (filters?.categories && filters.categories.length > 0) search.set('categories', filters.categories.join(','));
-      if (filters?.priceMin !== undefined) search.set('priceMin', String(filters.priceMin));
-      if (filters?.priceMax !== undefined) search.set('priceMax', String(filters.priceMax));
-      if (filters?.sortBy) search.set('sort', filters.sortBy);
-      search.set('limit', String(PRODUCTS_PER_PAGE));
-      search.set('offset', String(offset));
+      const search = filtersToApiQuery(filters ?? buildInitialFilters(), {
+        limit: PRODUCTS_PER_PAGE,
+        offset,
+      });
+      search.set('seed', SESSION_SEED);
 
       const { items } = await fetchJson<{ items: Product[]; nextOffset: number | null }>(`/api/products?${search.toString()}`);
       return items;
@@ -117,6 +115,9 @@ export function useInfiniteProducts(filters?: FilterState) {
       }
       return allPages.length;
     },
+    // Changing a filter keeps the previous results on screen (no empty-grid
+    // skeleton flash) while the new page loads.
+    placeholderData: keepPreviousData,
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
     // Every route that renders this grid prefetches its first page server-side
@@ -128,6 +129,21 @@ export function useInfiniteProducts(filters?: FilterState) {
     // Filter/sort combinations that were never prefetched have no cached data
     // at all, so they still fetch normally -- this only suppresses the
     // redundant re-fetch of already-hydrated data.
+    refetchOnMount: false,
+  });
+}
+
+export function useBestSellers(limit: number = 10) {
+  return useQuery<Product[]>({
+    queryKey: ['bestSellers', limit],
+    queryFn: async () => {
+      const search = new URLSearchParams({ sort: 'terlaris', limit: String(limit) });
+      const { items } = await fetchJson<{ items: Product[] }>(`/api/products?${search.toString()}`);
+      return items;
+    },
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    // Homepage prefetches it server-side; suppress the redundant re-fetch.
     refetchOnMount: false,
   });
 }
@@ -146,19 +162,6 @@ export function useFeaturedProducts(category?: string) {
     // Same reasoning as useInfiniteProducts -- and this one is the expensive
     // case, since it pulls up to 100 full product rows.
     refetchOnMount: false,
-  });
-}
-
-export function useLatestProducts(limit: number = 4) {
-  return useQuery<Product[]>({
-    queryKey: ['latestProducts', limit],
-    queryFn: async () => {
-      const search = new URLSearchParams({ sort: 'newest', limit: String(limit) });
-      const { items } = await fetchJson<{ items: Product[] }>(`/api/products?${search.toString()}`);
-      return items;
-    },
-    staleTime: 30 * 1000,
-    gcTime: 2 * 60 * 1000,
   });
 }
 
@@ -188,30 +191,30 @@ export function useNonFeaturedProducts() {
   });
 }
 
-export function usePengirimanOptions() {
-  return useQuery<string[]>({
-    queryKey: ['pengirimanOptions'],
-    queryFn: () => fetchJson<string[]>('/api/options/dikirim-dari'),
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-export function useItemOptions() {
-  return useQuery<string[]>({
-    queryKey: ['itemOptions'],
-    queryFn: () => fetchJson<string[]>('/api/options/item'),
+// "Lokasi" filter options: {value, count} ordered by count desc, scoped to the
+// category/subcategory so a category page only surfaces the locations present
+// in it (previously every page showed all 46 regardless).
+export function useLocationOptions(category?: string, subcategory?: string) {
+  return useQuery<{ value: string; count: number }[]>({
+    queryKey: ['locationOptions', category, subcategory],
+    queryFn: () => {
+      const search = new URLSearchParams();
+      if (category) search.set('category', category);
+      if (subcategory) search.set('subcategory', subcategory);
+      return fetchJson<{ value: string; count: number }[]>(`/api/options/dikirim-dari?${search.toString()}`);
+    },
     staleTime: 5 * 60 * 1000,
   });
 }
 
 export function useItemOptionsByCategory(category?: string, subcategory?: string) {
-  return useQuery<string[]>({
+  return useQuery<{ value: string; count: number }[]>({
     queryKey: ['itemOptionsByCategory', category, subcategory],
     queryFn: () => {
       const search = new URLSearchParams();
       if (category) search.set('category', category);
       if (subcategory) search.set('subcategory', subcategory);
-      return fetchJson<string[]>(`/api/options/item?${search.toString()}`);
+      return fetchJson<{ value: string; count: number }[]>(`/api/options/item?${search.toString()}`);
     },
     staleTime: 5 * 60 * 1000,
     enabled: !!(category || subcategory),
