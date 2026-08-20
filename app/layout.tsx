@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { dehydrate, QueryClient } from "@tanstack/react-query";
 import { Providers } from "./providers";
-import { getSiteSettings } from "@root/lib/site-settings";
+import { getApiSiteSettings, getSiteSettings } from "@root/lib/site-settings";
 import { getCategoryHierarchy } from "@root/lib/categories";
+import { SiteFooter } from "@/components/layout/SiteFooter";
 import "@/index.css";
 
 const inter = Inter({
@@ -45,7 +46,17 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const queryClient = new QueryClient();
-  queryClient.setQueryData(["categoryHierarchy"], await getCategoryHierarchy());
+  const [hierarchy, siteSettings] = await Promise.all([
+    getCategoryHierarchy(),
+    // Settings are prefetched HERE, not in a page: SiteHeader lives inside the
+    // page tree but SiteFooter is mounted by this layout, so a page-level
+    // prefetch never reached the footer -- and every non-home route rendered
+    // the "SEMUADA" fallback name/logo server-side before swapping to the real
+    // one after an /api/settings round-trip.
+    getApiSiteSettings(),
+  ]);
+  queryClient.setQueryData(["categoryHierarchy"], hierarchy);
+  queryClient.setQueryData(["settings"], siteSettings);
   const dehydratedState = dehydrate(queryClient);
 
   return (
@@ -58,7 +69,10 @@ export default async function RootLayout({
         />
       </head>
       <body suppressHydrationWarning className="font-sans">
-        <Providers dehydratedState={dehydratedState}>{children}</Providers>
+        <Providers dehydratedState={dehydratedState}>
+          {children}
+          <SiteFooter />
+        </Providers>
       </body>
     </html>
   );

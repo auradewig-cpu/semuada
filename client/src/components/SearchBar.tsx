@@ -6,6 +6,10 @@ import { getSearchKeywords } from '@/lib/searchKeywords';
 interface SearchBarProps {
   value?: string;
   onChange?: (value: string) => void;
+  /** Called on Enter or the search button -- submits to /cari?q=. */
+  onSubmit?: (value: string) => void;
+  /** Called with the input's focus state (for the recent-searches dropdown). */
+  onFocusChange?: (focused: boolean) => void;
   placeholder?: string;
   className?: string;
   category?: string;
@@ -14,6 +18,8 @@ interface SearchBarProps {
 const SearchBar: React.FC<SearchBarProps> = ({
   value = '',
   onChange,
+  onSubmit,
+  onFocusChange,
   placeholder,
   className = '',
   category
@@ -59,6 +65,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   const handleFocus = () => {
+    onFocusChange?.(true);
     if (inputRef.current && inputRef.current.value.length === 0) {
       setIsVisible(false);
       setIsPaused(true);
@@ -66,6 +73,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   const handleBlur = () => {
+    onFocusChange?.(false);
     if (inputRef.current && inputRef.current.value.length === 0) {
       setIsVisible(true);
       setIsPaused(false);
@@ -82,6 +90,12 @@ const SearchBar: React.FC<SearchBarProps> = ({
           onChange={handleInputChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && value) {
+              e.preventDefault();
+              onSubmit?.(value);
+            }
+          }}
           placeholder={placeholder}
           className="w-full px-4 py-3 pr-12 bg-background rounded-xl border-2 border-emerald focus:outline-none focus:ring-2 focus:ring-emerald focus:border-emerald transition-all"
           aria-label="Search products"
@@ -89,6 +103,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         <button
           type="button"
           aria-label="Cari"
+          onClick={() => value && onSubmit?.(value)}
           className="absolute right-1.5 top-1/2 transform -translate-y-1/2 h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-emerald transition-colors"
         >
           <Search className="h-5 w-5" />

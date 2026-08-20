@@ -1,13 +1,16 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
-import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { products } from "@shared/schema";
 import { toApiProduct } from "@root/lib/mappers";
 import { PRODUCTS_PER_PAGE } from "@/hooks/useProductQueries";
-import { getCategoryHierarchy, getCategoryParams, resolveCategorySlug } from "@root/lib/categories";
-import { DEFAULT_PRODUCT_FILTERS } from "@root/lib/productFilters";
-import Home from "@/pages/Home";
+import { getCategoryHierarchy, getCategoryParams, getCategoryCatalog, resolveCategorySlug } from "@root/lib/categories";
+import { buildInitialFilters } from "@root/lib/productFilters";
+import { getSiteSettings } from "@root/lib/site-settings";
+import { SITE_URL } from "@root/lib/siteUrl";
+import { CatalogPage } from "@/pages/CatalogPage";
 
 export const revalidate = 60;
 
@@ -16,31 +19,38 @@ export function generateStaticParams() {
   return getCategoryParams();
 }
 
+export async function generateMetadata({ params }: { params: Promise<{ category: string }> }): Promise<Metadata> {
+  const { category: categorySlug } = await params;
+  const hierarchy = await getCategoryHierarchy();
+  const { category } = resolveCategorySlug(hierarchy, categorySlug);
+  if (!category) return {};
+
+  const catalog = await getCategoryCatalog();
+  const entry = catalog.find((c) => c.name === category);
+  const { siteName } = await getSiteSettings();
+  const count = entry?.productCount ?? 0;
+
+  return {
+    title: `${category}${count > 0 ? ` — ${count} produk` : ""} | ${siteName}`,
+    description: `Jelajahi produk ${category} terbaik di ${siteName}. Bandingkan harga, rating, dan lokasi toko.`,
+    alternates: { canonical: `/${categorySlug}` },
+  };
+}
+
 export default async function Page({ params }: { params: Promise<{ category: string }> }) {
   const { category: categorySlug } = await params;
 
   // Resolve the URL slug back to the real category name server-side so the
-  // very first product/featured fetch is already filtered correctly --
-  // previously this page rendered <Home categorySlug={...}> with zero
-  // server data, so the client mounted with an unfiltered "Semua Produk"
-  // query, fetched it, then only afterwards resolved the slug and refetched
-  // filtered data. That double round-trip was the dominant chunk of this
-  // route's LCP delay (see homepage_performance memory).
+  // very first product fetch is already filtered correctly (see the note on
+  // this in the previous Home-based version of this page).
   const hierarchy = await getCategoryHierarchy();
   const { category } = resolveCategorySlug(hierarchy, categorySlug);
 
-  // An unknown slug used to fall through to the unfiltered "Semua Produk"
-  // view, so ANY two-word URL answered 200 with the full catalogue --
-  // /asdfghjkl, /ngawur/banget, even /api/apa-saja. A soft 404: the same
-  // content served at unbounded distinct URLs, which search engines read as
-  // duplicate pages. Harmless-ish while those responses were `no-store`;
-  // once the route became ISR-cached each junk URL also earned its own edge
-  // cache entry. The hierarchy is read live per request, so a category added
-  // after the last build still resolves here -- only genuinely absent slugs
-  // reach this.
+  // Unknown slugs are a soft 404 rather than the unfiltered catalogue.
   if (!category) notFound();
 
-  const filters = { ...DEFAULT_PRODUCT_FILTERS, category, subcategory: undefined };
+  const filters = buildInitialFilters({ category });
+  const categories = await getCategoryCatalog();
 
   const productConditions = [
     gte(products.price, String(filters.priceMin)),
@@ -50,13 +60,7 @@ export default async function Page({ params }: { params: Promise<{ category: str
 
   const queryClient = new QueryClient();
 
-  const [featuredRows, firstPageRows] = await Promise.all([
-    db
-      .select()
-      .from(products)
-      .where(and(eq(products.isFeatured, true), eq(products.category, category)))
-      .orderBy(asc(products.featuredOrder))
-      .limit(100),
+  const [firstPageRows] = await Promise.all([
     db
       .select()
       .from(products)
@@ -66,15 +70,35 @@ export default async function Page({ params }: { params: Promise<{ category: str
       .offset(0),
   ]);
 
-  queryClient.setQueryData(["featuredProducts", category], featuredRows.map(toApiProduct));
   queryClient.setQueryData(["products-infinite", filters], {
     pages: [firstPageRows.map(toApiProduct)],
     pageParams: [0],
   });
 
+  // schema.org wants absolute URLs here; relative paths are ignored by
+  // validators. SITE_URL is the same origin the sitemap/robots are built from.
+  const itemList = [
+    { "@type": "ListItem", position: 1, name: "Beranda", item: SITE_URL },
+    { "@type": "ListItem", position: 2, name: category, item: `${SITE_URL}/${categorySlug}` },
+  ];
+
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <Home categorySlug={categorySlug} initialCategory={category} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: itemList,
+          }),
+        }}
+      />
+      <CatalogPage
+        categoryName={category}
+        categorySlug={categorySlug}
+        categories={categories}
+      />
     </HydrationBoundary>
   );
 }

@@ -7,13 +7,13 @@ import { toApiProduct } from "@root/lib/mappers";
 import { requireAuth } from "@root/lib/apiAuth";
 import { findInvalidImageUrl } from "@root/lib/imageHosts";
 
-function shuffle<T>(array: T[]): T[] {
-  const result = [...array];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
+// Query params are user input: a non-numeric value used to become NaN and reach
+// the query builder as `.limit(NaN)` / `gte(price, "NaN")`, which fails at the
+// database. Anything unparseable is treated as "not supplied".
+function numericParam(raw: string | null): number | undefined {
+  if (raw === null || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : undefined;
 }
 
 export async function GET(request: NextRequest) {
@@ -26,13 +26,24 @@ export async function GET(request: NextRequest) {
   const search = params.get("search") ?? undefined;
   const categoriesParam = params.get("categories");
   const categories = categoriesParam ? categoriesParam.split(",").filter(Boolean) : undefined;
-  const priceMin = params.get("priceMin") ? Number(params.get("priceMin")) : undefined;
-  const priceMax = params.get("priceMax") ? Number(params.get("priceMax")) : undefined;
+  const priceMin = numericParam(params.get("priceMin"));
+  const priceMax = numericParam(params.get("priceMax"));
+  const ratingMin = numericParam(params.get("ratingMin"));
   const sort = params.get("sort") ?? undefined;
   const featured = params.get("featured") === "true";
   const nonFeatured = params.get("nonFeatured") === "true";
-  const limit = params.get("limit") ? Number(params.get("limit")) : 20;
-  const offset = params.get("offset") ? Number(params.get("offset")) : 0;
+  // Clamp pagination so a junk ?limit=100000 can't drag the whole table back
+  // into memory. Normal storefront reads cap at 100 (useFeaturedProducts uses
+  // 100); the admin's useNonFeaturedProducts pulls 1000, so raise the cap on
+  // that branch only rather than break it.
+  let limit = numericParam(params.get("limit")) ?? 20;
+  let offset = numericParam(params.get("offset")) ?? 0;
+  limit = Math.min(Math.max(Math.trunc(limit), 1), nonFeatured ? 1000 : 100);
+  offset = Math.max(Math.trunc(offset), 0);
+  // One seed per client session makes sort=rekomendasi stable across pages of
+  // the same session (previously it was reshuffled AFTER pagination, so each
+  // page was a fresh random slice and products could repeat).
+  const seed = params.get("seed") ?? "default";
 
   const conditions = [];
   if (category) conditions.push(eq(products.category, category));
@@ -42,6 +53,7 @@ export async function GET(request: NextRequest) {
   if (categories && categories.length > 0) conditions.push(inArray(products.category, categories));
   if (priceMin !== undefined) conditions.push(gte(products.price, String(priceMin)));
   if (priceMax !== undefined) conditions.push(lte(products.price, String(priceMax)));
+  if (ratingMin !== undefined) conditions.push(gte(products.rating, String(ratingMin)));
   if (featured) conditions.push(eq(products.isFeatured, true));
   if (nonFeatured) conditions.push(or(ne(products.isFeatured, true), isNull(products.isFeatured)));
 
@@ -72,6 +84,12 @@ export async function GET(request: NextRequest) {
       case "newest":
         orderByClause = desc(products.createdAt);
         break;
+      case "rekomendasi":
+        // Deterministic pseudo-random order seeded by the client's per-session
+        // seed, applied in SQL BEFORE pagination so consecutive pages are one
+        // stable shuffle with no overlapping rows.
+        orderByClause = sql`md5(${products.id}::text || ${seed})`;
+        break;
       default:
         orderByClause = desc(products.createdAt);
     }
@@ -87,10 +105,7 @@ export async function GET(request: NextRequest) {
     .limit(limit)
     .offset(offset);
 
-  let items = rows.map(toApiProduct);
-  if (sort === "rekomendasi") {
-    items = shuffle(items);
-  }
+  const items = rows.map(toApiProduct);
 
   const nextOffset = items.length === limit ? offset + limit : null;
 

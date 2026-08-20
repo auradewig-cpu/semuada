@@ -145,8 +145,8 @@ export function ProductPicker({ selectedProduct, onSelect }: ProductPickerProps)
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua Item</SelectItem>
-                {itemOptions?.map((i) => (
-                  <SelectItem key={i} value={i}>{i}</SelectItem>
+                {itemOptions?.map(({ value }) => (
+                  <SelectItem key={value} value={value}>{value}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
