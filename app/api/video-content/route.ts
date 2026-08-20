@@ -59,6 +59,12 @@ export async function POST(request: NextRequest) {
       // Carried straight through from the /sign response that produced this
       // upload -- always the account actually used, no re-resolution here.
       storageAccountId: typeof body.storage_account_id === "string" && body.storage_account_id ? body.storage_account_id : undefined,
+      // Links this upload back to the Content Generator output it came from.
+      // Optional: manual uploads carry no generation id and stay null.
+      contentGenerationId:
+        typeof body.content_generation_id === "string" && body.content_generation_id
+          ? body.content_generation_id
+          : undefined,
     })
     .returning();
 

@@ -105,6 +105,53 @@ function containsSpokenNarration(aiReadyPrompt: string, scriptNarration: string)
   return haystack.includes(probe);
 }
 
+// Terms that, when they accumulate in ai_ready_prompt, push a scene toward the
+// polished "AI demo reel" look users complain about. Counted (scored), not
+// binary: a stray word is fine, but a prompt that reads like a cinematography
+// class gets flagged into the repair loop. Deliberately a deterministic check,
+// no LLM judge -- "overly polished influencer behavior" isn't reliably
+// detectable by a model, and a second AI call per generate for unproven
+// benefit isn't worth it (see the plan).
+const AI_LOOK_TERMS = [
+  "dolly",
+  "orbit",
+  "rack focus",
+  "golden hour",
+  "cinematic",
+  "volumetric",
+  "slow motion",
+  "bokeh",
+  "cinematic lighting",
+  "hyper-realistic",
+  "8k",
+  "4k",
+  "film look",
+  "color grading",
+  "studio lighting",
+  "shallow depth of field",
+  "crane shot",
+  "aerial",
+  "drone",
+];
+// Camera-move verbs that inflate the "camera porn" feel.
+const CAMERA_MOVE_VERBS = ["dolly", "orbit", "pan ", "tilt ", "push in", "pull out", "rack focus", "follow", "zoom"];
+
+const AI_LOOK_TERM_PATTERN = new RegExp(AI_LOOK_TERMS.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "gi");
+const AI_LOOK_THRESHOLD = 3;
+
+/** Counts risky cinematic terms in an ai_ready_prompt -- a crude but
+ *  deterministic "does this look like an AI showreel" score. */
+export function aiLookScore(aiReadyPrompt: string | null | undefined): number {
+  if (!aiReadyPrompt) return 0;
+  AI_LOOK_TERM_PATTERN.lastIndex = 0;
+  let count = 0;
+  let m: RegExpExecArray | null;
+  while ((m = AI_LOOK_TERM_PATTERN.exec(aiReadyPrompt)) !== null) {
+    count++;
+  }
+  return count;
+}
+
 function mentionsPrice(text: string): boolean {
   if (/\d/.test(text)) return true;
   return /\b(rupiah|ribu|ratus|juta|rp)\b/i.test(text);
@@ -127,6 +174,15 @@ function checkRequiredTextFields(scene: SceneOutput, label: string): string[] {
   if (!scene.speech_pace || !scene.speech_pace.trim()) {
     problems.push(`${label}: speech_pace kosong -- wajib diisi.`);
   }
+
+  // primary_action (Phase 4): one dominant action per scene, as a single
+  // clause. It's a FIELD so the validator can reject compound actions outright,
+  // which a sentence-level rule never reliably could.
+  if (!scene.primary_action || !scene.primary_action.trim()) {
+    problems.push(`${label}: primary_action kosong -- wajib diisi dengan SATU aksi dominan scene (satu klausa).`);
+  } else if (/\b(lalu|kemudian|sambil|then|while)\b/i.test(scene.primary_action)) {
+    problems.push(`${label}: primary_action memuat penanda aksi majemuk ("lalu"/"kemudian"/"sambil"/"then"/"while") -- tulis SATU klausa aksi dominan saja.`);
+  }
   return problems;
 }
 
@@ -146,6 +202,9 @@ export interface ValidationContext {
   // native-audio tool need the script embedded in ai_ready_prompt; a lipsync
   // scene already carries it via the dialogue convention.
   sceneNarrationModes: NarrationMode[];
+  // Optional per-scene primary actions from the Creative Director's brief --
+  // when present, each scene's primary_action must stay consistent with it.
+  primaryActionPlan?: string[];
 }
 
 // Scene duration exceeding the target tool's real per-clip ceiling. Returned
@@ -219,6 +278,26 @@ export function validateOutput(result: GenerationResult, context: ValidationCont
     const missing = missingRequiredTokens(scene.ai_ready_prompt, requiredTokens);
     if (missing.length > 0) {
       problems.push(`Scene ${index + 1}: ai_ready_prompt tidak memuat token wajib ${missing.map((t) => `"${t}"`).join(", ")} -- tulis apa adanya, jangan diparafrase.`);
+    }
+
+    // AI-look guard (Phase 4): too many polished cinematic terms reads like a
+    // demo reel, not a creator. Deterministic score; the repair loop fixes it.
+    if (scene.ai_ready_prompt && aiLookScore(scene.ai_ready_prompt) > AI_LOOK_THRESHOLD) {
+      problems.push(
+        `Scene ${index + 1}: "ai_ready_prompt" sarat istilah sinematik (dolly/orbit/rack focus/golden hour/8k/dll) -- terlihat seperti render AI/demo reel. Sederhanakan ke gaya HP yang natural, kurangi gerakan kamera, hapus istilah sinematik berlebihan.`
+      );
+    }
+
+    // Stage A consistency: if the brief fixed a per-scene primary action, the
+    // scene must not silently swap to something else.
+    if (context.primaryActionPlan && context.primaryActionPlan[index] && scene.primary_action) {
+      const planned = context.primaryActionPlan[index].toLowerCase();
+      const actual = scene.primary_action.toLowerCase();
+      if (!planned.split(/\s+/).some((w) => w.length >= 4 && actual.includes(w))) {
+        problems.push(
+          `Scene ${index + 1}: "primary_action" menyimpang dari rencana Creative Brief ("${context.primaryActionPlan[index]}") -- pertahankan aksi yang sudah direncanakan.`
+        );
+      }
     }
 
     // Only enforced where it actually changes the video: a voiceover scene on

@@ -32,12 +32,13 @@ export type ContentStyleId =
   | 'listicle_countdown'
   | 'before_after'
   | 'pattern_break_twist'
-  | 'series_episodic';
+  | 'series_episodic'
+  | 'auto';
 
 export type AiToolId = 'google_flow' | 'veo3' | 'kling_ai' | 'runway_gen4' | 'luma_dream' | 'pika_labs' | 'sora';
 export type PlatformTarget = 'shopee_video' | 'instagram_reels' | 'facebook_reels' | 'youtube_shorts';
 export type AspectRatio = '9:16' | '16:9' | '1:1' | '4:5' | '3:4';
-export type HookArchetype = 'unpopular_opinion' | 'pov_realism' | 'specific_outcome' | 'curiosity_gap' | 'relatable' | 'emotional' | 'mistake_warning';
+export type HookArchetype = 'unpopular_opinion' | 'pov_realism' | 'specific_outcome' | 'curiosity_gap' | 'relatable' | 'emotional' | 'mistake_warning' | 'auto';
 export type ContentGoal = 'conversion' | 'growth' | 'engagement';
 export type LanguageTone =
   | 'formal_netral'
@@ -49,7 +50,8 @@ export type LanguageTone =
   | 'sotoy_santai'
   | 'curhat_personal'
   | 'sarkas_julid'
-  | 'ibu_bapack_relatable';
+  | 'ibu_bapack_relatable'
+  | 'auto';
 export type CtaTypeId =
   | 'link_bio'
   | 'dm_whatsapp'
@@ -59,7 +61,8 @@ export type CtaTypeId =
   | 'visit_website'
   | 'limited_urgency'
   | 'save_for_later'
-  | 'klik_keranjang_kuning';
+  | 'klik_keranjang_kuning'
+  | 'auto';
 
 export const GROWTH_ALLOWED_CTAS: CtaTypeId[] = ['follow_more', 'save_for_later', 'share_tag_friend', 'comment_keyword'];
 
@@ -77,6 +80,7 @@ export interface SceneOutput {
   script_word_count: number;
   visual_description: string;
   camera_direction: string;
+  primary_action: string;
   text_overlay: string;
   reference_images: {
     character: string | null;
@@ -125,6 +129,23 @@ export interface GenerateContentInput {
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
   narratorVoice: NarratorVoice;
+  /** Optional explicit mechanism; "auto"/absent = Creative Director picks it. */
+  mechanism?: string;
+}
+
+/** The concrete creative direction actually used for a generation -- returned
+ *  when any selector was left on "auto", so the UI can show what Stage A / the
+ *  rotation chose (and lock it in for regenerate/hook-variants). */
+export interface ChosenDirection {
+  mechanism: string;
+  style: ContentStyleId;
+  hook_archetype: HookArchetype;
+  cta_type: CtaTypeId;
+  language_tone: LanguageTone;
+  realism_profile: string;
+  environment: string;
+  reasoning: string;
+  auto_selected: boolean;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -193,7 +214,15 @@ export function useGenerateContent() {
   return useMutation({
     mutationFn: async (input: GenerateContentInput) => {
       const res = await apiRequest('POST', '/api/content-generator/generate', input);
-      return res.json() as Promise<{ result: GenerationResult; warnings: string[] }>;
+      // generation_id links the uploaded video back to this generation (Phase 0
+      // FK). Null when the best-effort history insert failed. `chosen` carries
+      // the concrete creative direction (Stage A / rotation) for display + reuse.
+      return res.json() as Promise<{
+        result: GenerationResult;
+        warnings: string[];
+        generation_id: string | null;
+        chosen: ChosenDirection;
+      }>;
     },
   });
 }

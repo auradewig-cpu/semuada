@@ -4,6 +4,7 @@ import { getAiToolSpec } from "./aiTools";
 import { getPlatformSpec, buildPlatformBehavior } from "./platforms";
 import { getLanguageTone, buildLanguageToneRule } from "./languageTones";
 import { buildCinematographyRule, buildSingleTakeRule, resolveVisualDictionary } from "./cinematography";
+import { getCategoryBible } from "./categoryCreative";
 import { buildNegativePromptBlock, buildSpokenNumberRule } from "./negativePrompt";
 import { buildVoiceDescriptor } from "./voiceCasting";
 import { spokenWordBudget } from "./jsonParser";
@@ -22,12 +23,15 @@ import {
   buildWordCountSelfCheckRule,
   buildRequiredTokensRule,
 } from "./promptFragments";
-import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, HookArchetype, LanguageTone, NarrationMode, NarratorVoice, PlatformTarget, SceneOutput } from "./types";
+import type { AiToolId, AspectRatio, CameraPattern, ContentGoal, ContentStyleId, HookArchetype, LanguageTone, NarrationMode, NarratorVoice, PlatformTarget, RealismProfileId, SceneOutput } from "./types";
 
 export interface HookVariantsInput {
   productName: string;
   category: string;
   price: string;
+  /** FAKTA PRODUK line (see productFacts.ts) -- variants stay on verified
+   *  figures instead of inventing numbers for a stronger hook. */
+  productFactsLine?: string;
   sceneDuration: number;
   productImageUrl: string;
   currentScene: SceneOutput;
@@ -48,6 +52,7 @@ export interface HookVariantsInput {
   narrationMode: NarrationMode;
   cameraPattern: CameraPattern;
   narratorVoice: NarratorVoice;
+  realismProfile?: RealismProfileId;
   variantCount?: number;
   seed: number;
   // Same anti-repetition history the main generate flow gets. Variants exist
@@ -73,13 +78,14 @@ export function compileHookVariantsPrompt(input: HookVariantsInput): string {
   const toneSpec = getLanguageTone(input.languageTone);
   const dictionary = resolveVisualDictionary(input.languageTone, input.style);
   const voiceDescriptor = buildVoiceDescriptor(input.narratorVoice, input.languageTone, input.seed);
+  const bible = getCategoryBible(input.category);
 
   const availableArchetypes = Object.values(HOOK_ARCHETYPES).filter((a) => a.id !== input.currentArchetype);
   const archetypeList = availableArchetypes.map((a) => `- ${a.id}: ${a.instruction}`).join("\n");
 
   const characterBlock = buildCharacterBlock(input.characterName, input.characterDescription);
   const dialogueRule = buildDialogueRule(input.aiTool, input.narrationMode, hasCharacter, input.seed, voiceDescriptor);
-  const productAnchorRule = buildProductAnchorRule(input.productName, input.category);
+  const productAnchorRule = buildProductAnchorRule(input.productName, input.category, bible.productInteractions);
   const priceLine = buildProductPriceLine(input.price, input.includePrice);
   // Scene 1 is a hook, not the CTA beat -- a mandatory price here would fight
   // the hook's job. Kept permissive regardless of the toggle's strength.
@@ -100,7 +106,7 @@ export function compileHookVariantsPrompt(input: HookVariantsInput): string {
   return `
 Kamu membuat ${variantCount} VARIASI HOOK untuk scene 1 dari sebuah video affiliate produk, masing-masing memakai teknik hook BERBEDA.
 
-PRODUK: ${input.productName} (${input.category})${priceLine ? `, ${priceLine.replace(/^- /, '')}` : ''}
+PRODUK: ${input.productName} (${input.category})${priceLine ? `, ${priceLine.replace(/^- /, '')}` : ''}${input.productFactsLine ? `\n${input.productFactsLine}` : ""}
 ${characterBlock}
 
 GAYA VIDEO: ${style.label}
@@ -118,11 +124,11 @@ ${buildPromptBudgetRule(input.aiTool, hasCharacter)}
 
 ${buildAiReadyPromptStructureRule(hasCharacter, input.aspectRatio, toneSpec.genreAnchor)}
 
-${buildCinematographyRule(input.aiTool, dictionary)}
+${buildCinematographyRule(input.aiTool, dictionary, bible, input.realismProfile)}
 
 ${buildSingleTakeRule(input.aiTool)}
 
-${buildRequiredTokensRule(input.aiTool, dictionary)}
+${buildRequiredTokensRule(input.aiTool, dictionary, input.realismProfile)}
 
 [SCENE 1 SAAT INI -- konteks, JANGAN disalin]
 Teknik hook saat ini: ${input.currentArchetype}
@@ -150,6 +156,6 @@ ATURAN WAJIB:
 
 ${negativeBlock}
 
-OUTPUT -- HANYA objek JSON: { "variants": [ <scene1>, <scene2>, ... ${variantCount} scene objects ] }. Tiap scene object berisi: "scene_number", "duration_seconds", "speech_pace", "script_narration", "script_word_count", "visual_description", "camera_direction", "text_overlay", "transition_to_next", "ai_ready_prompt", "hook_archetype_used"${negativePromptField}. Mulai {, akhiri }. Tidak ada teks lain.
+OUTPUT -- HANYA objek JSON: { "variants": [ <scene1>, <scene2>, ... ${variantCount} scene objects ] }. Tiap scene object berisi: "scene_number", "duration_seconds", "speech_pace", "script_narration", "script_word_count", "visual_description", "camera_direction", "primary_action", "text_overlay", "transition_to_next", "ai_ready_prompt", "hook_archetype_used"${negativePromptField}. Mulai {, akhiri }. Tidak ada teks lain.
 `.trim();
 }

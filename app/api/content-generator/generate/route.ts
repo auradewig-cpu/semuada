@@ -16,8 +16,20 @@ import { buildCaptionRephrasePrompt, rephraseSceneViolations } from "@root/lib/c
 import type { PolicyViolation } from "@root/lib/content-generator/policyCheck";
 import { toCharacterPhotoProxyUrl } from "@root/lib/mappers";
 import { generateRequestSchema, formatZodError } from "@root/lib/content-generator/validation";
-import { getRecentGenerations, buildAvoidRepetitionBlock } from "@root/lib/content-generator/variationContext";
-import type { AiProvider, GenerationResult } from "@root/lib/content-generator/types";
+import { getRecentGenerations, buildAvoidRepetitionBlock, getCategoryUsageCounts, getGlobalUsageCounts } from "@root/lib/content-generator/variationContext";
+import { getCategoryBible } from "@root/lib/content-generator/categoryCreative";
+import { buildProductFacts } from "@root/lib/content-generator/productFacts";
+import {
+  compileCreativeBriefPrompt,
+  parseCreativeBrief,
+  validateCreativeBrief,
+  resolveAutoChoices,
+  type CreativeBrief,
+  type CreativeUsage,
+  type AutoChoices,
+} from "@root/lib/content-generator/creativeDirector";
+import { mergeUsageCounts } from "@root/lib/content-generator/rotation";
+import type { AiProvider, GenerationResult, ContentStyleId, CtaTypeId, HookArchetype, LanguageTone, MechanismId } from "@root/lib/content-generator/types";
 
 const AI_SETTINGS_ID = "2c8e5c1a-9f3d-4b7e-8a2c-6d1f4e9b0a3c";
 
@@ -98,6 +110,7 @@ export async function POST(request: NextRequest) {
     narrationMode,
     cameraPattern,
     narratorVoice,
+    mechanism,
   } = parsed.data;
   const selectedImageUrls = scenes.map((s) => s.imageUrl);
 
@@ -123,25 +136,122 @@ export async function POST(request: NextRequest) {
     openrouterApiKey: settingsRow.openrouterApiKey,
     deepseekApiKey: settingsRow.deepseekApiKey,
   };
-  const narrationWpm = resolveNarrationWpm(style, settingsRow.narrationWpm ?? 180, languageTone);
+  // narrationWpm is resolved AFTER the Creative Director resolves any "auto"
+  // style/tone below -- resolveNarrationWpm needs a concrete style.
 
   // Anti-repetition context, scoped per product -- see variationContext.ts.
   const recentGenerations = await getRecentGenerations(productId);
   const avoidRepetitionBlock = buildAvoidRepetitionBlock(recentGenerations);
 
+  // -------------------------------------------------------------------------
+  // Creative Director (Stage A): resolve any "auto" selection to a concrete
+  // creative direction. The bible + usage counts are computed once; Stage A
+  // picks the mechanism/style/hook/CTA/tone/realism. On ANY failure we fall
+  // back to pure rotation so generate never dies because Stage A did.
+  const bible = getCategoryBible(product.category, product.subcategory);
+
+  // Product Fact Layer (Phase 3): the only figures the AI may cite. Feeds both
+  // Stage A's brief and Stage B's prompt, and its knownNumbers drive the Claim
+  // Firewall so invented statistics get caught and rephrased.
+  const facts = buildProductFacts(product, includePrice);
+  const knownNumbers = facts.knownNumbers;
+
+  const [categoryUsage, globalUsage] = await Promise.all([
+    getCategoryUsageCounts(product.category, 20),
+    getGlobalUsageCounts(20),
+  ]);
+  // Merge scopes into one usage map per dimension (category weighs ~1.5x, the
+  // lighter global scope fills gaps; per-product history stays in the
+  // avoidRepetitionBlock). Seed differs per request so consecutive generates
+  // don't land on the same rotation pick.
+  const seed = makeSeed();
+  const usage: CreativeUsage = {
+    styles: mergeUsageCounts([
+      { counts: categoryUsage.styles, weight: 1.5 },
+      { counts: globalUsage.styles, weight: 1 },
+    ]),
+    hooks: mergeUsageCounts([
+      { counts: categoryUsage.hooks, weight: 1.5 },
+      { counts: globalUsage.hooks, weight: 1 },
+    ]),
+    ctaTypes: mergeUsageCounts([
+      { counts: categoryUsage.ctaTypes, weight: 1.5 },
+      { counts: globalUsage.ctaTypes, weight: 1 },
+    ]),
+    tones: mergeUsageCounts([
+      { counts: categoryUsage.tones, weight: 1.5 },
+      { counts: globalUsage.tones, weight: 1 },
+    ]),
+    mechanisms: mergeUsageCounts([
+      { counts: categoryUsage.mechanisms, weight: 1.5 },
+      { counts: globalUsage.mechanisms, weight: 1 },
+    ]),
+  };
+
+  const styleAuto = style === "auto";
+  const hookAuto = hookArchetype === "auto";
+  const ctaAuto = ctaType === "auto";
+  const toneAuto = languageTone === "auto";
+  const mechanismAuto = !mechanism;
+  const anyAuto = styleAuto || hookAuto || ctaAuto || toneAuto || mechanismAuto;
+
+  let brief: CreativeBrief | null = null;
+  if (anyAuto) {
+    try {
+      const briefPrompt = compileCreativeBriefPrompt({
+        productName: product.productName,
+        category: product.category,
+        subcategory: product.subcategory,
+        facts: facts.promptLine || `Hanya ada nama produk "${product.productName}" -- jangan mengarang fakta apa pun.`,
+        bible,
+        contentGoal,
+        avoidRepetitionBlock,
+        sceneDurations: scenes.map((s) => s.duration),
+      });
+      // Text-only, small JSON -- deliberately no images (the decisions don't
+      // need pixel detail, and that is what keeps Stage A cheap).
+      const briefRes = await generateWithFallback(providerOrder, keys, briefPrompt, [], 0.5);
+      const parsed = parseCreativeBrief(briefRes.text);
+      if (parsed) {
+        brief = validateCreativeBrief(parsed, bible, contentGoal, seed);
+      }
+    } catch {
+      brief = null; // fall through to rotation
+    }
+  }
+
+  const auto = resolveAutoChoices(bible, contentGoal, usage, seed);
+
+  const mechanismHasBible = mechanism ? bible.mechanisms.some((m) => m.id === mechanism) : false;
+  const resolvedMechanism: MechanismId =
+    (brief && bible.mechanisms.some((m) => m.id === brief.mechanism) ? brief.mechanism : null) ??
+    (mechanismHasBible ? mechanism! : auto.mechanism);
+
+  const resolvedStyle: ContentStyleId = styleAuto ? (brief ? brief.style : auto.style) : style;
+  const resolvedHook: HookArchetype = hookAuto ? (brief ? brief.hook_archetype : auto.hook_archetype) : hookArchetype;
+  const resolvedCta: CtaTypeId = ctaAuto ? (brief ? brief.cta_type : auto.cta_type) : ctaType;
+  const resolvedTone: LanguageTone = toneAuto ? (brief ? brief.language_tone : auto.language_tone) : languageTone;
+  const resolvedRealism = brief ? brief.realism_profile : bible.defaultRealism;
+  const environment = brief ? brief.environment : "";
+  const reasoning = brief ? brief.reasoning : "";
+
+  const autoSelected = anyAuto;
+  const narrationWpm = resolveNarrationWpm(resolvedStyle, settingsRow.narrationWpm ?? 180, resolvedTone);
+
   const prompt = compileMasterPrompt({
     productName: product.productName,
     category: product.category,
     price: product.price,
+    productFactsLine: facts.promptLine,
     scenes,
-    style,
+    style: resolvedStyle,
     aiTool,
     platform,
     aspectRatio,
-    hookArchetype,
+    hookArchetype: resolvedHook,
     contentGoal,
-    ctaType,
-    languageTone,
+    ctaType: resolvedCta,
+    languageTone: resolvedTone,
     characterName: character?.name ?? null,
     characterDescription: character?.description ?? null,
     narrationWpm,
@@ -150,7 +260,16 @@ export async function POST(request: NextRequest) {
     cameraPattern,
     narratorVoice,
     avoidRepetitionBlock,
-    seed: makeSeed(),
+    realismProfile: resolvedRealism,
+    seed,
+    creativeBrief: brief
+      ? {
+          mechanism: resolvedMechanism,
+          environment,
+          reasoning,
+          scene_plan: brief.scene_plan,
+        }
+      : null,
   });
 
   const images = [
@@ -168,10 +287,13 @@ export async function POST(request: NextRequest) {
     narrationWpm,
     // Same source of truth the prompt used to declare these mandatory, so the
     // instruction and the check can't drift apart.
-    requiredTokens: requiredPromptTokens(aiTool, resolveVisualDictionary(languageTone, style)),
+    requiredTokens: requiredPromptTokens(aiTool, resolveVisualDictionary(resolvedTone, resolvedStyle), resolvedRealism),
     // EFFECTIVE per-scene mode (scene override, else the request default) --
     // matches how compileMasterPrompt resolves it for perSceneDirection.
     sceneNarrationModes: scenes.map((s) => s.narrationMode ?? narrationMode),
+    // Per-scene primary actions fixed by Stage A's brief, so validation can
+    // catch a scene that silently swapped to a different dominant action.
+    primaryActionPlan: brief ? brief.scene_plan.map((s) => s.primary_action) : undefined,
   };
 
   try {
@@ -215,10 +337,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let policyViolations = checkPolicyCompliance(result, contentGoal);
+    let policyViolations = checkPolicyCompliance(result, contentGoal, knownNumbers);
     if (policyViolations.length > 0) {
       await applyTargetedRephrase(result, policyViolations, providerOrder, keys);
-      policyViolations = checkPolicyCompliance(result, contentGoal);
+      policyViolations = checkPolicyCompliance(result, contentGoal, knownNumbers);
     }
 
     // Stamp reference image URLs/filenames deterministically last, so it's
@@ -247,23 +369,60 @@ export async function POST(request: NextRequest) {
     // (they'd lose the result they already paid AI-call cost for). Losing
     // this one history row just means the next generation's anti-repetition
     // context is slightly less complete, not a user-facing failure.
+    let savedGenerationId: string | null = null;
     try {
-      await db.insert(contentGenerations).values({
-        productId: product.id,
-        characterId: character?.id,
-        style,
-        output: JSON.stringify(result),
-        hookArchetype,
-        contentGoal,
-        ctaType,
-        caption: result.caption,
-        hashtags: result.hashtags,
-      });
+      const [inserted] = await db
+        .insert(contentGenerations)
+        .values({
+          productId: product.id,
+          characterId: character?.id,
+          // RESOLVED values, never the raw request -- with "auto" as the UI
+          // default, storing the request value would write the literal string
+          // "auto" into these columns. getCategoryUsageCounts() reads exactly
+          // these three to compute rotation fatigue, so that would leave every
+          // real candidate at count 0 (all weights equal -> fatigue silently
+          // does nothing), and Phase 5 could never GROUP BY them.
+          style: resolvedStyle,
+          output: JSON.stringify(result),
+          hookArchetype: resolvedHook,
+          contentGoal,
+          ctaType: resolvedCta,
+          caption: result.caption,
+          hashtags: result.hashtags,
+          // Fingerprint. mechanism/realism_profile come from the Creative
+          // Director; auto_selected records whether the direction came from
+          // Stage A/rotation or explicit user picks.
+          mechanism: resolvedMechanism,
+          languageTone: resolvedTone,
+          aiTool,
+          platform,
+          realismProfile: resolvedRealism,
+          sceneCount: scenes.length,
+          totalDuration: scenes.reduce((sum, s) => sum + s.duration, 0),
+          autoSelected,
+        })
+        .returning({ id: contentGenerations.id });
+      savedGenerationId = inserted?.id ?? null;
     } catch {
       // best-effort history log, see comment above
     }
 
-    return NextResponse.json({ result, warnings });
+    return NextResponse.json({
+      result,
+      warnings,
+      generation_id: savedGenerationId,
+      chosen: {
+        mechanism: resolvedMechanism,
+        style: resolvedStyle,
+        hook_archetype: resolvedHook,
+        cta_type: resolvedCta,
+        language_tone: resolvedTone,
+        realism_profile: resolvedRealism,
+        environment,
+        reasoning,
+        auto_selected: autoSelected,
+      },
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Gagal generate konten." },

@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { HookArchetype } from "@/hooks/useContentGenerator";
 
 const ARCHETYPES: { id: HookArchetype; label: string; blurb: string }[] = [
+  { id: 'auto', label: 'Auto (Pilihkan)', blurb: 'Creative Director memilihkan hook agar tidak monoton.' },
   { id: 'unpopular_opinion', label: 'Unpopular Opinion', blurb: 'Buka dengan pendapat berlawanan dari anggapan umum.' },
   { id: 'pov_realism', label: 'POV Realism', blurb: 'Sudut pandang orang pertama yang sangat relatable.' },
   { id: 'specific_outcome', label: 'Specific Outcome', blurb: 'Angka/hasil konkret di awal, bukan klaim generik.' },

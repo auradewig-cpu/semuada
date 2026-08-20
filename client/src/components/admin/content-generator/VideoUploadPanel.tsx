@@ -13,6 +13,10 @@ interface VideoUploadPanelProps {
   caption: string;
   hashtags: string[];
   promptSnapshot: string;
+  // FK to the Content Generator output that produced these prompts -- stored
+  // on the video row so the learning pipeline can trace performance back to
+  // the generation. Null for manual uploads (this panel is always linked).
+  contentGenerationId: string | null;
 }
 
 // The last step of the workflow: prompt was copied out to Google Flow (or
@@ -20,7 +24,7 @@ interface VideoUploadPanelProps {
 // uploaded here -- straight to Cloudinary, organized into a folder per the
 // product's category, with the caption/hashtags/prompt already generated
 // above saved alongside it for the future social-scheduling feature.
-export function VideoUploadPanel({ productId, category, subcategory, caption, hashtags, promptSnapshot }: VideoUploadPanelProps) {
+export function VideoUploadPanel({ productId, category, subcategory, caption, hashtags, promptSnapshot, contentGenerationId }: VideoUploadPanelProps) {
   const { toast } = useToast();
   const createVideoContent = useCreateVideoContent();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +60,7 @@ export function VideoUploadPanel({ productId, category, subcategory, caption, ha
         video_url: result.secure_url,
         cloudinary_public_id: result.public_id,
         storage_account_id: result.storage_account_id,
+        content_generation_id: contentGenerationId,
       });
       setLastUploadedUrl(result.secure_url);
       setSelectedFile(null);

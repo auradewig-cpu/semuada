@@ -100,6 +100,7 @@ export function toApiVideoContent(row: DbVideoContent) {
     cloudinary_public_id: row.cloudinaryPublicId,
     status: row.status,
     trashed_at: row.trashedAt,
+    content_generation_id: row.contentGenerationId,
     created_at: row.createdAt,
   };
 }

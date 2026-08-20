@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
   useGenerateContent,
-  fetchHookSuggestion,
+  type ChosenDirection,
   type GenerationResult,
   type ContentStyleId,
   type AiToolId,
@@ -46,11 +46,14 @@ export function ContentGeneratorTab() {
   const [platform, setPlatform] = useState<PlatformTarget>('shopee_video');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
   const [aiTool, setAiTool] = useState<AiToolId>('veo3');
-  const [style, setStyle] = useState<ContentStyleId>('direct_response');
+  // "auto" is the default: the Creative Director (Stage A) / rotation picks
+  // the concrete value server-side, fixing creative-mode collapse while still
+  // letting the admin override any single field explicitly.
+  const [style, setStyle] = useState<ContentStyleId>('auto');
   const [contentGoal, setContentGoal] = useState<ContentGoal>('conversion');
-  const [ctaType, setCtaType] = useState<CtaTypeId>('klik_keranjang_kuning');
-  const [hookArchetype, setHookArchetype] = useState<HookArchetype>('specific_outcome');
-  const [languageTone, setLanguageTone] = useState<LanguageTone>('gaul_kekinian');
+  const [ctaType, setCtaType] = useState<CtaTypeId>('auto');
+  const [hookArchetype, setHookArchetype] = useState<HookArchetype>('auto');
+  const [languageTone, setLanguageTone] = useState<LanguageTone>('auto');
   const [includePrice, setIncludePrice] = useState(true);
   const [narrationMode, setNarrationMode] = useState<NarrationMode>('lipsync');
   const [narratorVoice, setNarratorVoice] = useState<NarratorVoice>('wanita');
@@ -65,10 +68,14 @@ export function ContentGeneratorTab() {
   // the panel remounts instead of carrying its internal state (hook variants in
   // particular) across into an unrelated result.
   const [generationId, setGenerationId] = useState(0);
-  // Set from fetchHookSuggestion() when a product is picked -- shown as a
-  // hint under HookArchetypeSelector so the "rotation" is a visible default
-  // change the admin can override, never a silent server-side substitution.
-  const [hookSuggestionHint, setHookSuggestionHint] = useState<string | null>(null);
+  // The DB id of the latest generation -- threaded down to VideoUploadPanel so
+  // the uploaded video can be FK'd back to the generation that produced it.
+  // Named distinctly from `generationId` above (that's a remount counter).
+  const [contentGenerationId, setContentGenerationId] = useState<string | null>(null);
+  // The concrete direction Stage A / the rotation chose for the last generate,
+  // plus the one-line reasoning -- surfaced so the Creative Director is a
+  // visible partner, not a black box.
+  const [chosenDirection, setChosenDirection] = useState<ChosenDirection | null>(null);
 
   const generateContent = useGenerateContent();
   const { toast } = useToast();
@@ -77,17 +84,7 @@ export function ContentGeneratorTab() {
     setProduct(p);
     setScenes([]);
     setResult(null);
-    setHookSuggestionHint(null);
-    fetchHookSuggestion(p.id)
-      .then(({ suggested_archetype, recent }) => {
-        setHookArchetype(suggested_archetype);
-        if (recent.length > 0 && recent[0].hook_archetype_label) {
-          setHookSuggestionHint(`Terakhir pakai: ${recent[0].hook_archetype_label} -- disarankan coba teknik lain.`);
-        }
-      })
-      .catch(() => {
-        // best-effort suggestion only -- keep the existing default hookArchetype on failure
-      });
+    setChosenDirection(null);
   };
 
   const MAX_SCENES = 10;
@@ -142,6 +139,17 @@ export function ContentGeneratorTab() {
           setWarnings(data.warnings);
           setGeneratedScenePlan(scenes);
           setGenerationId((n) => n + 1);
+          setContentGenerationId(data.generation_id);
+          setChosenDirection(data.chosen);
+          // Lock the concrete chosen values in so Regenerate/Hook Variants
+          // reuse the SAME direction that produced this result (an "auto"
+          // re-resolved on regenerate would silently change the creative).
+          if (data.chosen) {
+            setStyle(data.chosen.style);
+            setHookArchetype(data.chosen.hook_archetype);
+            setCtaType(data.chosen.cta_type);
+            setLanguageTone(data.chosen.language_tone);
+          }
           toast({ title: "Berhasil", description: "Konten berhasil digenerate." });
         },
         onError: (error) => {
@@ -263,9 +271,9 @@ export function ContentGeneratorTab() {
           </CardHeader>
           <CardContent>
             <HookArchetypeSelector value={hookArchetype} onChange={setHookArchetype} />
-            {hookSuggestionHint && (
-              <p className="text-xs text-muted-foreground mt-2">{hookSuggestionHint}</p>
-            )}
+            <p className="text-xs text-muted-foreground mt-2">
+              "auto" = dipilih Creative Director agar tidak monoton.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -342,6 +350,37 @@ export function ContentGeneratorTab() {
         </Button>
       )}
 
+      {chosenDirection && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Sparkles className="h-4 w-4 mr-2" />
+              Konsep Kreatif yang Dipakai
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {chosenDirection.reasoning && (
+              <p className="text-muted-foreground italic">&ldquo;{chosenDirection.reasoning}&rdquo;</p>
+            )}
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="bg-muted rounded px-2 py-1">Mechanism: <b>{chosenDirection.mechanism}</b></span>
+              <span className="bg-muted rounded px-2 py-1">Gaya: <b>{chosenDirection.style}</b></span>
+              <span className="bg-muted rounded px-2 py-1">Hook: <b>{chosenDirection.hook_archetype}</b></span>
+              <span className="bg-muted rounded px-2 py-1">CTA: <b>{chosenDirection.cta_type}</b></span>
+              <span className="bg-muted rounded px-2 py-1">Tone: <b>{chosenDirection.language_tone}</b></span>
+              {chosenDirection.environment && (
+                <span className="bg-muted rounded px-2 py-1">Lingkungan: <b>{chosenDirection.environment}</b></span>
+              )}
+            </div>
+            {chosenDirection.auto_selected && (
+              <p className="text-xs text-muted-foreground">
+                Nilai-nilai ini dipilih otomatis (Creative Director). Ubah selector di atas untuk generate berikutnya.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {result && product && (
         <SceneOutputPanel
           // Remounts on a new generation so panel-local state (hook variants,
@@ -356,6 +395,7 @@ export function ContentGeneratorTab() {
           affiliateUrl={product.affiliate_url}
           productCategory={product.category}
           productSubcategory={product.subcategory}
+          contentGenerationId={contentGenerationId}
           context={{
             productId: product.id,
             characterId,

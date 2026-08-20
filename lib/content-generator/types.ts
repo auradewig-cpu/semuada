@@ -27,6 +27,17 @@ export type HookArchetype =
 
 export type ContentGoal = "conversion" | "growth" | "engagement";
 
+// Which level of production realism a video should land in -- the successor to
+// the old binary VisualDictionary ("ugc" | "cinematic"). Drives camera,
+// lighting, acting and environment vocabulary (see cinematography.ts and
+// categoryCreative.ts). defaultRealism per category; Stage A (Creative
+// Director) can override it.
+export type RealismProfileId = "raw_phone" | "creator_ugc" | "premium_ugc" | "lifestyle" | "commercial";
+
+// Mechanism id -- the creative "vehicle" a video rides on (e.g. a battery dying
+// is the mechanism, a phone is the product). Chosen by Stage A / rotation.
+export type MechanismId = string;
+
 // Independent from ContentStyleId (video STRUCTURE, e.g. vlog/tutorial) --
 // this controls voice REGISTER (how casual/gaul/formal the narration
 // sounds), so e.g. "tutorial structure + gaul tone" is expressible. See
@@ -95,6 +106,10 @@ export interface SceneOutput {
   script_word_count: number;
   visual_description: string;
   camera_direction: string;
+  // One dominant action per scene, as a single clause (no "lalu"/"sambil").
+  // A field (not just prose) so the validator can reject compound actions the
+  // way a sentence never could. Stage A's scene_plan sets it; Stage B fills it.
+  primary_action: string;
   // Short (<=8 words) on-screen caption/text overlay for this scene -- 85% of
   // short-form video is watched muted, so this carries the key message when
   // there's no audio. Meant to be burned in during editing (CapCut etc.), not
