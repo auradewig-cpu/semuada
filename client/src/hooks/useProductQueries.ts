@@ -175,6 +175,11 @@ export function useCategories() {
     queryKey: ['categoryHierarchy'],
     queryFn: () => fetchJson<Record<string, string[]>>('/api/categories'),
     staleTime: 1000 * 60 * 10,
+    // Same reasoning as useInfiniteProducts: app/layout.tsx prefetches this on
+    // every route, and an ISR page served from cache carries a prerender-time
+    // dataUpdatedAt, so without this the hierarchy was refetched over HTTP on
+    // page views of any page older than the staleTime.
+    refetchOnMount: false,
   });
 }
 
@@ -204,6 +209,10 @@ export function useLocationOptions(category?: string, subcategory?: string) {
       return fetchJson<{ value: string; count: number }[]>(`/api/options/dikirim-dari?${search.toString()}`);
     },
     staleTime: 5 * 60 * 1000,
+    // The category pages prefetch this into the same key (see their
+    // setQueryData calls); without this the ISR-aged dataUpdatedAt made every
+    // visit refetch it anyway. /cari has no prefetch, so it still fetches.
+    refetchOnMount: false,
   });
 }
 

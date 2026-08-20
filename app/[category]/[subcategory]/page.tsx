@@ -8,6 +8,7 @@ import { toApiProduct } from "@root/lib/mappers";
 import { PRODUCTS_PER_PAGE } from "@/hooks/useProductQueries";
 import { getCategoryHierarchy, getSubcategoryParams, getCategoryCatalog, resolveCategorySlug } from "@root/lib/categories";
 import { buildInitialFilters } from "@root/lib/productFilters";
+import { getLocationOptions } from "@root/lib/productOptions";
 import { getSiteSettings } from "@root/lib/site-settings";
 import { SITE_URL } from "@root/lib/siteUrl";
 import { CatalogPage } from "@/pages/CatalogPage";
@@ -61,7 +62,7 @@ export default async function Page({ params }: { params: Promise<{ category: str
 
   const queryClient = new QueryClient();
 
-  const [firstPageRows] = await Promise.all([
+  const [firstPageRows, locationOptions] = await Promise.all([
     db
       .select()
       .from(products)
@@ -69,12 +70,15 @@ export default async function Page({ params }: { params: Promise<{ category: str
       .orderBy(desc(products.createdAt))
       .limit(PRODUCTS_PER_PAGE)
       .offset(0),
+    getLocationOptions(category, subcategory),
   ]);
 
   queryClient.setQueryData(["products-infinite", filters], {
     pages: [firstPageRows.map(toApiProduct)],
     pageParams: [0],
   });
+  // Same key/prefetch reasoning as app/[category]/page.tsx.
+  queryClient.setQueryData(["locationOptions", category, subcategory], locationOptions);
 
   // Absolute URLs -- see the note in app/[category]/page.tsx.
   const itemList = [

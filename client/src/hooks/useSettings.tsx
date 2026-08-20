@@ -32,6 +32,14 @@ export function useSettings() {
       if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
       return res.json();
     },
+    // app/layout.tsx prefetches this for every route. That layout is ISR-cached,
+    // so the dehydrated dataUpdatedAt is the prerender time -- older than the
+    // default 5-minute staleTime whenever a page has been sitting in the cache,
+    // which made every such visit refetch settings over HTTP purely to get back
+    // what the HTML already contained. Freshness is the server's job here
+    // (revalidate = 60); admin edits still refetch, because useUpdateSettings
+    // invalidates this key and invalidation refetches active queries.
+    refetchOnMount: false,
   });
 }
 

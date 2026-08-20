@@ -9,7 +9,7 @@ import { FilterSheet } from "@/components/catalog/FilterSheet";
 import { FilterPanel } from "@/components/catalog/FilterPanel";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { useCatalogFilters } from "@/hooks/useCatalogFilters";
-import { useLocationOptions, useTrackProductClick } from "@/hooks/useProductQueries";
+import { useTrackProductClick } from "@/hooks/useProductQueries";
 import { buildInitialFilters } from "@root/lib/productFilters";
 import type { ProductFilters } from "@root/lib/productFilters";
 
@@ -23,8 +23,6 @@ function SearchResults() {
   const base: ProductFilters = { ...buildInitialFilters(), search: q };
   const { filters, setFilters, patch, reset, activeCount } = useCatalogFilters(base);
   const { mutate: trackProductClick } = useTrackProductClick();
-  const { data: locationOptions = [], isLoading: isLoadingLocation } = useLocationOptions();
-
   const handleProductClick = useCallback((productId: string) => {
     trackProductClick(productId);
   }, [trackProductClick]);
@@ -46,8 +44,6 @@ function SearchResults() {
         base={base}
         onApply={setFilters}
         activeCount={activeCount}
-        locationOptions={locationOptions}
-        isLoadingLocation={isLoadingLocation}
       />
     </div>
   );
@@ -71,12 +67,7 @@ function SearchResults() {
           <aside className="hidden lg:block lg:col-span-1">
             <div className="bg-card rounded-xl border border-border p-5 sticky top-[calc(var(--header-h)_+_3.5rem)] max-h-[calc(100vh_-_var(--header-h)_-_5rem)] overflow-y-auto">
               <h3 className="font-bold text-lg mb-5">Filter Produk</h3>
-              <FilterPanel
-                filters={filters}
-                onChange={patch}
-                locationOptions={locationOptions}
-                isLoadingLocation={isLoadingLocation}
-              />
+              <FilterPanel filters={filters} onChange={patch} />
             </div>
           </aside>
 
