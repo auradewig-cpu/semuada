@@ -77,10 +77,15 @@ export function HeroBanner({ onProductClick }: HeroBannerProps) {
     if (product.affiliate_url) window.open(product.affiliate_url, "_blank", "noopener,noreferrer");
   };
 
+  // Fixed responsive heights, NOT aspect-ratio + max-height. With
+  // `aspect-[21/9] max-h-[420px]` the browser preserves the ratio by shrinking
+  // the WIDTH once max-height clamps the height, so on a 1900px desktop the
+  // hero rendered 980px wide (420 x 21/9) and left-aligned instead of
+  // full-bleed. Same trap applied to tablets via `aspect-[2/1] max-h-[240px]`.
   return (
     <section
       aria-label="Produk unggulan"
-      className="relative overflow-hidden bg-gradient-to-br from-emerald/10 to-metallic/10 aspect-[2/1] max-h-[240px] md:aspect-[21/9] md:max-h-[420px]"
+      className="relative w-full overflow-hidden bg-gradient-to-br from-emerald/10 to-metallic/10 h-[195px] sm:h-[240px] md:h-[320px] lg:h-[420px]"
     >
       <div ref={emblaRef} className="h-full overflow-hidden">
         <div className="flex h-full">

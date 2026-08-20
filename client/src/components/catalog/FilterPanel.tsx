@@ -3,14 +3,9 @@
 import { useState } from "react";
 import { Tag, Star, MapPin, Package } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useItemOptionsByCategory } from "@/hooks/useProductQueries";
+import { useItemOptionsByCategory, useLocationOptions } from "@/hooks/useProductQueries";
 import { PRICE_PRESETS, RATING_OPTIONS } from "@root/lib/productFilters";
 import type { ProductFilters } from "@root/lib/productFilters";
-
-interface LocationOption {
-  value: string;
-  count: number;
-}
 
 interface FilterPanelProps {
   filters: ProductFilters;
@@ -18,22 +13,27 @@ interface FilterPanelProps {
   onChange: (part: Partial<ProductFilters>) => void;
   category?: string;
   subcategory?: string;
-  locationOptions: LocationOption[];
-  isLoadingLocation: boolean;
 }
 
 const LOCATION_VISIBLE = 8;
 
 // The actual filter content, shared by the mobile bottom sheet (which edits a
 // local draft and applies on "Terapkan") and the desktop sidebar (apply-langsung).
+//
+// The options queries live HERE rather than in the parent page on purpose: this
+// component is mounted immediately inside the desktop sidebar, but on mobile it
+// only mounts when the sheet opens. Fetching from the page meant every category
+// page view paid for /api/options/dikirim-dari even when nobody opened filters.
 export function FilterPanel({
   filters,
   onChange,
   category,
   subcategory,
-  locationOptions,
-  isLoadingLocation,
 }: FilterPanelProps) {
+  const { data: locationOptions = [], isLoading: isLoadingLocation } = useLocationOptions(
+    category,
+    subcategory
+  );
   const [showAllLocations, setShowAllLocations] = useState(false);
   const [locationSearch, setLocationSearch] = useState("");
 

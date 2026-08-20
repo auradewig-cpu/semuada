@@ -7,17 +7,13 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
   SheetFooter,
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { FilterPanel } from "./FilterPanel";
 import type { ProductFilters } from "@root/lib/productFilters";
-
-interface LocationOption {
-  value: string;
-  count: number;
-}
 
 interface FilterSheetProps {
   filters: ProductFilters;
@@ -28,8 +24,6 @@ interface FilterSheetProps {
   subcategory?: string;
   /** Extra badge count shown on the trigger (from live filters). */
   activeCount: number;
-  locationOptions: LocationOption[];
-  isLoadingLocation: boolean;
 }
 
 // The mobile filter UI -- a bottom sheet editing a local DRAFT that is only
@@ -42,8 +36,6 @@ export function FilterSheet({
   category,
   subcategory,
   activeCount,
-  locationOptions,
-  isLoadingLocation,
 }: FilterSheetProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ProductFilters>(filters);
@@ -80,6 +72,12 @@ export function FilterSheet({
       <SheetContent side="bottom" className="max-h-[85vh] flex flex-col">
         <SheetHeader>
           <SheetTitle>Filter Produk</SheetTitle>
+          {/* Radix warns when a dialog has no description; this one is for
+              screen readers only -- the controls below are self-explanatory
+              visually. */}
+          <SheetDescription className="sr-only">
+            Saring produk berdasarkan harga, rating, lokasi, dan item, lalu tekan Terapkan.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto mt-4 pr-1">
@@ -88,8 +86,6 @@ export function FilterSheet({
             onChange={handleDraftChange}
             category={category}
             subcategory={subcategory}
-            locationOptions={locationOptions}
-            isLoadingLocation={isLoadingLocation}
           />
         </div>
 

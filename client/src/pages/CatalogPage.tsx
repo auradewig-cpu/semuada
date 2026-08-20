@@ -11,7 +11,7 @@ import { FilterSheet } from "@/components/catalog/FilterSheet";
 import { FilterPanel } from "@/components/catalog/FilterPanel";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { useCatalogFilters } from "@/hooks/useCatalogFilters";
-import { useLocationOptions, useTrackProductClick } from "@/hooks/useProductQueries";
+import { useTrackProductClick } from "@/hooks/useProductQueries";
 import { buildInitialFilters } from "@root/lib/productFilters";
 import type { ProductFilters } from "@root/lib/productFilters";
 import type { CategoryEntry } from "@root/lib/categories";
@@ -39,11 +39,6 @@ export function CatalogPage({
   const base = buildInitialFilters({ category: categoryName, subcategory: subcategoryName });
   const { filters, setFilters, patch, reset, activeCount } = useCatalogFilters(base);
   const { mutate: trackProductClick } = useTrackProductClick();
-  const { data: locationOptions = [], isLoading: isLoadingLocation } = useLocationOptions(
-    categoryName,
-    subcategoryName
-  );
-
   const categoryEntry = categories.find((c) => c.name === categoryName);
   const subcategories = categoryEntry?.subcategories ?? [];
 
@@ -70,8 +65,6 @@ export function CatalogPage({
         category={categoryName}
         subcategory={subcategoryName}
         activeCount={activeCount}
-        locationOptions={locationOptions}
-        isLoadingLocation={isLoadingLocation}
       />
     </div>
   );
@@ -116,8 +109,6 @@ export function CatalogPage({
                 onChange={patch}
                 category={categoryName}
                 subcategory={subcategoryName}
-                locationOptions={locationOptions}
-                isLoadingLocation={isLoadingLocation}
               />
             </div>
           </aside>
