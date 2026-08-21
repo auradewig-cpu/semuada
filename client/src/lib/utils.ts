@@ -34,6 +34,31 @@ export function formatSalesCount(sales: number | string | null | undefined): str
   return String(n);
 }
 
+/**
+ * Display form for `products.dikirim_dari`, which the scraper stores in caps
+ * ("KOTA SURAKARTA (SOLO)"). Title case is not decoration here: measured in
+ * the real font (Inter 11px), caps runs ~22% wider, and at the 130px of card
+ * width a 360px phone leaves, 5 of the 45 real values -- including KOTA
+ * TANGERANG SELATAN -- no longer fit. Title case makes all 45 fit.
+ *
+ * Capitalises after a space, a "." and a "(" rather than per word, because
+ * all three separators occur in the data: "KAB. CIREBON" -> "Kab. Cirebon",
+ * "KOTA SURAKARTA (SOLO)" -> "Kota Surakarta (Solo)". deslugify() below only
+ * splits on spaces, which would leave "kab." and "(solo)" lowercase.
+ *
+ * Display layer only -- the stored value is untouched.
+ */
+export function formatShippingOrigin(origin: string | null | undefined): string {
+  if (!origin) return '';
+  let result = '';
+  let atBoundary = true;
+  for (const char of origin.toLowerCase()) {
+    result += atBoundary ? char.toUpperCase() : char;
+    atBoundary = char === ' ' || char === '.' || char === '(';
+  }
+  return result;
+}
+
 export function slugify(text: string): string {
   if (!text) return '';
   return text
