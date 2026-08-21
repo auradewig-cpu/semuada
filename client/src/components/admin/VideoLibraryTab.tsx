@@ -83,8 +83,14 @@ export function VideoLibraryTab() {
   };
 
   const allVideos = data?.items ?? [];
-  const trashCount = allVideos.filter((v) => v.trashed_at !== null).length;
   const videos = allVideos.filter((v) => (showTrashOnly ? v.trashed_at !== null : v.trashed_at === null));
+  // Every count on this card describes the set currently on screen: the stock
+  // view counts what is left in the pool, the trash view counts what is in the
+  // trash. Anything else puts two numbers that contradict each other on the
+  // same card -- which is exactly what the old "count everything not purged"
+  // indicator did against the grid below it.
+  const headlineCount = showTrashOnly ? stats?.trashedTotal : stats?.total;
+  const categoryCount = (c: { available: number; trashed: number }) => (showTrashOnly ? c.trashed : c.available);
 
   const confirmDelete = () => {
     if (!deleteTarget) return;
@@ -129,7 +135,10 @@ export function VideoLibraryTab() {
           <CardTitle className="flex items-center justify-between flex-wrap gap-3">
             <span className="flex items-center">
               <Film className="h-5 w-5 mr-2" />
-              Video Library{stats ? ` · ${stats.total} video` : ''}
+              {/* The "Sampah" qualifier is not decoration: without it a bare
+                  "· 98 video" in the trash view reads as the library's size. */}
+              Video Library{showTrashOnly ? ' · Sampah' : ''}
+              {headlineCount !== undefined ? ` · ${headlineCount} video` : ''}
             </span>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center rounded-md border">
@@ -164,7 +173,11 @@ export function VideoLibraryTab() {
                 variant={showTrashOnly ? 'secondary' : 'outline'}
                 onClick={() => setShowTrashOnly((v) => !v)}
               >
-                <Archive className="h-4 w-4 mr-1" /> Sampah{trashCount > 0 ? ` (${trashCount})` : ''}
+                {/* Global, from the stats endpoint. The previous count was
+                    derived from the loaded list, so picking a category shrank
+                    it to that category's trash while the chips beside it
+                    stayed global -- two numbers, two scopes, one row. */}
+                <Archive className="h-4 w-4 mr-1" /> Sampah{stats && stats.trashedTotal > 0 ? ` (${stats.trashedTotal})` : ''}
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setIsStorageDialogOpen(true)}>
                 <Database className="h-4 w-4 mr-1" /> Kelola Storage
@@ -176,16 +189,20 @@ export function VideoLibraryTab() {
           </CardTitle>
           {stats && stats.byCategory.length > 0 && (
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {stats.byCategory.map(({ category: c, count: n }) => (
+              {/* Categories at zero are deliberately still listed: "Perawatan &
+                  Kecantikan (0)" is the out-of-stock warning worth seeing, and
+                  a chip that disappears is easy to miss. The server keeps the
+                  order fixed to available stock so nothing moves on toggle. */}
+              {stats.byCategory.map((entry) => (
                 <Button
-                  key={c}
+                  key={entry.category}
                   type="button"
                   size="sm"
-                  variant={category === c ? 'secondary' : 'ghost'}
+                  variant={category === entry.category ? 'secondary' : 'ghost'}
                   className="h-7 text-xs"
-                  onClick={() => setCategory(category === c ? undefined : c)}
+                  onClick={() => setCategory(category === entry.category ? undefined : entry.category)}
                 >
-                  {c} ({n})
+                  {entry.category} ({categoryCount(entry)})
                 </Button>
               ))}
             </div>

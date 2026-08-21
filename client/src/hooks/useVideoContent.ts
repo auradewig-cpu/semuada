@@ -35,8 +35,11 @@ export function useVideoContents(category?: string) {
 }
 
 export interface VideoContentStats {
+  // Videos still available in the pool -- trashed ones are counted separately
+  // below, never folded in here. See app/api/video-content/stats/route.ts.
   total: number;
-  byCategory: { category: string; count: number }[];
+  trashedTotal: number;
+  byCategory: { category: string; available: number; trashed: number }[];
 }
 
 export function useVideoContentStats() {
