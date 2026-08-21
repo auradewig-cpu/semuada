@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Share2, Copy, Check, Star, TrendingUp, Award, MessageCircle, Send, Facebook, MapPin } from 'lucide-react';
+import { Share2, Copy, Check, Star, TrendingUp, Award, MessageCircle, Send, Facebook } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ProductImageCarousel } from '@/components/ProductImageCarousel';
 import { useToast } from '@/hooks/use-toast';
-import { formatPrice, formatSalesCount } from '@/lib/utils';
+import { formatPrice, formatSalesCount, formatShippingOrigin } from '@/lib/utils';
 import type { Product } from '@/types';
 
 interface ProductCardProps {
@@ -200,19 +200,33 @@ export function ProductCard({ product, onProductClick, priority, variant = 'defa
           )}
         </div>
 
-        {/* Compact micro-row: terjual · lokasi */}
+        {/* Compact: terjual, then the shipping origin on its own two lines.
+            They used to share one truncated line, and since the location sat
+            last it was always the part that got cut -- "10RB+ terjual · ...".
+            Measured in the real font at the 130px of card width a 360px phone
+            leaves: the label alone is 62px, so label + even the shortest
+            regency name overflows a single line. Split across two lines (and
+            title-cased, see formatShippingOrigin) all 45 real values fit, the
+            worst case with 6px to spare.
+
+            No pin icon: it costs 14px against those 6px, and the written
+            label already says what it means. */}
         {isCompact ? (
-          <p className="text-[11px] text-muted-foreground truncate">
-            {product.sales ? `${formatSalesCount(product.sales)} terjual` : ''}
-            {product.sales && product.dikirim_dari ? ' · ' : ''}
-            {product.dikirim_dari ? (
-              <span className="inline-flex items-center gap-0.5">
-                <MapPin className="h-3 w-3 shrink-0" /> {product.dikirim_dari}
-              </span>
-            ) : (
-              ''
+          <>
+            {product.sales ? (
+              <p className="text-[11px] text-muted-foreground truncate">{formatSalesCount(product.sales)} terjual</p>
+            ) : null}
+            {product.dikirim_dari && (
+              <div className="text-muted-foreground leading-tight mt-0.5">
+                <p className="text-[10px]">Dikirim dari:</p>
+                {/* truncate + title is a safety net for <=320px screens, where
+                    the longest names no longer fit; it never triggers at 360px+. */}
+                <p className="text-[11px] truncate" title={formatShippingOrigin(product.dikirim_dari)}>
+                  {formatShippingOrigin(product.dikirim_dari)}
+                </p>
+              </div>
             )}
-          </p>
+          </>
         ) : (
           <div className="flex flex-col space-y-1 mb-2">
             {product.dikirim_dari && (
