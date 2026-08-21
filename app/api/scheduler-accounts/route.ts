@@ -45,11 +45,25 @@ export async function POST(request: NextRequest) {
     is_active,
   } = parsed.data;
 
+  // The dialog never sends an API key back on edit -- it blanks both password
+  // fields on load, so an ordinary edit (renaming an account, pasting a
+  // channel ID) arrives with these two fields ABSENT, meaning "keep the key
+  // you already have". Mapping that absence to `null` is what silently wiped
+  // both credentials on every save: Drizzle drops `undefined` from .set() but
+  // writes `null`, so the update branch really did issue
+  // `set buffer_api_key = null, zernio_api_key = null`, killing that account's
+  // posting on all 5 platforms.
+  //
+  // Absent -> undefined (untouched). Explicit null or an empty string ->
+  // null, so deliberately clearing a key is still possible; the two cases are
+  // no longer conflated. The optional chaining is load-bearing: the schema
+  // accepts an explicit null, and `null.trim()` would 500 the route.
+  const keyUpdate = (value: string | null | undefined) =>
+    value === undefined ? undefined : value?.trim() || null;
+
   const values = {
     label,
     category,
-    bufferApiKey: buffer_api_key ?? null,
-    zernioApiKey: zernio_api_key ?? null,
     tiktokAccountId: tiktok_account_id ?? null,
     instagramAccountId: instagram_account_id ?? null,
     youtubeAccountId: youtube_account_id ?? null,
@@ -64,8 +78,15 @@ export async function POST(request: NextRequest) {
 
   if (id) {
     // rampStartedAt is deliberately absent from `values`, so editing an
-    // account never restarts (or silently clears) its warm-up.
-    const [row] = await db.update(schedulerAccounts).set(values).where(eq(schedulerAccounts.id, id)).returning();
+    // account never restarts (or silently clears) its warm-up. The two keys
+    // come in as undefined when left blank, which Drizzle drops from the
+    // generated UPDATE entirely -- that is what makes "blank = keep" real
+    // rather than just a comment.
+    const [row] = await db
+      .update(schedulerAccounts)
+      .set({ ...values, bufferApiKey: keyUpdate(buffer_api_key), zernioApiKey: keyUpdate(zernio_api_key) })
+      .where(eq(schedulerAccounts.id, id))
+      .returning();
     if (!row) {
       return NextResponse.json({ error: "Akun scheduler tidak ditemukan." }, { status: 404 });
     }
@@ -78,6 +99,16 @@ export async function POST(request: NextRequest) {
   // brand-new account would begin at full cadence -- exactly the pattern the
   // ramp exists to avoid, and the case that matters most since a fresh
   // account is the one most likely to be flagged.
-  const [row] = await db.insert(schedulerAccounts).values({ ...values, rampStartedAt: new Date() }).returning();
+  // On insert there is no existing key to preserve, so an absent field is a
+  // genuine "no credential yet" -- hence the `?? null` here but not above.
+  const [row] = await db
+    .insert(schedulerAccounts)
+    .values({
+      ...values,
+      bufferApiKey: keyUpdate(buffer_api_key) ?? null,
+      zernioApiKey: keyUpdate(zernio_api_key) ?? null,
+      rampStartedAt: new Date(),
+    })
+    .returning();
   return NextResponse.json(toApiSchedulerAccount(row), { status: 201 });
 }
