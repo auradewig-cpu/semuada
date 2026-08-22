@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
 export interface SchedulerAccount {
@@ -178,16 +178,26 @@ export function useRetryScheduledPost() {
   });
 }
 
+// Paged: the endpoint is an append-only log that grows every day, and each row
+// renders a <video>. useInfiniteQuery keeps the "Muat lebih banyak" button
+// honest without the tab ever loading the whole history at once.
 export function useScheduledPosts(schedulerAccountId?: string) {
-  return useQuery<{ items: ScheduledPost[] }>({
+  return useInfiniteQuery<ScheduledPostsPage>({
     queryKey: ['scheduled-posts', schedulerAccountId ?? 'all'],
-    queryFn: async () => {
-      const url = schedulerAccountId
-        ? `/api/scheduled-posts?scheduler_account_id=${schedulerAccountId}`
-        : '/api/scheduled-posts';
-      const res = await fetch(url, { credentials: 'include' });
+    initialPageParam: 0,
+    getNextPageParam: (last) => last.nextOffset,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ offset: String(pageParam ?? 0) });
+      if (schedulerAccountId) params.set('scheduler_account_id', schedulerAccountId);
+      const res = await fetch(`/api/scheduled-posts?${params.toString()}`, { credentials: 'include' });
       if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
       return res.json();
     },
   });
+}
+
+export interface ScheduledPostsPage {
+  items: ScheduledPost[];
+  hasMore: boolean;
+  nextOffset: number | null;
 }

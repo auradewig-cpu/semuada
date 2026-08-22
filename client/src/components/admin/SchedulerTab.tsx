@@ -57,10 +57,23 @@ function isVideoSize(value: string | null): value is VideoSize {
   return value === 'kecil' || value === 'sedang' || value === 'besar';
 }
 
-function isToday(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+// The scheduler thinks in Asia/Jakarta days (see TIMEZONE in
+// lib/scheduler/buildSchedule.ts), so the UI has to as well -- comparing
+// against the browser's local day would put slots on the wrong date for anyone
+// not sitting in WIB, and `last_built_date` is a WIB "YYYY-MM-DD" string that
+// only means anything next to another one.
+const SCHEDULER_TIMEZONE = 'Asia/Jakarta';
+
+function jakartaDayISO(value: Date | string): string {
+  const d = typeof value === 'string' ? new Date(value) : value;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SCHEDULER_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 // Platforms without a recorded ok:true result -- covers both a fully
@@ -81,7 +94,7 @@ export function SchedulerTab() {
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
 
   const { data: accountsData, isLoading: isLoadingAccounts } = useSchedulerAccounts();
-  const { data: postsData, isLoading: isLoadingPosts } = useScheduledPosts(selectedAccountId);
+  const { data: postsData, isLoading: isLoadingPosts, hasNextPage, fetchNextPage, isFetchingNextPage } = useScheduledPosts(selectedAccountId);
   const buildScheduleNow = useBuildScheduleNow();
   const swapVideo = useSwapScheduledPostVideo();
   const retryPost = useRetryScheduledPost();
@@ -107,7 +120,7 @@ export function SchedulerTab() {
   };
 
   const accounts = accountsData?.items ?? [];
-  const posts = postsData?.items ?? [];
+  const posts = useMemo(() => postsData?.pages.flatMap((p) => p.items) ?? [], [postsData]);
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
   const handleSwapVideo = (video: { id: string }) => {
@@ -190,18 +203,23 @@ export function SchedulerTab() {
   );
 
   const poolWarnings = useMemo(() => {
+    const today = jakartaDayISO(new Date());
     const todaysCountByAccount = new Map<string, number>();
     for (const p of posts) {
-      if (!isToday(p.scheduled_for)) continue;
+      if (jakartaDayISO(p.scheduled_for) !== today) continue;
       todaysCountByAccount.set(p.scheduler_account_id, (todaysCountByAccount.get(p.scheduler_account_id) ?? 0) + 1);
     }
     const now = new Date();
     // Accounts with no platform configured are excluded: they get their own,
     // more accurate warning above. Reporting "video kurang" for them would
     // send the admin to upload videos that were never the problem.
+    // Also skipped: accounts whose build for today hasn't run yet. The cron
+    // fires at 01:00 WIB, so without this every account looked "kekurangan
+    // video" for the first hour of every day -- nine warnings a night for a
+    // problem that did not exist.
     const unconfigured = new Set(unconfiguredAccounts.map((a) => a.id));
     return accounts
-      .filter((a) => a.is_active && !unconfigured.has(a.id))
+      .filter((a) => a.is_active && !unconfigured.has(a.id) && a.last_built_date === today)
       .map((a) => ({
         account: a,
         todayCount: todaysCountByAccount.get(a.id) ?? 0,
@@ -369,6 +387,14 @@ export function SchedulerTab() {
                   </Card>
                 );
               })}
+            </div>
+          )}
+
+          {hasNextPage && (
+            <div className="flex justify-center pt-4">
+              <Button type="button" variant="outline" size="sm" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+                {isFetchingNextPage ? 'Memuat...' : 'Muat lebih banyak'}
+              </Button>
             </div>
           )}
         </CardContent>

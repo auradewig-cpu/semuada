@@ -133,19 +133,19 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
     return results;
   }
 
-  const targets = platforms
-    .filter((p): p is "threads" | "facebook_page" => p === "threads" || p === "facebook_page")
-    .map((platform) => {
-      const accountId = account[ACCOUNT_ID_FIELD[platform]];
-      return accountId ? { platform, accountId } : null;
-    });
-
-  for (let i = 0; i < platforms.length; i++) {
-    if (!targets[i]) {
-      results[platforms[i]] = { ok: false, error: `Account ID ${platforms[i]} belum diisi di akun "${account.label}".` };
-    }
+  // Built by walking `platforms` directly rather than indexing a filtered
+  // array against the unfiltered one -- the old version only lined up because
+  // every caller happened to pre-filter to Zernio platforms, so any new caller
+  // would have attached errors to the wrong platform.
+  const validTargets: Array<{ platform: "threads" | "facebook_page"; accountId: string }> = [];
+  for (const platform of platforms) {
+    if (platform !== "threads" && platform !== "facebook_page") continue;
+    // ACCOUNT_ID_FIELD is keyed to `keyof SchedulerAccount`, so the lookup is
+    // the union of every column type -- narrow it rather than assert.
+    const accountId = account[ACCOUNT_ID_FIELD[platform]];
+    if (typeof accountId === "string" && accountId) validTargets.push({ platform, accountId });
+    else results[platform] = { ok: false, error: `Account ID ${platform} belum diisi di akun "${account.label}".` };
   }
-  const validTargets = targets.filter((t): t is { platform: "threads" | "facebook_page"; accountId: string } => t !== null);
   if (validTargets.length === 0) return results;
 
   let publicUrl: string;

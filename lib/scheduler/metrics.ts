@@ -182,27 +182,47 @@ async function syncAccount(account: SchedulerAccount, since: Date, capturedOn: s
   // across the two, so one lookup table serves both.
   const providerPosts: ProviderPostsById = new Map([...bufferPosts, ...zernioPosts]);
 
+  // The earliest moment any of this post's platforms actually went live,
+  // according to the provider. posted_at only records when WE handed it over,
+  // which for a scheduled hand-off is ~18.6 hours earlier -- so without this
+  // there is no stored answer to "what time did this actually publish".
+  const publishedAt = (post: ScheduledPost, results: ProviderResults): Date | null => {
+    let earliest: Date | null = null;
+    for (const platform of post.platforms as SchedulerPlatform[]) {
+      const id = results[platform]?.ok ? results[platform]?.postId : undefined;
+      const sent = id ? providerPosts.get(id)?.state.sentAt : undefined;
+      if (sent && !isNaN(sent.getTime()) && (!earliest || sent < earliest)) earliest = sent;
+    }
+    return earliest;
+  };
+
   // Correct the recorded outcomes BEFORE collecting metrics, so a post that
   // turns out to have failed doesn't also get a metrics row written for it.
   let reconciled = 0;
   for (const post of posts) {
     const next = reconcileResults(post, providerPosts);
-    if (!next) continue;
+    const sent = publishedAt(post, next ?? ((post.providerResults as ProviderResults | null) ?? {}));
+    const needsSentAt = sent !== null && post.sentAt === null;
+    if (!next && !needsSentAt) continue;
 
-    const outcomes = Object.values(next);
+    const merged = next ?? ((post.providerResults as ProviderResults | null) ?? {});
+    const outcomes = Object.values(merged);
     const allFailed = outcomes.length > 0 && outcomes.every((r) => !r.ok);
     await db
       .update(scheduledPosts)
       .set({
-        providerResults: next,
+        providerResults: merged,
         // Mirrors dispatchScheduledPost's own rule: "posted" means at least
         // one platform succeeded, "failed" means none did.
         status: allFailed ? "failed" : "posted",
         errorMessage: allFailed ? outcomes.map((r) => r.error).filter(Boolean).join("; ") : null,
+        ...(needsSentAt ? { sentAt: sent } : {}),
       })
       .where(eq(scheduledPosts.id, post.id));
-    post.providerResults = next;
-    reconciled++;
+    if (next) {
+      post.providerResults = next;
+      reconciled++;
+    }
   }
 
   const rows: ReturnType<typeof toRow>[] = [];

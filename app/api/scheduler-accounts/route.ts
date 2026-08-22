@@ -57,17 +57,23 @@ export async function POST(request: NextRequest) {
   // null, so deliberately clearing a key is still possible; the two cases are
   // no longer conflated. The optional chaining is load-bearing: the schema
   // accepts an explicit null, and `null.trim()` would 500 the route.
+  // Channel IDs follow the SAME rule. They used to use `?? null`, i.e. absent
+  // meant "wipe it" -- harmless only because the dialog happens to send all
+  // five every time. That is exactly the assumption that made the API-key wipe
+  // possible, and it is not worth relying on twice: a partial body from any
+  // other caller would silently unconfigure the account's platforms, and the
+  // build would then skip it as unconfigured.
   const keyUpdate = (value: string | null | undefined) =>
     value === undefined ? undefined : value?.trim() || null;
 
   const values = {
     label,
     category,
-    tiktokAccountId: tiktok_account_id ?? null,
-    instagramAccountId: instagram_account_id ?? null,
-    youtubeAccountId: youtube_account_id ?? null,
-    threadsAccountId: threads_account_id ?? null,
-    facebookPageAccountId: facebook_page_account_id ?? null,
+    tiktokAccountId: keyUpdate(tiktok_account_id),
+    instagramAccountId: keyUpdate(instagram_account_id),
+    youtubeAccountId: keyUpdate(youtube_account_id),
+    threadsAccountId: keyUpdate(threads_account_id),
+    facebookPageAccountId: keyUpdate(facebook_page_account_id),
     baseTimes: base_times,
     // incrementMinutes is deliberately not written: the rotation no longer
     // uses it (see lib/scheduler/rotation.ts). The column keeps its existing
@@ -100,12 +106,17 @@ export async function POST(request: NextRequest) {
   // brand-new account would begin at full cadence -- exactly the pattern the
   // ramp exists to avoid, and the case that matters most since a fresh
   // account is the one most likely to be flagged.
-  // On insert there is no existing key to preserve, so an absent field is a
-  // genuine "no credential yet" -- hence the `?? null` here but not above.
+  // On insert there is nothing to preserve, so an absent field is a genuine
+  // "not set yet" -- hence the `?? null` here but not above.
   const [row] = await db
     .insert(schedulerAccounts)
     .values({
       ...values,
+      tiktokAccountId: values.tiktokAccountId ?? null,
+      instagramAccountId: values.instagramAccountId ?? null,
+      youtubeAccountId: values.youtubeAccountId ?? null,
+      threadsAccountId: values.threadsAccountId ?? null,
+      facebookPageAccountId: values.facebookPageAccountId ?? null,
       bufferApiKey: keyUpdate(buffer_api_key) ?? null,
       zernioApiKey: keyUpdate(zernio_api_key) ?? null,
       rampStartedAt: new Date(),

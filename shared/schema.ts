@@ -286,7 +286,19 @@ export const scheduledPosts = pgTable("scheduled_posts", {
   // "instagram":{"ok":false,"error":"..."}} -- lets one post row report
   // partial success across its 5 target platforms instead of one flat result.
   providerResults: jsonb("provider_results"),
+  // When WE handed the post to the provider -- NOT when it went live. Since
+  // the daily cron switched to scheduled hand-off, that is around 01:53 WIB
+  // for a post that publishes in the evening: a measured average gap of 18.6
+  // hours. Read it as "dispatched at".
   postedAt: timestamp("posted_at", { withTimezone: true }),
+  // When the PROVIDER actually published it (Buffer's sentAt, Zernio's
+  // publishedAt), filled in by the metrics sync. Both providers report this
+  // and the code already fetched it, but nothing stored it -- so there was no
+  // way to tell what time a post really went out, which is also the only way
+  // to know whether the rotation's per-day jitter survives the hand-off or is
+  // flattened by the provider's own scheduling. Null until the first sync
+  // after publication.
+  sentAt: timestamp("sent_at", { withTimezone: true }),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
