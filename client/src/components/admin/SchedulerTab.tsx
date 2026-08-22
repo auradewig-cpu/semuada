@@ -175,15 +175,6 @@ export function SchedulerTab() {
     });
   };
 
-  // Compares today's queued+posted rows per account against how many slots
-  // that account is actually expected to fill today -- a shortfall means the
-  // pool ran dry when build-schedule last ran for it.
-  //
-  // Expected comes from activeSlotCount(), NOT base_times.length: accounts
-  // ramp up from one post a day to three over 60 days, so an account still
-  // in its first phase legitimately fills 1 of its 3 base_times. Counting
-  // all of them would flag every account as short of video every single day
-  // for the first two months.
   // An active account with no channel ID anywhere can never post. It used to
   // fail silently AND destructively -- one video claimed out of the pool per
   // day, marked "posted", then stranded. buildScheduleForAccount() now refuses
@@ -202,6 +193,15 @@ export function SchedulerTab() {
     [accounts]
   );
 
+  // Compares today's rows per account against how many slots that account is
+  // actually expected to fill today -- a shortfall means the pool ran dry when
+  // build-schedule last ran for it.
+  //
+  // Expected comes from activeSlotCount(), NOT base_times.length: accounts
+  // ramp up from one post a day to three over 60 days, so an account still in
+  // its first phase legitimately fills 1 of its 3 base_times. Counting all of
+  // them would flag every account as short of video every single day for the
+  // first two months.
   const poolWarnings = useMemo(() => {
     const today = jakartaDayISO(new Date());
     const todaysCountByAccount = new Map<string, number>();
@@ -210,23 +210,32 @@ export function SchedulerTab() {
       todaysCountByAccount.set(p.scheduler_account_id, (todaysCountByAccount.get(p.scheduler_account_id) ?? 0) + 1);
     }
     const now = new Date();
-    // Accounts with no platform configured are excluded: they get their own,
-    // more accurate warning above. Reporting "video kurang" for them would
-    // send the admin to upload videos that were never the problem.
-    // Also skipped: accounts whose build for today hasn't run yet. The cron
-    // fires at 01:00 WIB, so without this every account looked "kekurangan
-    // video" for the first hour of every day -- nine warnings a night for a
-    // problem that did not exist.
+    // Three exclusions, each for a distinct false alarm:
+    //  - accounts with no platform configured get their own, more accurate
+    //    warning above; telling the admin to upload video would send them
+    //    after something that was never the problem;
+    //  - accounts whose build for today hasn't run yet -- the cron fires at
+    //    01:00 WIB, so without this every account looked short of video for
+    //    the first hour of every night;
+    //  - every account except the selected one when the dropdown is filtered,
+    //    because `posts` is then filtered too, so the other eight would each
+    //    count zero posts today and be reported as starving.
     const unconfigured = new Set(unconfiguredAccounts.map((a) => a.id));
     return accounts
-      .filter((a) => a.is_active && !unconfigured.has(a.id) && a.last_built_date === today)
+      .filter(
+        (a) =>
+          a.is_active &&
+          !unconfigured.has(a.id) &&
+          a.last_built_date === today &&
+          (!selectedAccountId || a.id === selectedAccountId)
+      )
       .map((a) => ({
         account: a,
         todayCount: todaysCountByAccount.get(a.id) ?? 0,
         expected: activeSlotCount({ baseTimes: a.base_times, rampStartedAt: a.ramp_started_at }, now),
       }))
       .filter((w) => w.todayCount < w.expected);
-  }, [accounts, posts, unconfiguredAccounts]);
+  }, [accounts, posts, unconfiguredAccounts, selectedAccountId]);
 
   return (
     <div className="space-y-6">

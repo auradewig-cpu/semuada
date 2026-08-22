@@ -2,6 +2,7 @@ import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { postMetrics, scheduledPosts, schedulerAccounts, type ScheduledPost, type SchedulerAccount } from "@shared/schema";
 import { fetchBufferPosts } from "./providers/buffer";
+import { resolveDispatchOutcome } from "./dispatch";
 import { fetchZernioMetrics, fetchZernioPosts, fetchZernioPublishedPosts } from "./providers/zernio";
 import { BUFFER_PLATFORMS, ZERNIO_PLATFORMS } from "./platforms";
 import { TIMEZONE, todayISOInTimezone } from "./buildSchedule";
@@ -206,16 +207,19 @@ async function syncAccount(account: SchedulerAccount, since: Date, capturedOn: s
     if (!next && !needsSentAt) continue;
 
     const merged = next ?? ((post.providerResults as ProviderResults | null) ?? {});
-    const outcomes = Object.values(merged);
-    const allFailed = outcomes.length > 0 && outcomes.every((r) => !r.ok);
+    // Reuses dispatch's own rule rather than restating it. This used to be a
+    // local copy that had already drifted -- it kept the `outcomes.length > 0`
+    // guard that made an empty result set read as "posted", the exact bug
+    // fixed on the dispatch side. Unreachable here (a row only gets this far
+    // if it has at least one result), but a rule stated twice is a rule that
+    // will disagree with itself eventually.
+    const outcome = resolveDispatchOutcome(merged);
     await db
       .update(scheduledPosts)
       .set({
         providerResults: merged,
-        // Mirrors dispatchScheduledPost's own rule: "posted" means at least
-        // one platform succeeded, "failed" means none did.
-        status: allFailed ? "failed" : "posted",
-        errorMessage: allFailed ? outcomes.map((r) => r.error).filter(Boolean).join("; ") : null,
+        status: outcome.status,
+        errorMessage: outcome.errorMessage,
         ...(needsSentAt ? { sentAt: sent } : {}),
       })
       .where(eq(scheduledPosts.id, post.id));
