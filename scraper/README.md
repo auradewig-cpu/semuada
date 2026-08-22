@@ -81,7 +81,35 @@ Tinggal jalankan command yang **sama persis** lagi. Baris yang `ID Produk`-nya
 sudah ada di file output otomatis dilewati, jadi tidak scraping ulang dari
 nol.
 
+## Kalau Shopee memblokir (yang paling sering terjadi)
+
+Cek dulu ke sini sebelum menyalahkan selector. Shopee membalas dengan **empat
+halaman berbeda**, dan scraper sekarang mengenali keempatnya lalu bereaksi
+sendiri:
+
+| Yang muncul di panel | Artinya | Yang dilakukan scraper |
+|---|---|---|
+| `Diblokir (verifikasi)` | Shopee minta verifikasi captcha | **Berhenti dan menunggu Anda**: selesaikan verifikasinya di jendela Chrome, lalu klik **Lanjutkan** di panel |
+| `Diblokir (halaman_tidak_tersedia)` | Penolakan server | Istirahat 10 menit, naik 2× tiap blokir beruntun (maks 30 menit) |
+| `Diblokir (halaman_cangkang)` | Halaman terbuka tapi isi produk kosong | Istirahat 3 menit, eskalasi sama |
+| `Diblokir (error_sementara)` | Shopee sendiri bilang "Coba Lagi" | Ulangi langsung, maksimal 2× |
+
+Produk yang diblokir **tidak dibuang**: di akhir run scraper mengulanginya
+sampai 2 lintasan tambahan. Blokirnya terbukti sementara — produk yang sama
+sering berhasil di percobaan berikutnya.
+
+Produk yang diblokir juga **tidak pernah masuk database**, jadi tidak ada
+risiko baris kosong/berantakan dari halaman blokir.
+
+Setiap percobaan dicatat di `scraper/scrape_log.csv` (waktu, produk, hasil,
+durasi) dan log panel disimpan di `scraper/logs/`. Kalau run berhenti lebih
+cepat dari biasanya, dua file itu jawabannya — bukan tebakan.
+
 ## Kalau hasilnya kosong / salah (Shopee ganti tampilan)
+
+Ini baru relevan kalau dump di `scraper/debug/` bernama `selector_*`. Nama
+`diblokir_*` berarti masalahnya blokir, bukan tampilan — lihat bagian di atas.
+
 
 Selector CSS yang dipakai ada di `shopee_selectors.py` (satu file terpisah biar
 gampang diupdate). Kalau Shopee redesign halaman produk mereka, biasanya

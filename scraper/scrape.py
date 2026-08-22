@@ -30,7 +30,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+import run_log
 import shopee_selectors as sel
+from blocking import BLOCK_TRANSIENT, BLOCK_VERIFICATION, BlockedError, classify_block, cooldown_seconds
 from parsers import parse_count, parse_price, parse_rating
 
 OUTPUT_HEADERS = [
@@ -51,7 +53,19 @@ MAX_DELAY_SECONDS = 32
 # Circuit breaker: abort the run early if this many rows in a row fail --
 # almost always means Shopee is blocking the session or the admin login
 # expired, so grinding through the rest of the CSV would just waste an hour.
+# Counts real exceptions only; a blocked page has its own budget below.
 MAX_CONSECUTIVE_FAILURES = 8
+# Blocks get a separate, larger budget because they are survivable: the loop
+# backs off between them (see blocking.cooldown_seconds) instead of retrying
+# at full speed, and reaching this limit means Shopee is throttling hard
+# enough that the session is better resumed later.
+MAX_CONSECUTIVE_BLOCKS = 6
+# A "Coba Lagi" page is Shopee telling us to retry, so retry it immediately
+# rather than deferring the product to the end of the run.
+MAX_TRANSIENT_RETRIES = 2
+# Extra passes over the products that were blocked. Bounded so a session that
+# is thoroughly throttled ends instead of looping.
+MAX_RETRY_PASSES = 2
 
 logging.basicConfig(
     level=logging.INFO,
@@ -324,6 +338,13 @@ def scrape_product(driver, product_url: str, product_id: str = "") -> dict:
     if is_out_of_stock(body_text):
         raise OutOfStockError(f"Produk stok habis: {product_id}")
 
+    # Cheap check first: the three text-based blocking pages are recognisable
+    # before any extraction work, so a blocked page costs almost nothing.
+    text_block = classify_block(body_text)
+    if text_block:
+        dump_debug_page(driver, product_id, f"diblokir_{text_block}")
+        raise BlockedError(text_block, product_id)
+
     category, subcategory, item, scraped_title = scrape_breadcrumb(driver)
     price = scrape_price(driver, body_text)
     original_price = scrape_original_price(body_text)
@@ -332,12 +353,26 @@ def scrape_product(driver, product_url: str, product_id: str = "") -> dict:
     ship_from = scrape_ship_from(body_text)
     gallery = scrape_gallery_images(driver)
 
-    if category == "Lainnya" and not subcategory:
-        dump_debug_page(driver, product_id, "breadcrumb")
+    # The fourth blocking page has no distinguishing text at all: header and
+    # footer render (the session is alive, other APIs answer) while the
+    # product body never arrives. It shows up as everything being missing at
+    # once, which is why all three flags must agree before calling it a block.
+    breadcrumb_empty = category == "Lainnya" and not subcategory
+    shell_block = classify_block(body_text, breadcrumb_empty, not gallery, price is None)
+    if shell_block:
+        dump_debug_page(driver, product_id, f"diblokir_{shell_block}")
+        raise BlockedError(shell_block, product_id)
+
+    # Past this point the page really is a product page, so an empty field
+    # really can be a stale selector -- which is what these dumps are for.
+    # They used to fire for blocked pages too, which is how five weeks of
+    # throttling got misdiagnosed as a Shopee redesign.
+    if breadcrumb_empty:
+        dump_debug_page(driver, product_id, "selector_breadcrumb")
     if not gallery:
-        dump_debug_page(driver, product_id, "image")
+        dump_debug_page(driver, product_id, "selector_image")
     elif len(gallery) == 1:
-        dump_debug_page(driver, product_id, "gallery")
+        dump_debug_page(driver, product_id, "selector_gallery")
 
     return {
         "product_name": scraped_title,
@@ -431,29 +466,121 @@ class ScrapeControl:
             time.sleep(min(1.0, deadline - time.monotonic()))
 
 
+@dataclass
+class ScrapeStats:
+    """Outcome tally for a whole run, retry passes included."""
+    success: int = 0
+    failed: int = 0
+    out_of_stock: int = 0
+    blocked: int = 0
+    recovered_on_retry: int = 0
+
+
+# Outcome labels shared by the ledger, the progress callback and the panel's
+# counters, so all three agree on what happened. Previously progress_cb took a
+# bool, which forced an out-of-stock skip to be reported as a success and made
+# the panel's "sukses" number lie.
+OUTCOME_OK = "ok"
+OUTCOME_FAILED = "gagal"
+OUTCOME_OUT_OF_STOCK = "stok_habis"
+OUTCOME_BLOCKED = "diblokir"
+OUTCOME_INFO = "info"
+
+
+def _scrape_with_transient_retry(driver, product_url: str, product_id: str, control: ScrapeControl) -> dict:
+    """scrape_product(), but Shopee's "Terjadi Kesalahan ... Coba Lagi" page is
+    retried in place first. That page is Shopee itself asking for a retry, so
+    deferring the product to the end of the run would be a needless detour."""
+    for attempt in range(MAX_TRANSIENT_RETRIES + 1):
+        try:
+            return scrape_product(driver, product_url, product_id)
+        except BlockedError as e:
+            if e.kind != BLOCK_TRANSIENT or attempt >= MAX_TRANSIENT_RETRIES:
+                raise
+            wait = cooldown_seconds(BLOCK_TRANSIENT, 1)
+            log.info("  Error sementara pada ID %s -- coba lagi dalam %ds (percobaan %d)", product_id, wait, attempt + 2)
+            control.interruptible_sleep(wait)
+            if control.stopped:
+                raise
+    raise BlockedError(BLOCK_TRANSIENT, product_id)  # unreachable, keeps type checkers happy
+
+
 def run_scrape_loop(
     driver,
     rows: list[dict],
     link_column: str,
     on_result: Callable[[dict, dict], None],
     control: Optional[ScrapeControl] = None,
-    progress_cb: Optional[Callable[[int, int, str, bool], None]] = None,
-) -> tuple[int, int, int]:
+    progress_cb: Optional[Callable[[int, int, str, str], None]] = None,
+    on_verification: Optional[Callable[[str], None]] = None,
+    run_id: Optional[str] = None,
+) -> ScrapeStats:
     """Scrapes each row's `link_column` URL and calls on_result(csv_row,
     scraped) for every success. Shared by the CLI (writes CSV rows) and the
     local control panel (POSTs straight to the site's API).
 
-    progress_cb(index, total, message, ok) is called after every row
-    (success, failure, or out-of-stock skip) so a caller can report live
-    progress. Returns (success, failed, skipped_out_of_stock).
+    progress_cb(index, total, message, outcome) is called after every row, with
+    outcome one of the OUTCOME_* labels above.
+
+    on_verification(message) is called when Shopee shows its verification gate,
+    which no amount of waiting can clear -- it needs the person sitting in front
+    of the headed browser. The panel passes a handler that pauses and notifies;
+    callers without one (the CLI) get a clean stop instead of a hang.
+
+    Products that were blocked are retried in up to MAX_RETRY_PASSES further
+    passes, because blocks here are demonstrably temporary: several products
+    that hit a blocking page scraped perfectly on a later attempt.
     """
     control = control or ScrapeControl()
-    success, failed, skipped_out_of_stock = 0, 0, 0
+    run_id = run_id or run_log.new_run_id()
+    stats = ScrapeStats()
+
+    pending = list(rows)
+    for pass_index in range(MAX_RETRY_PASSES + 1):
+        if not pending or control.stopped:
+            break
+        if pass_index > 0:
+            msg = f"Lintasan ulang {pass_index}: mencoba lagi {len(pending)} produk yang sempat diblokir."
+            log.info(msg)
+            if progress_cb:
+                progress_cb(0, len(pending), msg, OUTCOME_INFO)
+        before = stats.success
+        pending = _run_one_pass(
+            driver, pending, link_column, on_result, control, progress_cb, on_verification, run_id, stats
+        )
+        if pass_index > 0:
+            stats.recovered_on_retry += stats.success - before
+
+    if pending and not control.stopped:
+        msg = f"{len(pending)} produk masih diblokir setelah {MAX_RETRY_PASSES} lintasan ulang -- coba lagi nanti."
+        log.warning(msg)
+        if progress_cb:
+            progress_cb(0, len(pending), msg, OUTCOME_INFO)
+
+    return stats
+
+
+def _run_one_pass(
+    driver,
+    rows: list[dict],
+    link_column: str,
+    on_result: Callable[[dict, dict], None],
+    control: ScrapeControl,
+    progress_cb: Optional[Callable[[int, int, str, str], None]],
+    on_verification: Optional[Callable[[str], None]],
+    run_id: str,
+    stats: ScrapeStats,
+) -> list[dict]:
+    """One sweep over `rows`. Returns the rows that were blocked, for the
+    caller to retry."""
     consecutive_failures = 0
+    consecutive_blocks = 0
+    blocked_rows: list[dict] = []
+    total = len(rows)
 
     for i, row in enumerate(rows, start=1):
         if control.stopped:
-            log.info("Dihentikan oleh pengguna pada baris %d/%d.", i, len(rows))
+            log.info("Dihentikan oleh pengguna pada baris %d/%d.", i, total)
             break
 
         control.wait_if_paused()
@@ -463,57 +590,123 @@ def run_scrape_loop(
         product_id = row.get("ID Produk", "").strip()
         product_url = row.get(link_column, "").strip()
         if not product_url:
-            log.warning("[%d/%d] Lewati ID %s: kolom '%s' kosong", i, len(rows), product_id, link_column)
+            log.warning("[%d/%d] Lewati ID %s: kolom '%s' kosong", i, total, product_id, link_column)
             if progress_cb:
-                progress_cb(i, len(rows), f"Lewati ID {product_id}: link kosong", False)
+                progress_cb(i, total, f"Lewati ID {product_id}: link kosong", OUTCOME_INFO)
             continue
 
+        started = time.monotonic()
+        # Set when a cool-down already ran, so the normal browsing delay isn't
+        # stacked on top of a 10-minute wait.
+        skip_normal_delay = False
+
         try:
-            log.info("[%d/%d] Scraping ID %s -> %s", i, len(rows), product_id, product_url)
-            scraped = scrape_product(driver, product_url, product_id)
+            log.info("[%d/%d] Scraping ID %s -> %s", i, total, product_id, product_url)
+            scraped = _scrape_with_transient_retry(driver, product_url, product_id, control)
             on_result(row, scraped)
-            success += 1
+            stats.success += 1
             consecutive_failures = 0
+            consecutive_blocks = 0
             msg = f"OK: {scraped.get('product_name')} | Rp{scraped.get('price')} | {scraped.get('category')} > {scraped.get('subcategory')} > {scraped.get('item')}"
             log.info("  %s", msg)
+            run_log.append_ledger(run_id, product_id, OUTCOME_OK, time.monotonic() - started)
             if progress_cb:
-                progress_cb(i, len(rows), msg, True)
+                progress_cb(i, total, msg, OUTCOME_OK)
         except OutOfStockError:
-            skipped_out_of_stock += 1
+            stats.out_of_stock += 1
             # Not a scrape failure -- don't trip the circuit breaker, and
             # reset it since this proves the session/connection is fine.
             consecutive_failures = 0
-            log.info("  [%d/%d] Dilewati ID %s: stok habis", i, len(rows), product_id)
+            consecutive_blocks = 0
+            log.info("  [%d/%d] Dilewati ID %s: stok habis", i, total, product_id)
+            run_log.append_ledger(run_id, product_id, OUTCOME_OUT_OF_STOCK, time.monotonic() - started)
             if progress_cb:
-                progress_cb(i, len(rows), f"Dilewati ID {product_id}: stok habis", True)
+                progress_cb(i, total, f"Dilewati ID {product_id}: stok habis", OUTCOME_OUT_OF_STOCK)
+        except BlockedError as e:
+            # A block carries no product data, so on_result is never called --
+            # the database holds zero junk rows today and must keep holding
+            # zero. The row is queued for a later pass instead.
+            stats.blocked += 1
+            consecutive_blocks += 1
+            blocked_rows.append(row)
+            # A blocking page proves the session still works; only real
+            # exceptions say the session is broken.
+            consecutive_failures = 0
+            run_log.append_ledger(run_id, product_id, f"{OUTCOME_BLOCKED}_{e.kind}", time.monotonic() - started)
+
+            if e.kind == BLOCK_VERIFICATION:
+                msg = (
+                    f"Shopee minta VERIFIKASI pada ID {product_id}. Selesaikan verifikasinya di "
+                    f"jendela Chrome yang terbuka, lalu klik Lanjutkan di panel."
+                )
+                log.warning("  %s", msg)
+                if progress_cb:
+                    progress_cb(i, total, msg, OUTCOME_BLOCKED)
+                if on_verification:
+                    on_verification(msg)
+                    # Blocks here until the person resumes from the panel.
+                    control.wait_if_paused()
+                    consecutive_blocks = 0
+                else:
+                    # Nothing can clear a captcha unattended, and the CLI has
+                    # no resume path -- stop cleanly rather than spin.
+                    log.error("  Tidak ada cara melanjutkan otomatis -- run dihentikan.")
+                    control.stop()
+                    break
+            else:
+                wait = cooldown_seconds(e.kind, consecutive_blocks)
+                msg = f"Diblokir ({e.kind}) pada ID {product_id} -- istirahat {wait // 60}m {wait % 60}s sebelum lanjut."
+                log.warning("  %s", msg)
+                if progress_cb:
+                    progress_cb(i, total, msg, OUTCOME_BLOCKED)
+                control.interruptible_sleep(wait)
+                skip_normal_delay = True
         except (TimeoutException, WebDriverException) as e:
-            failed += 1
+            stats.failed += 1
             consecutive_failures += 1
             log.error("  GAGAL ID %s: %s", product_id, e)
+            run_log.append_ledger(run_id, product_id, OUTCOME_FAILED, time.monotonic() - started, str(e))
             if progress_cb:
-                progress_cb(i, len(rows), f"GAGAL ID {product_id}: {e}", False)
+                progress_cb(i, total, f"GAGAL ID {product_id}: {e}", OUTCOME_FAILED)
         except Exception as e:  # noqa: BLE001 - keep the batch running no matter what
-            failed += 1
+            stats.failed += 1
             consecutive_failures += 1
             log.error("  GAGAL ID %s (unexpected): %s", product_id, e)
+            run_log.append_ledger(run_id, product_id, OUTCOME_FAILED, time.monotonic() - started, str(e))
             if progress_cb:
-                progress_cb(i, len(rows), f"GAGAL ID {product_id}: {e}", False)
+                progress_cb(i, total, f"GAGAL ID {product_id}: {e}", OUTCOME_FAILED)
 
         if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
             reason = (
                 f"Berhenti otomatis: {consecutive_failures} produk gagal berturut-turut -- "
-                f"kemungkinan Shopee memblokir/membatasi sesi ini, atau sesi admin/login sudah tidak valid. "
+                f"kemungkinan sesi admin/login sudah tidak valid atau koneksi bermasalah. "
                 f"Cek koneksi/login lalu coba lagi (produk yang sudah berhasil tidak akan diulang)."
             )
             log.error(reason)
             if progress_cb:
-                progress_cb(i, len(rows), reason, False)
+                progress_cb(i, total, reason, OUTCOME_FAILED)
             control.stop()
             break
 
-        control.interruptible_sleep(random.uniform(MIN_DELAY_SECONDS, MAX_DELAY_SECONDS))
+        if consecutive_blocks >= MAX_CONSECUTIVE_BLOCKS:
+            reason = (
+                f"Berhenti otomatis: {consecutive_blocks} produk diblokir berturut-turut meski sudah "
+                f"istirahat bertahap -- Shopee sedang membatasi sesi ini cukup keras. Lanjutkan nanti; "
+                f"produk yang sudah berhasil tidak akan diulang."
+            )
+            log.error(reason)
+            if progress_cb:
+                progress_cb(i, total, reason, OUTCOME_BLOCKED)
+            control.stop()
+            break
 
-    return success, failed, skipped_out_of_stock
+        if not skip_normal_delay:
+            control.interruptible_sleep(random.uniform(MIN_DELAY_SECONDS, MAX_DELAY_SECONDS))
+
+    # Rows never reached because the pass stopped early are not "blocked" --
+    # returning them would retry them under the same conditions that just
+    # stopped the run.
+    return blocked_rows
 
 
 def main() -> None:
@@ -539,18 +732,24 @@ def main() -> None:
     def on_result(csv_row: dict, scraped: dict) -> None:
         append_output_row(args.output_csv, build_output_row(csv_row, scraped))
 
+    run_id = run_log.new_run_id()
+    run_log.attach_file_handler(log)
+
     try:
         wait_for_manual_login(driver)
-        success, failed, skipped_out_of_stock = run_scrape_loop(driver, todo, "Link Produk", on_result)
+        stats = run_scrape_loop(driver, todo, "Link Produk", on_result, run_id=run_id)
     finally:
         driver.quit()
 
     log.info(
-        "Selesai. Berhasil: %d, Gagal: %d, Dilewati (stok habis): %d. Output: %s",
-        success, failed, skipped_out_of_stock, args.output_csv
+        "Selesai. Berhasil: %d (%d di antaranya lewat lintasan ulang), Gagal: %d, "
+        "Stok habis: %d, Diblokir: %d. Output: %s",
+        stats.success, stats.recovered_on_retry, stats.failed,
+        stats.out_of_stock, stats.blocked, args.output_csv
     )
-    if failed:
-        log.info("Jalankan ulang command yang sama untuk retry baris yang gagal (otomatis skip yang sudah sukses).")
+    log.info("Rincian per produk: %s", run_log.LEDGER_PATH)
+    if stats.failed or stats.blocked:
+        log.info("Jalankan ulang command yang sama untuk retry baris yang gagal/diblokir (otomatis skip yang sudah sukses).")
 
 
 if __name__ == "__main__":

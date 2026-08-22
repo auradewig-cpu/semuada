@@ -19,12 +19,24 @@ import threading
 import requests
 from flask import Flask, jsonify, request, send_from_directory
 
+import run_log
 import site_client
 from build_payload import build_api_payload
-from scrape import ScrapeControl, build_driver, run_scrape_loop
+from scrape import (
+    OUTCOME_BLOCKED,
+    OUTCOME_FAILED,
+    OUTCOME_OK,
+    OUTCOME_OUT_OF_STOCK,
+    ScrapeControl,
+    build_driver,
+    run_scrape_loop,
+)
 
 log = logging.getLogger("panel")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+# The panel's own log lives in memory and dies with the process, which is why
+# a stopped run has never been diagnosable after the fact. Mirror it to disk.
+run_log.attach_file_handler(logging.getLogger())
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -38,11 +50,15 @@ _csv_rows: list[dict] | None = None
 _csv_headers: list[str] | None = None
 
 _state = {
-    "status": "idle",  # idle | browser_ready | running | paused | stopped | done | error
+    # waiting_verification = Shopee showed its captcha gate and the loop has
+    # parked itself; only the person at the browser can clear it.
+    "status": "idle",  # idle | browser_ready | running | paused | waiting_verification | stopped | done | error
     "total": 0,
     "current": 0,
     "success": 0,
     "failed": 0,
+    "blocked": 0,
+    "out_of_stock": 0,
     "log": [],
     "error": None,
 }
@@ -53,6 +69,7 @@ def _push_log(message: str) -> None:
         _state["log"].append(message)
         if len(_state["log"]) > MAX_LOG_LINES:
             _state["log"] = _state["log"][-MAX_LOG_LINES:]
+    log.info(message)
 
 
 def _set_status(status: str, **extra) -> None:
@@ -172,28 +189,52 @@ def _run_worker(link_column: str, base_url: str, username: str, password: str) -
             _set_status("done", total=0, current=0)
             return
 
-        _set_status("running", total=len(todo), current=0, success=0, failed=0)
+        _set_status("running", total=len(todo), current=0, success=0, failed=0, blocked=0, out_of_stock=0)
 
         def on_result(csv_row: dict, scraped: dict) -> None:
             payload = build_api_payload(csv_row, scraped)
             site_client.create_product(session, base_url, payload)
 
-        def progress_cb(index: int, total: int, message: str, ok: bool) -> None:
-            with _lock:
-                _state["current"] = index
-                _state["total"] = total
-                if ok:
-                    _state["success"] += 1
-                else:
-                    _state["failed"] += 1
-            _push_log(f"[{index}/{total}] {message}")
+        # Counter per outcome rather than a single ok/not-ok flag: an
+        # out-of-stock skip used to be reported as a success, and a blocked
+        # page as a failure, so neither number meant what it said.
+        counters = {
+            OUTCOME_OK: "success",
+            OUTCOME_FAILED: "failed",
+            OUTCOME_BLOCKED: "blocked",
+            OUTCOME_OUT_OF_STOCK: "out_of_stock",
+        }
 
-        success, failed, skipped_out_of_stock = run_scrape_loop(
-            _driver, todo, link_column, on_result, control=_control, progress_cb=progress_cb
+        def progress_cb(index: int, total: int, message: str, outcome: str) -> None:
+            with _lock:
+                if index:
+                    _state["current"] = index
+                _state["total"] = total
+                # A blocked outcome arrives as "diblokir_<jenis>" from the loop.
+                key = counters.get(outcome.split("_")[0] if outcome.startswith(OUTCOME_BLOCKED) else outcome)
+                if key:
+                    _state[key] += 1
+            _push_log(f"[{index}/{total}] {message}" if index else message)
+
+        def on_verification(message: str) -> None:
+            """Shopee's captcha gate: park the run and hand it to the human at
+            the browser. The loop waits on the same pause flag the Pause button
+            uses, so clicking Lanjutkan resumes exactly where it stopped."""
+            _control.pause()
+            _set_status("waiting_verification")
+            _push_log("!! " + message)
+
+        stats = run_scrape_loop(
+            _driver, todo, link_column, on_result, control=_control,
+            progress_cb=progress_cb, on_verification=on_verification,
         )
 
         final_status = "stopped" if _control.stopped else "done"
-        _push_log(f"Selesai. Berhasil: {success}, Gagal: {failed}, Dilewati (stok habis): {skipped_out_of_stock}.")
+        _push_log(
+            f"Selesai. Berhasil: {stats.success} ({stats.recovered_on_retry} lewat lintasan ulang), "
+            f"Gagal: {stats.failed}, Stok habis: {stats.out_of_stock}, Diblokir: {stats.blocked}. "
+            f"Rincian per produk: {run_log.LEDGER_PATH.name}"
+        )
         _set_status(final_status)
     except site_client.SiteAuthError as e:
         _push_log(f"Login gagal: {e}")
