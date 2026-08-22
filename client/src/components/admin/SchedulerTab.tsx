@@ -29,6 +29,11 @@ const PLATFORM_LABELS: Record<string, string> = {
 
 const STATUS_BADGE: Record<ScheduledPost['status'], { label: string; className: string }> = {
   queued: { label: 'Menunggu', className: 'bg-muted text-muted-foreground' },
+  // A row normally sits here for seconds. One that is still "Diproses" long
+  // after its slot means a dispatch run was interrupted mid-call; it is left
+  // alone on purpose (the provider may already have taken it) and needs a
+  // human to check the provider before deciding.
+  dispatching: { label: 'Diproses', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-400' },
   posted: { label: 'Terposting', className: 'bg-green-600/10 text-green-700 dark:text-green-400' },
   failed: { label: 'Gagal', className: 'bg-destructive/10 text-destructive' },
 };

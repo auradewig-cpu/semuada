@@ -28,12 +28,15 @@ export interface DimensionStat {
 
 export interface PerformanceReport {
   untrackedVideos: number;
+  /** Distinct (post, platform) pairs feeding the report -- not snapshot rows. */
   trackedPosts: number;
   dimensions: { mechanism: DimensionStat[]; style: DimensionStat[]; hook: DimensionStat[]; realism: DimensionStat[] };
   recommendations: string[];
 }
 
 interface MetricRow {
+  scheduledPostId: string;
+  capturedOn: string;
   views: number | null;
   platform: string | null;
   schedulerAccountId: string | null;
@@ -99,6 +102,8 @@ export async function buildPerformanceReport(): Promise<PerformanceReport> {
   // views and trace back to a generation (via the FK) participate.
   const rows = (await db
     .select({
+      scheduledPostId: postMetrics.scheduledPostId,
+      capturedOn: postMetrics.capturedOn,
       views: postMetrics.views,
       platform: postMetrics.platform,
       schedulerAccountId: scheduledPosts.schedulerAccountId,
@@ -113,7 +118,25 @@ export async function buildPerformanceReport(): Promise<PerformanceReport> {
     .innerJoin(videoContents, eq(scheduledPosts.videoContentId, videoContents.id))
     .innerJoin(contentGenerations, eq(videoContents.contentGenerationId, contentGenerations.id))) as MetricRow[];
 
-  const usable = rows.filter((r) => r.views !== null && r.schedulerAccountId !== null && r.platform !== null);
+  // post_metrics is a TIME SERIES -- one snapshot per (post, platform, day) --
+  // and this used to consume it raw, so a post counted once for every day it
+  // had been observed. Measured on real data: 2,044 rows for 273 distinct
+  // (post, platform) pairs, a 7.5x inflation weighted by post AGE. A two-week
+  // old post contributed 14 data points and yesterday's contributed 1, which
+  // dragged every median toward older posts and let the `n >= 10` confidence
+  // threshold be satisfied by a SINGLE post observed for ten days.
+  //
+  // Reduce to the newest snapshot per (post, platform) first, exactly like the
+  // DISTINCT ON in app/api/scheduler-metrics/route.ts -- that route documents
+  // this trap at length, and this is the other half of the same rule.
+  const latest = new Map<string, MetricRow>();
+  for (const row of rows) {
+    const key = `${row.scheduledPostId}|${row.platform}`;
+    const seen = latest.get(key);
+    if (!seen || String(row.capturedOn) > String(seen.capturedOn)) latest.set(key, row);
+  }
+
+  const usable = [...latest.values()].filter((r) => r.views !== null && r.schedulerAccountId !== null && r.platform !== null);
 
   // Per-account+platform medians.
   const buckets = new Map<string, number[]>();

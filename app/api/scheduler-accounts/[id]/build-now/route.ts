@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { schedulerAccounts, scheduledPosts } from "@shared/schema";
 import { requireAuth } from "@root/lib/apiAuth";
 import { buildScheduleForAccount, todayISOInTimezone, TIMEZONE } from "@root/lib/scheduler/buildSchedule";
-import { dispatchScheduledPost } from "@root/lib/scheduler/dispatch";
+import { claimQueuedPostsForAccount, dispatchScheduledPost } from "@root/lib/scheduler/dispatch";
 
 // Admin-triggered ("Jadwalkan & Post Sekarang" button), not cron -- uses the
 // normal session auth (requireAuth), not the cron bearer-secret.
@@ -35,10 +35,9 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   // freshly built above -- if a previous build already ran today but some
   // slots weren't picked up by GitHub Actions yet, this button still posts
   // them immediately instead of doing nothing.
-  const queued = await db
-    .select()
-    .from(scheduledPosts)
-    .where(and(eq(scheduledPosts.schedulerAccountId, id), eq(scheduledPosts.status, "queued")));
+  // Claimed, not selected -- otherwise clicking this while the 01:00 cron or
+  // the 10-minute poller is mid-run would dispatch the same row twice.
+  const queued = await claimQueuedPostsForAccount(id);
 
   // Sequential, same reasoning as dispatch-posts cron: don't burst-call
   // Buffer/Zernio concurrently.

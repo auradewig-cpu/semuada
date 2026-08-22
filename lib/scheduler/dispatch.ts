@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { schedulerAccounts, scheduledPosts, videoContents, type ScheduledPost } from "@shared/schema";
 import { postToBuffer } from "./providers/buffer";
@@ -17,6 +17,40 @@ import type { SchedulerPlatform, ProviderResults } from "./types";
 export function platformsNeedingDispatch(post: ScheduledPost): SchedulerPlatform[] {
   const results = (post.providerResults as ProviderResults | null) ?? {};
   return (post.platforms as SchedulerPlatform[]).filter((p) => results[p]?.ok !== true);
+}
+
+// Atomically take ownership of the rows this caller is about to dispatch, by
+// flipping them out of "queued" in the same statement that reads them.
+//
+// Selecting rows and only writing their status back AFTER the provider call
+// returns leaves a window in which a second caller sees the same "queued" rows
+// and posts them again. That window is real: the dispatch poller fires every
+// 10 minutes with no concurrency guard and drains backlogs sequentially with a
+// full video upload per post, and the daily cron and the manual "Jadwalkan &
+// Post Sekarang" button can overlap. Duplicate posts on nine real social
+// accounts is the 2026-08-09 incident.
+//
+// Single-statement UPDATE ... RETURNING is atomic in Postgres, which is what
+// this project's neon-http driver offers instead of multi-statement
+// transactions -- the same reasoning as claimNextVideos() in ./videoPool.
+//
+// A row left at "dispatching" (the function died mid-flight) is deliberately
+// never reclaimed automatically: the provider may already have accepted it.
+// Those surface in the admin UI to be judged by a human.
+export function claimDuePosts(now: Date) {
+  return db
+    .update(scheduledPosts)
+    .set({ status: "dispatching" })
+    .where(and(eq(scheduledPosts.status, "queued"), lte(scheduledPosts.scheduledFor, now)))
+    .returning();
+}
+
+export function claimQueuedPostsForAccount(accountId: string) {
+  return db
+    .update(scheduledPosts)
+    .set({ status: "dispatching" })
+    .where(and(eq(scheduledPosts.schedulerAccountId, accountId), eq(scheduledPosts.status, "queued")))
+    .returning();
 }
 
 // What a set of per-platform results means for the row and its video.

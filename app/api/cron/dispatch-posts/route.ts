@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { and, eq, lte } from "drizzle-orm";
-import { db } from "@root/lib/db";
-import { scheduledPosts } from "@shared/schema";
 import { requireCronSecret } from "@root/lib/cronAuth";
-import { dispatchScheduledPost } from "@root/lib/scheduler/dispatch";
+import { claimDuePosts, dispatchScheduledPost } from "@root/lib/scheduler/dispatch";
 
 // Triggered externally via a GitHub Actions scheduled workflow, NOT Vercel
 // Cron -- the project is on Vercel's Hobby plan, which only runs native
@@ -14,10 +11,10 @@ export async function GET(request: NextRequest) {
   const unauthorized = requireCronSecret(request);
   if (unauthorized) return unauthorized;
 
-  const due = await db
-    .select()
-    .from(scheduledPosts)
-    .where(and(eq(scheduledPosts.status, "queued"), lte(scheduledPosts.scheduledFor, new Date())));
+  // Claimed, not merely selected -- this workflow fires every 10 minutes with
+  // no concurrency guard and drains backlogs sequentially with a full video
+  // upload per post, so a run can outlast its own interval. See claimDuePosts().
+  const due = await claimDuePosts(new Date());
 
   // Sequential on purpose -- a burst of overdue posts (e.g. after a missed
   // trigger) shouldn't hammer Buffer/Zernio with concurrent calls and risk

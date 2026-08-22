@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@root/lib/db";
-import { schedulerAccounts, scheduledPosts } from "@shared/schema";
+import { schedulerAccounts } from "@shared/schema";
 import { requireCronSecret } from "@root/lib/cronAuth";
 import { buildScheduleForAccount, todayISOInTimezone, TIMEZONE } from "@root/lib/scheduler/buildSchedule";
-import { dispatchScheduledPost } from "@root/lib/scheduler/dispatch";
+import { claimQueuedPostsForAccount, dispatchScheduledPost } from "@root/lib/scheduler/dispatch";
 
 // Runs once/day (Vercel Cron, 01:00 WIB -- see vercel.ts), well before the
 // earliest configured base time. Same-day guard lives in
@@ -60,10 +60,10 @@ export async function GET(request: NextRequest) {
       try {
         const result = await buildScheduleForAccount(account, today);
 
-        const queued = await db
-          .select()
-          .from(scheduledPosts)
-          .where(and(eq(scheduledPosts.schedulerAccountId, account.id), eq(scheduledPosts.status, "queued")));
+        // Claimed rather than selected, so this can't race the manual
+        // "Jadwalkan & Post Sekarang" button or the 10-minute poller into
+        // dispatching the same row twice.
+        const queued = await claimQueuedPostsForAccount(account.id);
 
         await Promise.all(queued.map((post) => dispatchScheduledPost(post, { scheduledAt: post.scheduledFor })));
 

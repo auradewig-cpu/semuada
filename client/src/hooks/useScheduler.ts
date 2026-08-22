@@ -47,7 +47,11 @@ export interface ScheduledPost {
   video_content_id: string;
   scheduled_for: string;
   platforms: string[];
-  status: 'queued' | 'posted' | 'failed';
+  // 'dispatching' = a cron run has claimed this row and is calling the
+  // providers. A row that stays there was interrupted mid-flight and is
+  // deliberately never auto-reclaimed (the provider may already have accepted
+  // it) -- see claimDuePosts() in lib/scheduler/dispatch.ts.
+  status: 'queued' | 'dispatching' | 'posted' | 'failed';
   provider_results: Record<string, { ok: boolean; postId?: string; error?: string }> | null;
   posted_at: string | null;
   error_message: string | null;
