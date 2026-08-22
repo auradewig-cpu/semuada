@@ -32,7 +32,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 import run_log
 import shopee_selectors as sel
-from blocking import BLOCK_TRANSIENT, BLOCK_VERIFICATION, BlockedError, classify_block, cooldown_seconds
+from blocking import (
+    BLOCK_STALLED,
+    BLOCK_TRANSIENT,
+    BLOCK_VERIFICATION,
+    BlockedError,
+    classify_block,
+    cooldown_seconds,
+)
 from parsers import parse_count, parse_price, parse_rating
 
 OUTPUT_HEADERS = [
@@ -141,7 +148,13 @@ def build_driver() -> uc.Chrome:
     # Headed on purpose -- headless is far more likely to be flagged by Shopee.
     driver = uc.Chrome(options=options, version_main=_detect_installed_chrome_major_version())
     # Extra safety net in case "eager" still isn't enough on some page.
-    driver.set_page_load_timeout(30)
+    #
+    # Raised from 30s on 2026-08-22: a real run recorded successful loads at 5,
+    # 19, 22 and 7 seconds to DOMContentLoaded, so 30 left almost no margin --
+    # one product hit the ceiling exactly and another came within 0.1s of it.
+    # A stalled load is now retried later (BLOCK_STALLED) rather than dropped,
+    # so waiting a little longer is far cheaper than losing the product.
+    driver.set_page_load_timeout(45)
     # Selenium's default HTTP timeout to chromedriver is 120s PER ATTEMPT,
     # retried up to 3 times -- so one slow command (e.g. reading .text off a
     # huge/animating page) can block for 6+ minutes before finally raising.
@@ -319,10 +332,23 @@ def dump_debug_page(driver, product_id: str, reason: str) -> None:
 
 
 def scrape_product(driver, product_url: str, product_id: str = "") -> dict:
-    driver.get(product_url)
-    WebDriverWait(driver, PAGE_LOAD_TIMEOUT).until(
-        EC.presence_of_element_located((By.TAG_NAME, "body"))
-    )
+    # A load that never completes is Shopee withholding the response, not a
+    # broken browser or a bad URL -- the same throttling as the other blocking
+    # pages, only there is no page left behind to inspect. Reported as a block
+    # so it gets a cool-down and a retry, instead of counting as a hard failure
+    # that is dropped and pushes the run toward the circuit breaker.
+    #
+    # Scoped tightly to the two page-load calls: a TimeoutException from
+    # anywhere else (a hung execute_script, say) still means something is
+    # genuinely wrong and stays a failure.
+    try:
+        driver.get(product_url)
+        WebDriverWait(driver, PAGE_LOAD_TIMEOUT).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
+    except TimeoutException as e:
+        raise BlockedError(BLOCK_STALLED, product_id) from e
+
     # Give client-side rendered content (price, breadcrumb, etc.) time to paint.
     time.sleep(3)
     human_scroll(driver)
