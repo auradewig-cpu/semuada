@@ -177,19 +177,41 @@ export async function fetchBufferPosts(account: SchedulerAccount, since: Date): 
 // TikTok's metadata is fully optional (title only, no error was raised for
 // it), so it's left unset.
 const YOUTUBE_TITLE_MAX_LENGTH = 100;
-// YouTube's fixed category taxonomy has no per-video categorization in this
-// app; "26" (Howto & Style) is a reasonable fixed default for this account's
-// "Perawatan & Kecantikan" (skincare/beauty) product content.
-const YOUTUBE_CATEGORY_ID = "26";
+// YouTube's fixed category taxonomy. "26" (Howto & Style) was chosen back when
+// every account posted "Perawatan & Kecantikan" content; there are four active
+// categories now, so it is a map with 26 as the fallback rather than a
+// constant that quietly mislabels three quarters of the uploads.
+const YOUTUBE_CATEGORY_BY_CATEGORY: Record<string, string> = {
+  "Perawatan & Kecantikan": "26", // Howto & Style
+  "Pakaian Wanita": "26", // Howto & Style
+  "Pakaian Pria": "26", // Howto & Style
+  "Handphone & Aksesoris": "28", // Science & Technology
+  Elektronik: "28", // Science & Technology
+  "Perlengkapan Rumah": "26", // Howto & Style
+};
+const YOUTUBE_CATEGORY_FALLBACK = "26";
 
+// YouTube rejects a title outright if it contains a newline or an angle
+// bracket, and captions are free text written by the generator -- one of the
+// 406 in the pool already carries a newline. Strip rather than let Buffer
+// bounce the whole post back over a character nobody chose deliberately.
 function youtubeTitle(video: VideoContent): string {
-  const raw = video.caption?.trim() || "Video Produk";
+  const cleaned = (video.caption ?? "")
+    .replace(/[<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const raw = cleaned || "Video Produk";
   return raw.length > YOUTUBE_TITLE_MAX_LENGTH ? `${raw.slice(0, YOUTUBE_TITLE_MAX_LENGTH - 1)}…` : raw;
 }
 
 function metadataForPlatform(platform: SchedulerPlatform, video: VideoContent): Record<string, unknown> | undefined {
   if (platform === "youtube") {
-    return { youtube: { title: youtubeTitle(video), categoryId: YOUTUBE_CATEGORY_ID } };
+    return {
+      youtube: {
+        title: youtubeTitle(video),
+        categoryId: YOUTUBE_CATEGORY_BY_CATEGORY[video.category] ?? YOUTUBE_CATEGORY_FALLBACK,
+      },
+    };
   }
   if (platform === "instagram") {
     return { instagram: { type: "reel", shouldShareToFeed: true } };

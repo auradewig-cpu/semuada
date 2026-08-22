@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle2, XCircle, Plus, X, Pencil, Trash2 } from 'lucide-react';
-import { MAX_SLOTS_PER_DAY } from "@root/lib/scheduler/rotation";
+import { MAX_SLOTS_PER_DAY, MIN_DRIFT_WINDOW_MINUTES } from "@root/lib/scheduler/rotation";
 import {
   Dialog,
   DialogContent,
@@ -61,7 +61,6 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
   const [threadsId, setThreadsId] = useState('');
   const [facebookPageId, setFacebookPageId] = useState('');
   const [baseTimes, setBaseTimes] = useState<string[]>(DEFAULT_BASE_TIMES);
-  const [incrementMinutes, setIncrementMinutes] = useState(5);
   const [capTime, setCapTime] = useState('22:00');
   const [isActive, setIsActive] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<SchedulerAccount | null>(null);
@@ -80,10 +79,18 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
     setThreadsId('');
     setFacebookPageId('');
     setBaseTimes(DEFAULT_BASE_TIMES);
-    setIncrementMinutes(5);
     setCapTime('22:00');
     setIsActive(true);
   };
+
+  // Mirrors the server-side rule in lib/scheduler/validation.ts. Shown live
+  // next to the field, because the failure mode it prevents is invisible until
+  // the 01:00 build silently doesn't happen.
+  const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+  const latestBaseTime = baseTimes.length > 0
+    ? baseTimes.reduce((a, b) => (toMinutes(a) >= toMinutes(b) ? a : b))
+    : null;
+  const driftWindow = latestBaseTime && capTime ? toMinutes(capTime) - toMinutes(latestBaseTime) : null;
 
   const loadForEdit = (a: SchedulerAccount) => {
     setEditingId(a.id);
@@ -100,7 +107,6 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
     setThreadsId(a.threads_account_id ?? '');
     setFacebookPageId(a.facebook_page_account_id ?? '');
     setBaseTimes(a.base_times.length > 0 ? a.base_times : DEFAULT_BASE_TIMES);
-    setIncrementMinutes(a.increment_minutes);
     setCapTime(a.cap_time);
     setIsActive(a.is_active);
   };
@@ -116,6 +122,14 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
   const handleSave = () => {
     if (!label.trim() || !category || baseTimes.length === 0 || !capTime) {
       toast({ variant: 'destructive', title: 'Lengkapi semua field', description: 'Label, kategori, minimal 1 jam dasar, dan jam batas wajib diisi.' });
+      return;
+    }
+    if (driftWindow === null || driftWindow < MIN_DRIFT_WINDOW_MINUTES) {
+      toast({
+        variant: 'destructive',
+        title: 'Jam batas tidak valid',
+        description: `Jam batas harus minimal ${MIN_DRIFT_WINDOW_MINUTES} menit setelah jam dasar paling akhir (${latestBaseTime}).`,
+      });
       return;
     }
     saveAccount.mutate(
@@ -134,7 +148,6 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
         threads_account_id: threadsId.trim() || null,
         facebook_page_account_id: facebookPageId.trim() || null,
         base_times: baseTimes,
-        increment_minutes: incrementMinutes,
         cap_time: capTime,
         is_active: isActive,
       },
@@ -187,7 +200,7 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
                   <div key={a.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
                     <div className="min-w-0">
                       <div className="font-medium truncate">{a.label} {!a.is_active && <span className="text-xs text-muted-foreground">(nonaktif)</span>}</div>
-                      <div className="text-xs text-muted-foreground truncate">{a.category} &middot; {a.base_times.join(' | ')} &middot; +{a.increment_minutes}mnt/hari</div>
+                      <div className="text-xs text-muted-foreground truncate">{a.category} &middot; {a.base_times.join(' | ')} &middot; s/d {a.cap_time}</div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <span title="Kredensial Buffer">
@@ -297,15 +310,20 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <Label>Interval Rotasi (menit/hari)</Label>
-                  <Input type="number" min={1} value={incrementMinutes} onChange={(e) => setIncrementMinutes(Number(e.target.value) || 1)} disabled={saveAccount.isPending} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Jam Batas (jam dasar terakhir kembali ke awal di sini)</Label>
-                  <Input type="time" value={capTime} onChange={(e) => setCapTime(e.target.value)} disabled={saveAccount.isPending} />
-                </div>
+              <div className="space-y-1.5">
+                <Label>Jam Batas (batas atas pergeseran jam tayang)</Label>
+                <Input type="time" value={capTime} onChange={(e) => setCapTime(e.target.value)} disabled={saveAccount.isPending} />
+                {/* The window is the whole point of capTime, so show it rather
+                    than making the admin subtract two times in their head --
+                    this is also the field that used to be saveable in a state
+                    that crashed the nightly build. */}
+                <p className={`text-xs ${driftWindow !== null && driftWindow < MIN_DRIFT_WINDOW_MINUTES ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {driftWindow === null
+                    ? 'Isi jam dasar dan jam batas.'
+                    : driftWindow < MIN_DRIFT_WINDOW_MINUTES
+                      ? `Jam batas harus minimal ${MIN_DRIFT_WINDOW_MINUTES} menit setelah jam dasar paling akhir (${latestBaseTime}). Sekarang ${driftWindow} menit.`
+                      : `Jam tayang bergeser acak dalam rentang ${driftWindow} menit tiap hari, dari jam dasar masing-masing.`}
+                </p>
               </div>
 
               <div className="flex items-center justify-between rounded-md border px-3 py-2">

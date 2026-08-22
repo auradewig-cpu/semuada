@@ -36,6 +36,12 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   if (post.status === "queued") {
     return NextResponse.json({ error: "Jadwal ini belum pernah diposting -- belum ada yang gagal untuk dicoba ulang." }, { status: 400 });
   }
+  // "dispatching" means a cron run has claimed this row and may be mid-call to
+  // Buffer/Zernio right now. Retrying on top of that is how a post gets
+  // published twice.
+  if (post.status === "dispatching") {
+    return NextResponse.json({ error: "Jadwal ini sedang diproses. Tunggu sampai selesai sebelum mencoba ulang." }, { status: 409 });
+  }
   const retryPlatforms = platformsNeedingDispatch(post);
   if (retryPlatforms.length === 0) {
     return NextResponse.json({ error: "Semua platform di jadwal ini sudah berhasil diposting." }, { status: 400 });

@@ -241,15 +241,22 @@ export const schedulerAccounts = pgTable("scheduler_accounts", {
   // up from scratch instead of inheriting the others' cadence.
   // Null = no ramp, use every baseTime (backwards-compatible default).
   rampStartedAt: timestamp("ramp_started_at", { withTimezone: true }),
+  // DEPRECATED -- no longer read by anything. The rotation used to walk the
+  // pattern forward by this many minutes per day; it now picks the day's
+  // offset from a hash of (account id, date), which removed the arithmetic
+  // progressions and the fleet-wide 10-day resynchronisation that the linear
+  // walk produced. See lib/scheduler/rotation.ts. Kept as a column so no
+  // history is destroyed, but it is not written on save any more.
   incrementMinutes: integer("increment_minutes").notNull().default(5),
-  // The ceiling the LATEST baseTimes entry drifts toward before the whole
-  // pattern wraps back to baseTimes -- also "HH:mm". Latest by clock, not
-  // last in the array: baseTimes is priority-ordered, so its final element
-  // is usually an earlier time of day (see computeSlotTimes).
+  // The ceiling the LATEST baseTimes entry can drift to -- also "HH:mm".
+  // Latest by clock, not last in the array: baseTimes is priority-ordered, so
+  // its final element is usually an earlier time of day (see computeSlotTimes).
+  // capTime minus that latest entry IS the drift window, and validation
+  // enforces a minimum of MIN_DRIFT_WINDOW_MINUTES so the jitter has room.
   capTime: text("cap_time").notNull(),
   // Advances by 1 each time the daily build-schedule cron successfully runs
-  // for this account -- NOT derived from calendar-date difference, so a
-  // missed cron run doesn't cause the rotation to "jump" to catch up.
+  // for this account. Purely a counter now -- slot times are derived from the
+  // calendar date, so a missed run shifts nothing either way.
   rotationDayIndex: integer("rotation_day_index").notNull().default(0),
   // "YYYY-MM-DD" (Asia/Jakarta) of the last successful build for this
   // account -- guards against building twice for the same day, whether from
@@ -279,7 +286,19 @@ export const scheduledPosts = pgTable("scheduled_posts", {
   // "instagram":{"ok":false,"error":"..."}} -- lets one post row report
   // partial success across its 5 target platforms instead of one flat result.
   providerResults: jsonb("provider_results"),
+  // When WE handed the post to the provider -- NOT when it went live. Since
+  // the daily cron switched to scheduled hand-off, that is around 01:53 WIB
+  // for a post that publishes in the evening: a measured average gap of 18.6
+  // hours. Read it as "dispatched at".
   postedAt: timestamp("posted_at", { withTimezone: true }),
+  // When the PROVIDER actually published it (Buffer's sentAt, Zernio's
+  // publishedAt), filled in by the metrics sync. Both providers report this
+  // and the code already fetched it, but nothing stored it -- so there was no
+  // way to tell what time a post really went out, which is also the only way
+  // to know whether the rotation's per-day jitter survives the hand-off or is
+  // flattened by the provider's own scheduling. Null until the first sync
+  // after publication.
+  sentAt: timestamp("sent_at", { withTimezone: true }),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });

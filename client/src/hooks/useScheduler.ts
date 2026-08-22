@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
 export interface SchedulerAccount {
@@ -13,6 +13,7 @@ export interface SchedulerAccount {
   threads_account_id: string | null;
   facebook_page_account_id: string | null;
   base_times: string[];
+  /** @deprecated No longer drives the rotation -- see lib/scheduler/rotation.ts. */
   increment_minutes: number;
   cap_time: string;
   rotation_day_index: number;
@@ -36,7 +37,6 @@ export interface SchedulerAccountInput {
   threads_account_id?: string | null;
   facebook_page_account_id?: string | null;
   base_times: string[];
-  increment_minutes: number;
   cap_time: string;
   is_active: boolean;
 }
@@ -47,7 +47,11 @@ export interface ScheduledPost {
   video_content_id: string;
   scheduled_for: string;
   platforms: string[];
-  status: 'queued' | 'posted' | 'failed';
+  // 'dispatching' = a cron run has claimed this row and is calling the
+  // providers. A row that stays there was interrupted mid-flight and is
+  // deliberately never auto-reclaimed (the provider may already have accepted
+  // it) -- see claimDuePosts() in lib/scheduler/dispatch.ts.
+  status: 'queued' | 'dispatching' | 'posted' | 'failed';
   provider_results: Record<string, { ok: boolean; postId?: string; error?: string }> | null;
   posted_at: string | null;
   error_message: string | null;
@@ -100,6 +104,9 @@ export function useDeleteSchedulerAccount() {
 
 export type BuildScheduleResult =
   | { status: 'already_built' }
+  // The account has no channel ID on any platform, so nothing was built and
+  // no video was claimed -- see buildScheduleForAccount().
+  | { status: 'no_platforms' }
   | { status: 'built'; slotsBuilt: number; slotsSkipped: number };
 
 export interface BuildAndDispatchResponse {
@@ -171,16 +178,26 @@ export function useRetryScheduledPost() {
   });
 }
 
+// Paged: the endpoint is an append-only log that grows every day, and each row
+// renders a <video>. useInfiniteQuery keeps the "Muat lebih banyak" button
+// honest without the tab ever loading the whole history at once.
 export function useScheduledPosts(schedulerAccountId?: string) {
-  return useQuery<{ items: ScheduledPost[] }>({
+  return useInfiniteQuery<ScheduledPostsPage>({
     queryKey: ['scheduled-posts', schedulerAccountId ?? 'all'],
-    queryFn: async () => {
-      const url = schedulerAccountId
-        ? `/api/scheduled-posts?scheduler_account_id=${schedulerAccountId}`
-        : '/api/scheduled-posts';
-      const res = await fetch(url, { credentials: 'include' });
+    initialPageParam: 0,
+    getNextPageParam: (last) => last.nextOffset,
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ offset: String(pageParam ?? 0) });
+      if (schedulerAccountId) params.set('scheduler_account_id', schedulerAccountId);
+      const res = await fetch(`/api/scheduled-posts?${params.toString()}`, { credentials: 'include' });
       if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
       return res.json();
     },
   });
+}
+
+export interface ScheduledPostsPage {
+  items: ScheduledPost[];
+  hasMore: boolean;
+  nextOffset: number | null;
 }

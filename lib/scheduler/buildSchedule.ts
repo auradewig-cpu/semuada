@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { schedulerAccounts, scheduledPosts, type SchedulerAccount } from "@shared/schema";
 import { activeSlotCount, computeSlotTimes, slotTimeToDate } from "./rotation";
@@ -15,6 +15,7 @@ export function todayISOInTimezone(timeZone: string): string {
 
 export type BuildResult =
   | { status: "already_built" }
+  | { status: "no_platforms" }
   | { status: "built"; slotsBuilt: number; slotsSkipped: number; slotsAllowed: number };
 
 // activeSlotCount / RAMP_PHASE_DAYS live in ./rotation, which has no server
@@ -30,21 +31,61 @@ export type BuildResult =
 //
 // The guard exists because of a real incident: a test loop called the old
 // (unguarded) build endpoint twice in a row and double-claimed 18 videos,
-// 12 of them already overdue, before it was caught and manually undone. This
-// makes that structurally impossible instead of relying on "don't do that
-// again" -- a second call for the same account on the same day is a no-op.
+// 12 of them already overdue, before it was caught and manually undone.
+//
+// The guard CLAIMS the day up front with a conditional UPDATE rather than
+// reading lastBuiltDate and writing it at the end. The read-then-write version
+// left a window where the daily cron and the manual "Jadwalkan & Post
+// Sekarang" button could both pass the check and both claim a set of videos --
+// claimNextVideos() stops them getting the SAME video, but not a second set.
+//
+// Deliberate trade-off: if the build throws after the claim, the day counts as
+// built and its slots are lost. That is the right direction (a lost day is
+// cheaper than duplicate posts on nine real social accounts), and since the
+// cron now isolates each account the failure shows up in the run summary
+// instead of vanishing.
 export async function buildScheduleForAccount(account: SchedulerAccount, todayISO: string): Promise<BuildResult> {
-  if (account.lastBuiltDate === todayISO) {
+  // An account with no channel ID on ANY platform can't post anywhere, so
+  // building it a queue only destroys videos: the row would be inserted with
+  // platforms=[], dispatch would find zero outcomes and mark it "posted"
+  // without contacting anyone, and the claimed video would sit at
+  // status='scheduled' forever -- out of the pool (claimNextVideos only takes
+  // 'uploaded'), never trashed, unrecoverable without manual SQL. Bail out
+  // BEFORE claiming anything, and say so loudly enough that the admin fixes
+  // the account instead of wondering where a video went each day.
+  const platforms = resolveConfiguredPlatforms(account);
+  if (platforms.length === 0) {
+    return { status: "no_platforms" };
+  }
+
+  // Claim the day. No row back means another caller got here first, so this
+  // one must not claim videos. rotationDayIndex rides along purely as a
+  // "successful builds so far" counter now -- the slot times are derived from
+  // the calendar date, not from it (see computeSlotTimes).
+  const [claimedDay] = await db
+    .update(schedulerAccounts)
+    .set({ rotationDayIndex: account.rotationDayIndex + 1, lastBuiltDate: todayISO })
+    .where(
+      and(
+        eq(schedulerAccounts.id, account.id),
+        or(isNull(schedulerAccounts.lastBuiltDate), ne(schedulerAccounts.lastBuiltDate, todayISO)),
+      ),
+    )
+    .returning({ id: schedulerAccounts.id });
+  if (!claimedDay) {
     return { status: "already_built" };
   }
 
-  // Ramp first, rotate second: the drift window is derived from the latest
-  // baseTime, which is baseTimes[0] under the priority ordering, so slicing
-  // before rotating keeps the window identical across all three phases.
+  // Rotate first, ramp second. The drift window is derived from the latest of
+  // ALL baseTimes, so slicing the RESULT keeps the window identical across
+  // every ramp phase regardless of how the admin ordered the array. (Slicing
+  // the INPUT instead -- which this used to do -- made the window depend on
+  // whichever times happened to be live today: reordering base_times so the
+  // latest one isn't first turned a 10-minute window into a 460-minute one
+  // during phase 1, then snapped it back on day 30.) The offset is uniform
+  // across all base times, so slicing after is otherwise identical.
   const allowed = activeSlotCount(account, new Date());
-  const rampedBaseTimes = account.baseTimes.slice(0, allowed);
-  const slotTimes = computeSlotTimes(rampedBaseTimes, account.incrementMinutes, account.capTime, account.rotationDayIndex);
-  const platforms = resolveConfiguredPlatforms(account);
+  const slotTimes = computeSlotTimes(account.baseTimes, account.capTime, `${account.id}:${todayISO}`).slice(0, allowed);
   const claimedVideos = await claimNextVideos(account.category, slotTimes.length);
 
   let built = 0;
@@ -60,15 +101,6 @@ export async function buildScheduleForAccount(account: SchedulerAccount, todayIS
     });
     built++;
   }
-
-  // Advances once per successful run regardless of how many slots actually
-  // got a video -- rotation keeps moving even on a day the pool ran dry, so
-  // it doesn't "catch up" oddly once videos are added again. See the
-  // rotationDayIndex comment on the schema for the full rationale.
-  await db
-    .update(schedulerAccounts)
-    .set({ rotationDayIndex: account.rotationDayIndex + 1, lastBuiltDate: todayISO })
-    .where(eq(schedulerAccounts.id, account.id));
 
   return { status: "built", slotsBuilt: built, slotsSkipped: slotTimes.length - built, slotsAllowed: allowed };
 }

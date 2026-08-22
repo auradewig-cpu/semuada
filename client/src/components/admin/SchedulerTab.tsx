@@ -29,6 +29,11 @@ const PLATFORM_LABELS: Record<string, string> = {
 
 const STATUS_BADGE: Record<ScheduledPost['status'], { label: string; className: string }> = {
   queued: { label: 'Menunggu', className: 'bg-muted text-muted-foreground' },
+  // A row normally sits here for seconds. One that is still "Diproses" long
+  // after its slot means a dispatch run was interrupted mid-call; it is left
+  // alone on purpose (the provider may already have taken it) and needs a
+  // human to check the provider before deciding.
+  dispatching: { label: 'Diproses', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-400' },
   posted: { label: 'Terposting', className: 'bg-green-600/10 text-green-700 dark:text-green-400' },
   failed: { label: 'Gagal', className: 'bg-destructive/10 text-destructive' },
 };
@@ -52,10 +57,23 @@ function isVideoSize(value: string | null): value is VideoSize {
   return value === 'kecil' || value === 'sedang' || value === 'besar';
 }
 
-function isToday(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+// The scheduler thinks in Asia/Jakarta days (see TIMEZONE in
+// lib/scheduler/buildSchedule.ts), so the UI has to as well -- comparing
+// against the browser's local day would put slots on the wrong date for anyone
+// not sitting in WIB, and `last_built_date` is a WIB "YYYY-MM-DD" string that
+// only means anything next to another one.
+const SCHEDULER_TIMEZONE = 'Asia/Jakarta';
+
+function jakartaDayISO(value: Date | string): string {
+  const d = typeof value === 'string' ? new Date(value) : value;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SCHEDULER_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 // Platforms without a recorded ok:true result -- covers both a fully
@@ -76,7 +94,7 @@ export function SchedulerTab() {
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
 
   const { data: accountsData, isLoading: isLoadingAccounts } = useSchedulerAccounts();
-  const { data: postsData, isLoading: isLoadingPosts } = useScheduledPosts(selectedAccountId);
+  const { data: postsData, isLoading: isLoadingPosts, hasNextPage, fetchNextPage, isFetchingNextPage } = useScheduledPosts(selectedAccountId);
   const buildScheduleNow = useBuildScheduleNow();
   const swapVideo = useSwapScheduledPostVideo();
   const retryPost = useRetryScheduledPost();
@@ -102,7 +120,7 @@ export function SchedulerTab() {
   };
 
   const accounts = accountsData?.items ?? [];
-  const posts = postsData?.items ?? [];
+  const posts = useMemo(() => postsData?.pages.flatMap((p) => p.items) ?? [], [postsData]);
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
   const handleSwapVideo = (video: { id: string }) => {
@@ -123,7 +141,9 @@ export function SchedulerTab() {
         const buildNote =
           data.buildResult.status === 'already_built'
             ? 'Sudah dijadwalkan hari ini, tidak ada slot baru.'
-            : `${data.buildResult.slotsBuilt} slot baru dibuat${data.buildResult.slotsSkipped > 0 ? ` (${data.buildResult.slotsSkipped} kekurangan video)` : ''}.`;
+            : data.buildResult.status === 'no_platforms'
+              ? 'Akun ini belum punya satu pun Account ID platform, jadi tidak ada jadwal yang dibuat.'
+              : `${data.buildResult.slotsBuilt} slot baru dibuat${data.buildResult.slotsSkipped > 0 ? ` (${data.buildResult.slotsSkipped} kekurangan video)` : ''}.`;
         const { attempted, posted, failed, errors } = data.dispatch;
         const dispatchNote =
           attempted === 0
@@ -164,22 +184,49 @@ export function SchedulerTab() {
   // in its first phase legitimately fills 1 of its 3 base_times. Counting
   // all of them would flag every account as short of video every single day
   // for the first two months.
+  // An active account with no channel ID anywhere can never post. It used to
+  // fail silently AND destructively -- one video claimed out of the pool per
+  // day, marked "posted", then stranded. buildScheduleForAccount() now refuses
+  // to build for it; this is how the admin finds out why.
+  const unconfiguredAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (a) =>
+          a.is_active &&
+          !a.tiktok_account_id &&
+          !a.instagram_account_id &&
+          !a.youtube_account_id &&
+          !a.threads_account_id &&
+          !a.facebook_page_account_id
+      ),
+    [accounts]
+  );
+
   const poolWarnings = useMemo(() => {
+    const today = jakartaDayISO(new Date());
     const todaysCountByAccount = new Map<string, number>();
     for (const p of posts) {
-      if (!isToday(p.scheduled_for)) continue;
+      if (jakartaDayISO(p.scheduled_for) !== today) continue;
       todaysCountByAccount.set(p.scheduler_account_id, (todaysCountByAccount.get(p.scheduler_account_id) ?? 0) + 1);
     }
     const now = new Date();
+    // Accounts with no platform configured are excluded: they get their own,
+    // more accurate warning above. Reporting "video kurang" for them would
+    // send the admin to upload videos that were never the problem.
+    // Also skipped: accounts whose build for today hasn't run yet. The cron
+    // fires at 01:00 WIB, so without this every account looked "kekurangan
+    // video" for the first hour of every day -- nine warnings a night for a
+    // problem that did not exist.
+    const unconfigured = new Set(unconfiguredAccounts.map((a) => a.id));
     return accounts
-      .filter((a) => a.is_active)
+      .filter((a) => a.is_active && !unconfigured.has(a.id) && a.last_built_date === today)
       .map((a) => ({
         account: a,
         todayCount: todaysCountByAccount.get(a.id) ?? 0,
         expected: activeSlotCount({ baseTimes: a.base_times, rampStartedAt: a.ramp_started_at }, now),
       }))
       .filter((w) => w.todayCount < w.expected);
-  }, [accounts, posts]);
+  }, [accounts, posts, unconfiguredAccounts]);
 
   return (
     <div className="space-y-6">
@@ -222,6 +269,19 @@ export function SchedulerTab() {
               </Button>
             </div>
           </CardTitle>
+
+          {unconfiguredAccounts.length > 0 && (
+            <div className="space-y-1 pt-1">
+              {unconfiguredAccounts.map((account) => (
+                <div key={account.id} className="flex items-center gap-1.5 text-xs text-destructive">
+                  <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    <strong>{account.label}</strong>: belum ada Account ID platform sama sekali -- jadwal tidak akan dibuat sampai diisi lewat "Kelola Akun Scheduler".
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {poolWarnings.length > 0 && (
             <div className="space-y-1 pt-1">
@@ -327,6 +387,14 @@ export function SchedulerTab() {
                   </Card>
                 );
               })}
+            </div>
+          )}
+
+          {hasNextPage && (
+            <div className="flex justify-center pt-4">
+              <Button type="button" variant="outline" size="sm" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+                {isFetchingNextPage ? 'Memuat...' : 'Muat lebih banyak'}
+              </Button>
             </div>
           )}
         </CardContent>

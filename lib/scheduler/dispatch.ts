@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { schedulerAccounts, scheduledPosts, videoContents, type ScheduledPost } from "@shared/schema";
 import { postToBuffer } from "./providers/buffer";
@@ -17,6 +17,75 @@ import type { SchedulerPlatform, ProviderResults } from "./types";
 export function platformsNeedingDispatch(post: ScheduledPost): SchedulerPlatform[] {
   const results = (post.providerResults as ProviderResults | null) ?? {};
   return (post.platforms as SchedulerPlatform[]).filter((p) => results[p]?.ok !== true);
+}
+
+// Atomically take ownership of the rows this caller is about to dispatch, by
+// flipping them out of "queued" in the same statement that reads them.
+//
+// Selecting rows and only writing their status back AFTER the provider call
+// returns leaves a window in which a second caller sees the same "queued" rows
+// and posts them again. That window is real: the dispatch poller fires every
+// 10 minutes with no concurrency guard and drains backlogs sequentially with a
+// full video upload per post, and the daily cron and the manual "Jadwalkan &
+// Post Sekarang" button can overlap. Duplicate posts on nine real social
+// accounts is the 2026-08-09 incident.
+//
+// Single-statement UPDATE ... RETURNING is atomic in Postgres, which is what
+// this project's neon-http driver offers instead of multi-statement
+// transactions -- the same reasoning as claimNextVideos() in ./videoPool.
+//
+// A row left at "dispatching" (the function died mid-flight) is deliberately
+// never reclaimed automatically: the provider may already have accepted it.
+// Those surface in the admin UI to be judged by a human.
+export function claimDuePosts(now: Date) {
+  return db
+    .update(scheduledPosts)
+    .set({ status: "dispatching" })
+    .where(and(eq(scheduledPosts.status, "queued"), lte(scheduledPosts.scheduledFor, now)))
+    .returning();
+}
+
+export function claimQueuedPostsForAccount(accountId: string) {
+  return db
+    .update(scheduledPosts)
+    .set({ status: "dispatching" })
+    .where(and(eq(scheduledPosts.schedulerAccountId, accountId), eq(scheduledPosts.status, "queued")))
+    .returning();
+}
+
+// What a set of per-platform results means for the row and its video.
+// Extracted so the rules can be exercised directly (see
+// scripts/verify-scheduler-dispatch.ts) instead of only through a live
+// dispatch that would really post to nine social accounts.
+//
+// - `status`: "posted" the moment ANY platform succeeded, so a row can be
+//   posted while some of its platforms are still failed -- that detail lives
+//   in provider_results for the UI, not in the top-level status.
+// - Zero outcomes is FAILURE, not success. It used to fall through to
+//   "posted" via an `outcomes.length > 0` guard, which is how a post
+//   targeting no platforms at all got a green tick without a single provider
+//   being contacted.
+// - `releaseVideo`: put the video back in the pool only when nothing
+//   succeeded AND no platform recorded a postId. A stored postId means a
+//   provider may have accepted the post despite the error on our side, and
+//   re-queuing the video would publish it twice.
+export function resolveDispatchOutcome(providerResults: ProviderResults): {
+  status: "posted" | "failed";
+  anySucceeded: boolean;
+  releaseVideo: boolean;
+  errorMessage: string | null;
+} {
+  const outcomes = Object.values(providerResults);
+  const anySucceeded = outcomes.some((r) => r.ok);
+  const allFailed = outcomes.every((r) => !r.ok);
+  return {
+    status: allFailed ? "failed" : "posted",
+    anySucceeded,
+    releaseVideo: allFailed && outcomes.every((r) => !r.postId),
+    errorMessage: allFailed
+      ? outcomes.map((r) => r.error).filter(Boolean).join("; ") || "Tidak ada platform yang dituju."
+      : null,
+  };
 }
 
 // Publishes one scheduled_posts row: splits its target platforms between
@@ -68,21 +137,36 @@ export async function dispatchScheduledPost(post: ScheduledPost, options?: { sch
 
   const previousResults = (post.providerResults as ProviderResults | null) ?? {};
   const providerResults: ProviderResults = { ...previousResults, ...bufferResults, ...zernioResults };
-  const outcomes = Object.values(providerResults);
-  const anySucceeded = outcomes.some((r) => r.ok);
-  const allFailed = outcomes.length > 0 && outcomes.every((r) => !r.ok);
+  const outcome = resolveDispatchOutcome(providerResults);
 
   await db
     .update(scheduledPosts)
     .set({
-      status: allFailed ? "failed" : "posted",
+      status: outcome.status,
       providerResults,
-      postedAt: anySucceeded ? (post.postedAt ?? new Date()) : null,
-      errorMessage: allFailed ? outcomes.map((r) => r.error).filter(Boolean).join("; ") : null,
+      postedAt: outcome.anySucceeded ? (post.postedAt ?? new Date()) : null,
+      errorMessage: outcome.errorMessage,
     })
     .where(eq(scheduledPosts.id, post.id));
 
-  if (anySucceeded) {
+  if (outcome.anySucceeded) {
     await db.update(videoContents).set({ status: "posted", trashedAt: new Date() }).where(eq(videoContents.id, video.id));
+    return;
+  }
+
+  // Nothing succeeded. The video was claimed out of the pool at build time
+  // (status 'scheduled') and, without this, stays there forever:
+  // claimNextVideos() only ever takes 'uploaded' rows, and nothing trashed it
+  // either -- so it is invisible in both the pool and the trash, recoverable
+  // only by hand. One bad night (Cloudinary down, an expired key) would strand
+  // one video per account at once.
+  //
+  // The status guard in the WHERE keeps this from resurrecting a video that
+  // something else has since moved on.
+  if (outcome.releaseVideo) {
+    await db
+      .update(videoContents)
+      .set({ status: "uploaded" })
+      .where(and(eq(videoContents.id, video.id), eq(videoContents.status, "scheduled")));
   }
 }

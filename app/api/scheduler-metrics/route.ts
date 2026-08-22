@@ -36,6 +36,11 @@ export async function GET(request: NextRequest) {
   // The window filters on when the post went OUT, not on when a metric was
   // captured: we always want each post's newest numbers, we're only choosing
   // which posts are in scope.
+  //
+  // "Went out" is sent_at (the provider's own publish time) where we have it,
+  // falling back to posted_at and then the slot. posted_at alone is the
+  // hand-off moment, which for the daily scheduled build is ~18.6 hours before
+  // publication -- enough to file an evening post under the previous day.
   const since = days === null ? null : new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const result = await db.execute(sql`
@@ -55,7 +60,7 @@ export async function GET(request: NextRequest) {
       sa.category      AS category,
       sa.is_active     AS account_active,
       sp.id            AS post_id,
-      COALESCE(sp.posted_at, sp.scheduled_for) AS posted_at,
+      COALESCE(sp.sent_at, sp.posted_at, sp.scheduled_for) AS posted_at,
       vc.id            AS video_id,
       vc.caption       AS video_caption,
       vc.category      AS video_category,
@@ -67,8 +72,8 @@ export async function GET(request: NextRequest) {
     JOIN scheduled_posts sp   ON sp.id = l.scheduled_post_id
     JOIN scheduler_accounts sa ON sa.id = sp.scheduler_account_id
     JOIN video_contents vc     ON vc.id = sp.video_content_id
-    ${since ? sql`WHERE COALESCE(sp.posted_at, sp.scheduled_for) >= ${since.toISOString()}` : sql``}
-    ORDER BY COALESCE(sp.posted_at, sp.scheduled_for) DESC, sa.label, l.platform
+    ${since ? sql`WHERE COALESCE(sp.sent_at, sp.posted_at, sp.scheduled_for) >= ${since.toISOString()}` : sql``}
+    ORDER BY COALESCE(sp.sent_at, sp.posted_at, sp.scheduled_for) DESC, sa.label, l.platform
   `);
 
   const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -127,7 +132,7 @@ export async function GET(request: NextRequest) {
       ], NULL) AS platforms,
       COUNT(sp.id) FILTER (
         WHERE sp.status = 'posted'
-        ${since ? sql`AND COALESCE(sp.posted_at, sp.scheduled_for) >= ${since.toISOString()}` : sql``}
+        ${since ? sql`AND COALESCE(sp.sent_at, sp.posted_at, sp.scheduled_for) >= ${since.toISOString()}` : sql``}
       )::int AS posts_published
     FROM scheduler_accounts sa
     LEFT JOIN scheduled_posts sp ON sp.scheduler_account_id = sa.id
@@ -166,7 +171,7 @@ export async function GET(request: NextRequest) {
       COUNT(*) FILTER (WHERE sp.provider_results -> p.platform IS NULL)::int            AS pending
     FROM scheduled_posts sp
     CROSS JOIN LATERAL unnest(sp.platforms) AS p(platform)
-    ${since ? sql`WHERE COALESCE(sp.posted_at, sp.scheduled_for) >= ${since.toISOString()}` : sql``}
+    ${since ? sql`WHERE COALESCE(sp.sent_at, sp.posted_at, sp.scheduled_for) >= ${since.toISOString()}` : sql``}
     GROUP BY sp.scheduler_account_id, p.platform
   `);
 
