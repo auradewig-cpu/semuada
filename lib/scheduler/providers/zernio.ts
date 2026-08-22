@@ -20,16 +20,17 @@ import type { SchedulerPlatform, ProviderResults, MetricsSnapshot, MetricsByPost
 // that Zernio's strict enum validator rejects outright -- fixed below by
 // stripping to the bare MIME type before sending.
 //
-// IMPORTANT: the platform key strings below ("threads", "facebook") are
-// still best-guess from Zernio's docs overview page, not a live
-// schema/response check -- confirm the exact key Zernio expects for
-// Facebook Page (may be "facebook_page" rather than "facebook") via a real
-// GET /accounts call before relying on this in production. Same caveat for
-// the per-platform result shape in the createPost response, parsed
-// defensively below, and for `scheduledAt` -- never exercised against a real
-// Zernio account, verify before trusting the daily auto-build flow with real
-// accounts (a wrong/ignored field name could silently publish immediately
-// instead of scheduling for later).
+// The platform keys below ("threads", "facebook") are confirmed against real
+// GET /v1/accounts responses.
+//
+// The caveat that used to sit here -- that the scheduling field had never been
+// exercised against a real account -- turned out to be exactly right, and went
+// unheeded for 13 days. It cost Threads and Facebook Page every single post
+// between 2026-08-10 and 2026-08-22. Both the field name and the response
+// shape are now checked against Zernio's own published API reference, and the
+// code no longer treats a 200 as proof of anything (see postToZernio).
+// Lesson worth keeping: an unverified field name in a write path is not a
+// documentation gap, it is an outage waiting for a schedule change.
 const ZERNIO_API_BASE = "https://zernio.com/api/v1";
 
 const ZERNIO_PLATFORM_KEY: Record<"threads" | "facebook_page", string> = {
@@ -42,9 +43,8 @@ function captionText(video: VideoContent): string {
 }
 
 // Zernio isn't consistent about which key carries a post's id (`_id` in the
-// analytics payload, possibly `id`/`postId` elsewhere), and the exact
-// create-post response shape still isn't confirmed against a live call --
-// so try each rather than betting on one and silently storing nothing.
+// analytics payload, possibly `id`/`postId` elsewhere), so try each rather
+// than betting on one and silently storing nothing.
 function zernioPostId(source: unknown): string | undefined {
   if (!source || typeof source !== "object") return undefined;
   const record = source as Record<string, unknown>;
@@ -54,6 +54,26 @@ function zernioPostId(source: unknown): string | undefined {
   }
   return undefined;
 }
+
+// POST /v1/posts answers `{ post: { _id, status, ... } }` -- the created post
+// is wrapped, which is why reading the id off the top level stored nothing for
+// every Threads/Facebook post ever dispatched.
+function zernioCreatedPost(json: unknown): Record<string, unknown> | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  const record = json as Record<string, unknown>;
+  for (const key of ["post", "data"]) {
+    const nested = record[key];
+    if (nested && typeof nested === "object") return nested as Record<string, unknown>;
+  }
+  return record;
+}
+
+// Zernio's post lifecycle: draft | scheduled | publishing | published |
+// partial | failed. A "draft" is the dangerous one: the API answers 200 and
+// the post looks accepted, but nothing will ever publish it -- which is
+// exactly how Threads and Facebook Page went silent for 13 days while this
+// app reported success (see the scheduledFor comment in postToZernio).
+const ZERNIO_DEAD_STATUSES = new Set(["draft", "failed"]);
 
 async function uploadVideoToZernio(apiKey: string, videoUrl: string): Promise<string> {
   const videoRes = await fetch(videoUrl);
@@ -84,6 +104,23 @@ async function uploadVideoToZernio(apiKey: string, videoUrl: string): Promise<st
   }
 
   return publicUrl;
+}
+
+// Zernio's own words: "Neither [scheduledFor nor publishNow] -> saved as a
+// draft to finish later." This code used to send `scheduledAt`, a field name
+// Zernio does not know, so the daily auto-build silently created drafts:
+// audited 2026-08-22 across all 9 accounts, 196 drafts and 0 scheduled, with
+// the only published posts dating from 2026-08-09 -- the day before the cron
+// switched from publishNow to scheduled hand-off. Threads and Facebook Page
+// therefore published nothing for 13 days while this app reported success.
+//
+// `scheduledFor` must be an ISO datetime WITHOUT a zone suffix, interpreted in
+// the separately-supplied `timezone`. Sending the UTC wall time with
+// timezone "UTC" keeps the two halves consistent and needs no timezone
+// conversion; the value Zernio stores back is UTC either way.
+function zernioSchedule(scheduledAt?: Date): Record<string, unknown> {
+  if (!scheduledAt) return { publishNow: true };
+  return { scheduledFor: scheduledAt.toISOString().slice(0, 19), timezone: "UTC" };
 }
 
 // scheduledAt omitted -> publish immediately (manual "Jadwalkan & Post
@@ -138,7 +175,7 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
             content: captionText(video),
             mediaItems: [{ url: publicUrl, type: "video" }],
             platforms: [{ platform: ZERNIO_PLATFORM_KEY[t.platform], accountId: t.accountId }],
-            ...(scheduledAt ? { scheduledAt: scheduledAt.toISOString() } : { publishNow: true }),
+            ...zernioSchedule(scheduledAt),
           }),
         });
         const json = await postRes.json().catch(() => null);
@@ -146,19 +183,36 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
           results[t.platform] = { ok: false, error: json?.error ?? `HTTP ${postRes.status}` };
           return;
         }
-        // Defensive: fall back to a flat "ok" if the response doesn't break
-        // results out per platform (shape not confirmed -- see file header).
+        // A 200 is NOT success on its own. Zernio answers 200 for a draft too,
+        // and a draft never publishes -- treating the HTTP status as the
+        // verdict is what let Threads and Facebook Page go quiet for 13 days
+        // with green ticks in the dashboard. Read the post's own status back.
         //
         // The id is read through several candidate keys because the original
-        // `json?.id` alone silently captured nothing: Zernio's own analytics
-        // payload keys its posts as `_id`, and all 18 real Threads/Facebook
-        // posts ended up stored with no postId at all, leaving them
-        // unmatchable to their performance data. Buffer's side stored one
-        // every time, which is what made the gap obvious.
+        // `json?.id` alone silently captured nothing: the created post is
+        // wrapped in `post`, so every Threads/Facebook post ever dispatched
+        // was stored with no postId at all, leaving it unmatchable to its
+        // performance data. Buffer's side stored one every time, which is
+        // what made the gap obvious.
+        const created = zernioCreatedPost(json);
+        const status = typeof created?.status === "string" ? created.status : undefined;
         const perPlatform = json?.results?.[ZERNIO_PLATFORM_KEY[t.platform]];
-        results[t.platform] = perPlatform
-          ? { ok: perPlatform.status !== "failed", postId: zernioPostId(perPlatform), error: perPlatform.error }
-          : { ok: true, postId: zernioPostId(json) };
+
+        if (perPlatform) {
+          results[t.platform] = {
+            ok: perPlatform.status !== "failed",
+            postId: zernioPostId(perPlatform) ?? zernioPostId(created),
+            error: perPlatform.error,
+          };
+        } else if (status && ZERNIO_DEAD_STATUSES.has(status)) {
+          results[t.platform] = {
+            ok: false,
+            postId: zernioPostId(created),
+            error: `Zernio menyimpan post sebagai "${status}" -- tidak akan pernah terbit. Cek payload scheduledFor/publishNow.`,
+          };
+        } else {
+          results[t.platform] = { ok: true, postId: zernioPostId(created) };
+        }
       } catch (err) {
         results[t.platform] = { ok: false, error: err instanceof Error ? err.message : "Gagal memanggil Zernio API." };
       }
