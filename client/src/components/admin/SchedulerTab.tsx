@@ -123,7 +123,9 @@ export function SchedulerTab() {
         const buildNote =
           data.buildResult.status === 'already_built'
             ? 'Sudah dijadwalkan hari ini, tidak ada slot baru.'
-            : `${data.buildResult.slotsBuilt} slot baru dibuat${data.buildResult.slotsSkipped > 0 ? ` (${data.buildResult.slotsSkipped} kekurangan video)` : ''}.`;
+            : data.buildResult.status === 'no_platforms'
+              ? 'Akun ini belum punya satu pun Account ID platform, jadi tidak ada jadwal yang dibuat.'
+              : `${data.buildResult.slotsBuilt} slot baru dibuat${data.buildResult.slotsSkipped > 0 ? ` (${data.buildResult.slotsSkipped} kekurangan video)` : ''}.`;
         const { attempted, posted, failed, errors } = data.dispatch;
         const dispatchNote =
           attempted === 0
@@ -164,6 +166,24 @@ export function SchedulerTab() {
   // in its first phase legitimately fills 1 of its 3 base_times. Counting
   // all of them would flag every account as short of video every single day
   // for the first two months.
+  // An active account with no channel ID anywhere can never post. It used to
+  // fail silently AND destructively -- one video claimed out of the pool per
+  // day, marked "posted", then stranded. buildScheduleForAccount() now refuses
+  // to build for it; this is how the admin finds out why.
+  const unconfiguredAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (a) =>
+          a.is_active &&
+          !a.tiktok_account_id &&
+          !a.instagram_account_id &&
+          !a.youtube_account_id &&
+          !a.threads_account_id &&
+          !a.facebook_page_account_id
+      ),
+    [accounts]
+  );
+
   const poolWarnings = useMemo(() => {
     const todaysCountByAccount = new Map<string, number>();
     for (const p of posts) {
@@ -171,15 +191,19 @@ export function SchedulerTab() {
       todaysCountByAccount.set(p.scheduler_account_id, (todaysCountByAccount.get(p.scheduler_account_id) ?? 0) + 1);
     }
     const now = new Date();
+    // Accounts with no platform configured are excluded: they get their own,
+    // more accurate warning above. Reporting "video kurang" for them would
+    // send the admin to upload videos that were never the problem.
+    const unconfigured = new Set(unconfiguredAccounts.map((a) => a.id));
     return accounts
-      .filter((a) => a.is_active)
+      .filter((a) => a.is_active && !unconfigured.has(a.id))
       .map((a) => ({
         account: a,
         todayCount: todaysCountByAccount.get(a.id) ?? 0,
         expected: activeSlotCount({ baseTimes: a.base_times, rampStartedAt: a.ramp_started_at }, now),
       }))
       .filter((w) => w.todayCount < w.expected);
-  }, [accounts, posts]);
+  }, [accounts, posts, unconfiguredAccounts]);
 
   return (
     <div className="space-y-6">
@@ -222,6 +246,19 @@ export function SchedulerTab() {
               </Button>
             </div>
           </CardTitle>
+
+          {unconfiguredAccounts.length > 0 && (
+            <div className="space-y-1 pt-1">
+              {unconfiguredAccounts.map((account) => (
+                <div key={account.id} className="flex items-center gap-1.5 text-xs text-destructive">
+                  <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    <strong>{account.label}</strong>: belum ada Account ID platform sama sekali -- jadwal tidak akan dibuat sampai diisi lewat "Kelola Akun Scheduler".
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {poolWarnings.length > 0 && (
             <div className="space-y-1 pt-1">

@@ -48,20 +48,34 @@ export async function GET(request: NextRequest) {
   const accounts = await db.select().from(schedulerAccounts).where(eq(schedulerAccounts.isActive, true));
   const today = todayISOInTimezone(TIMEZONE);
 
+  // Each account is isolated, mirroring syncPostMetrics(). Without this a
+  // single misconfigured account rejected the whole Promise.all and the route
+  // answered HTTP 500 with no summary at all -- so eight healthy accounts
+  // were indistinguishable from a total outage, and any account still
+  // mid-dispatch was cut off when the function returned. A bad cap_time was
+  // enough to trigger it (computeSlotTimes throws); validation now rejects
+  // that at save time, but the cron should survive whatever else comes.
   const summary = await Promise.all(
     accounts.map(async (account) => {
-      const result = await buildScheduleForAccount(account, today);
+      try {
+        const result = await buildScheduleForAccount(account, today);
 
-      const queued = await db
-        .select()
-        .from(scheduledPosts)
-        .where(and(eq(scheduledPosts.schedulerAccountId, account.id), eq(scheduledPosts.status, "queued")));
+        const queued = await db
+          .select()
+          .from(scheduledPosts)
+          .where(and(eq(scheduledPosts.schedulerAccountId, account.id), eq(scheduledPosts.status, "queued")));
 
-      await Promise.all(queued.map((post) => dispatchScheduledPost(post, { scheduledAt: post.scheduledFor })));
+        await Promise.all(queued.map((post) => dispatchScheduledPost(post, { scheduledAt: post.scheduledFor })));
 
-      return { account: account.label, result, dispatched: queued.length };
+        return { account: account.label, result, dispatched: queued.length };
+      } catch (err) {
+        return { account: account.label, error: err instanceof Error ? err.message : String(err) };
+      }
     }),
   );
 
-  return NextResponse.json({ ok: true, date: today, accounts: summary });
+  // Still HTTP 200 when some accounts failed: the body carries the per-account
+  // detail, and a 500 would only hide it behind a platform-level retry.
+  const failed = summary.filter((s) => "error" in s).length;
+  return NextResponse.json({ ok: failed === 0, date: today, failed, accounts: summary });
 }

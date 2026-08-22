@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
     threads_account_id,
     facebook_page_account_id,
     base_times,
-    increment_minutes,
     cap_time,
     is_active,
   } = parsed.data;
@@ -70,7 +69,9 @@ export async function POST(request: NextRequest) {
     threadsAccountId: threads_account_id ?? null,
     facebookPageAccountId: facebook_page_account_id ?? null,
     baseTimes: base_times,
-    incrementMinutes: increment_minutes,
+    // incrementMinutes is deliberately not written: the rotation no longer
+    // uses it (see lib/scheduler/rotation.ts). The column keeps its existing
+    // values so nothing is lost, it just stops driving anything.
     capTime: cap_time,
     isActive: is_active,
     updatedAt: new Date(),

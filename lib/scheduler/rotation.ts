@@ -1,15 +1,47 @@
-// Rotating posting-time pattern: each account's base times drift forward by
-// a fixed increment every day the build-schedule cron runs, until the LATEST
-// base time would reach the account's cap time, then the whole pattern wraps
-// back to the base times. Modulo arithmetic handles the wrap (and any
-// increment that doesn't evenly divide the window) without a separate
-// "if exceeds, reset" branch.
+// Rotating posting-time pattern: each account's base times are nudged forward
+// by an offset picked deterministically from (account, calendar day), landing
+// somewhere in the window between the LATEST base time and the account's cap
+// time.
 //
 // The drift exists so an account doesn't publish at exactly the same minute
 // every single day, which reads as automation. Windows are deliberately
-// narrow (~10 minutes) because eight accounts now share the same peak hours:
+// narrow (~10 minutes) because nine accounts now share the same peak hours:
 // a wider drift would buy more variation at the cost of accounts colliding
 // with each other, which is the more telling pattern of the two.
+//
+// This used to walk the pattern forward by a fixed increment per day
+// (offset = dayIndex * incrementMinutes % window), which measured badly
+// against its own goal. With a 10-minute window the per-account increments --
+// all primes: 7, 11, 13, 17, 19, 23, 29, 31, 37 -- collapsed mod 10 to just
+// {1, 3, 7, 9}, so:
+//   - four accounts marched in a perfectly straight line, one minute per day
+//     (20:02, 20:03, 20:04, ...), which is a MORE mechanical signature than
+//     simply posting at a fixed minute;
+//   - accounts sharing an effective step stayed a constant distance apart
+//     forever (Akun 1 and Naya Ardelia: exactly 20 minutes, every day);
+//   - and because offset is 0 whenever dayIndex is a multiple of the window,
+//     all nine accounts reset to their exact base times on the SAME day, every
+//     10 days -- 36 times a year the whole fleet landed on a tidy :00/:20/:40
+//     grid.
+// A hash of (accountId, date) removes all three at once, costs nothing, and
+// stays fully reproducible for tests. Seeded determinism is an existing
+// pattern here -- see seededRandom() in lib/content-generator/rotation.ts.
+//
+// Keying on the DATE rather than a running counter also means a missed build
+// no longer shifts anything: each calendar day owns its offset whether or not
+// the cron ran the day before.
+
+// FNV-1a, 32-bit. Deliberately hand-rolled rather than imported from
+// node:crypto -- this module is imported by the admin UI (see activeSlotCount
+// below), so pulling in a server-only module would break the browser bundle.
+function hashSeed(seed: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
 
 // Days at each posting frequency before stepping up: 1/day for the first 30
 // days, 2/day for the next 30, then 3/day from day 60 on.
@@ -23,6 +55,15 @@ export const RAMP_PHASE_DAYS = 30;
 // Enforced here as well as in the form's validation: this guarantees the
 // behaviour, the validation explains it to whoever is typing.
 export const MAX_SLOTS_PER_DAY = 3;
+
+// The drift window is capTime minus the LATEST base time (see
+// computeSlotTimes). It has to be wide enough for the day's offset to have
+// somewhere to go -- a 1-minute window would put every day on the same minute,
+// which is exactly what the rotation exists to avoid. Enforced in
+// lib/scheduler/validation.ts and mirrored in the admin form; lives here
+// alongside MAX_SLOTS_PER_DAY so the browser bundle can read it without
+// pulling in zod.
+export const MIN_DRIFT_WINDOW_MINUTES = 5;
 
 // How many of an account's baseTimes are live today. Slots are enabled from
 // the FRONT of baseTimes, which is why that array is ordered by priority
@@ -70,9 +111,16 @@ function toHHMM(totalMinutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-// dayIndex is the account's rotationDayIndex -- 0 on the day the pattern was
-// (re)set to its base times, incrementing by 1 each successful daily build.
-export function computeSlotTimes(baseTimes: string[], incrementMinutes: number, capTime: string, dayIndex: number): string[] {
+// `seed` identifies the account and the calendar day, e.g.
+// `${account.id}:2026-08-24`. Same seed always yields the same slot times, so
+// this stays trivially testable and a re-run of the build for the same day
+// can never shift an already-queued post.
+//
+// Pass ALL of an account's baseTimes, not just the ones its ramp phase has
+// enabled -- slice the RESULT instead. The window is derived from the latest
+// entry, so slicing the input would make the window depend on the ramp phase.
+// See buildScheduleForAccount() for the full reasoning.
+export function computeSlotTimes(baseTimes: string[], capTime: string, seed: string): string[] {
   if (baseTimes.length === 0) return [];
   // The LATEST time, not the last array entry. baseTimes is ordered by
   // priority (see the schema comment) so the frequency ramp can enable slots
@@ -85,7 +133,10 @@ export function computeSlotTimes(baseTimes: string[], incrementMinutes: number, 
   if (window <= 0) {
     throw new Error(`capTime (${capTime}) harus setelah base time paling akhir dalam sehari.`);
   }
-  const offset = ((dayIndex * incrementMinutes) % window + window) % window;
+  // Every base time shares the day's offset, so the shape of the pattern is
+  // preserved and only its position moves. That is also what makes slicing
+  // the result equivalent to slicing the input.
+  const offset = hashSeed(seed) % window;
   return baseTimes.map((t) => toHHMM(toMinutes(t) + offset));
 }
 

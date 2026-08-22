@@ -13,6 +13,7 @@ export interface SchedulerAccount {
   threads_account_id: string | null;
   facebook_page_account_id: string | null;
   base_times: string[];
+  /** @deprecated No longer drives the rotation -- see lib/scheduler/rotation.ts. */
   increment_minutes: number;
   cap_time: string;
   rotation_day_index: number;
@@ -36,7 +37,6 @@ export interface SchedulerAccountInput {
   threads_account_id?: string | null;
   facebook_page_account_id?: string | null;
   base_times: string[];
-  increment_minutes: number;
   cap_time: string;
   is_active: boolean;
 }
@@ -100,6 +100,9 @@ export function useDeleteSchedulerAccount() {
 
 export type BuildScheduleResult =
   | { status: 'already_built' }
+  // The account has no channel ID on any platform, so nothing was built and
+  // no video was claimed -- see buildScheduleForAccount().
+  | { status: 'no_platforms' }
   | { status: 'built'; slotsBuilt: number; slotsSkipped: number };
 
 export interface BuildAndDispatchResponse {
