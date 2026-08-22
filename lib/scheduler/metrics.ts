@@ -2,7 +2,7 @@ import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { postMetrics, scheduledPosts, schedulerAccounts, type ScheduledPost, type SchedulerAccount } from "@shared/schema";
 import { fetchBufferPosts } from "./providers/buffer";
-import { fetchZernioMetrics, fetchZernioPublishedPosts } from "./providers/zernio";
+import { fetchZernioMetrics, fetchZernioPosts, fetchZernioPublishedPosts } from "./providers/zernio";
 import { BUFFER_PLATFORMS, ZERNIO_PLATFORMS } from "./platforms";
 import { TIMEZONE, todayISOInTimezone } from "./buildSchedule";
 import type { MetricsByPostId, MetricsSnapshot, ProviderPostsById, ProviderResults, SchedulerPlatform } from "./types";
@@ -24,9 +24,9 @@ const ZERNIO_PLATFORM_FROM_KEY: Record<string, SchedulerPlatform> = {
   facebook_page: "facebook_page",
 };
 
-// How close a Zernio-reported publish time must be to our own recorded
-// posting time to be considered the same post. Slots are hours apart, so an
-// hour of slack is generous without risking a wrong pairing.
+// How close a Zernio-reported publish time must be to the slot we asked for
+// to be considered the same post. Slots are hours apart, so an hour of slack
+// is generous without risking a wrong pairing.
 const TIME_MATCH_TOLERANCE_MS = 60 * 60 * 1000;
 
 function providerPostId(post: ScheduledPost, platform: SchedulerPlatform): string | undefined {
@@ -41,20 +41,28 @@ function succeededPlatforms(post: ScheduledPost): SchedulerPlatform[] {
 }
 
 // Pairs a post/platform with Zernio numbers when no provider id was ever
-// stored for it. Every Threads/Facebook post dispatched before the id
-// capture was fixed is in this state (18 of them at the time of writing),
-// so without this they would simply never get metrics.
+// stored for it. Every Threads/Facebook post dispatched before the id capture
+// was fixed is in this state (107 of 116 at the time of writing), so without
+// this they would simply never get metrics.
+//
+// Anchored on scheduledFor, NOT postedAt. postedAt records when we handed the
+// post to the provider, which since the cron switched to scheduled hand-off is
+// around 01:53 WIB -- measured 18.6 hours before the post actually goes live
+// at its evening slot. Against a one-hour tolerance that never matched
+// anything, so this fallback silently did nothing for every post built after
+// 2026-08-10. scheduledFor is the time Zernio publishes at, so it is what the
+// provider's own publishedAt should sit next to.
 function matchByTime(
   candidates: Array<{ platform: string; publishedAt: Date; metrics: MetricsSnapshot }>,
   platform: SchedulerPlatform,
-  postedAt: Date | null
+  scheduledFor: Date | null
 ): MetricsSnapshot | undefined {
-  if (!postedAt) return undefined;
+  if (!scheduledFor) return undefined;
 
   let best: { metrics: MetricsSnapshot; distance: number } | undefined;
   for (const candidate of candidates) {
     if (ZERNIO_PLATFORM_FROM_KEY[candidate.platform] !== platform) continue;
-    const distance = Math.abs(candidate.publishedAt.getTime() - postedAt.getTime());
+    const distance = Math.abs(candidate.publishedAt.getTime() - scheduledFor.getTime());
     if (distance > TIME_MATCH_TOLERANCE_MS) continue;
     if (!best || distance < best.distance) best = { metrics: candidate.metrics, distance };
   }
@@ -97,29 +105,45 @@ function toRow(post: ScheduledPost, platform: SchedulerPlatform, snapshot: Metri
 // UI lying, and it makes the existing per-post retry button pick them up
 // automatically without any change to the retry path.
 //
-// Only an explicit `error` status counts as failure. "scheduled"/"sending"
-// are healthy in-flight states -- posts handed over with a future
-// scheduledAt legitimately sit in them until their slot arrives, and
-// treating those as failures would retry posts that are about to publish
-// normally, duplicating them.
-function reconcileResults(post: ScheduledPost, bufferPosts: ProviderPostsById): ProviderResults | null {
+// Only explicit failure statuses count as failure. Buffer's
+// "scheduled"/"sending" and Zernio's "scheduled"/"publishing" are healthy
+// in-flight states -- posts handed over with a future scheduledAt legitimately
+// sit in them until their slot arrives, and treating those as failures would
+// retry posts that are about to publish normally, duplicating them.
+//
+// Zernio's "draft" is the dangerous one and belongs firmly in the failed set:
+// the API answers 200, the post looks accepted, and nothing will ever publish
+// it. That is how Threads and Facebook Page went dark for 13 days.
+const DEAD_STATUSES = new Set(["error", "draft", "failed"]);
+const PUBLISHED_STATUSES = new Set(["sent", "published"]);
+
+// Covers BOTH providers. It used to skip everything non-Buffer outright, which
+// left Zernio write-only: whatever happened to a Threads or Facebook post
+// after hand-off was invisible, so ~100 posts kept a green tick they had never
+// earned and could never lose.
+function reconcileResults(post: ScheduledPost, providerPosts: ProviderPostsById): ProviderResults | null {
   const results = (post.providerResults as ProviderResults | null) ?? {};
   let changed = false;
   const next: ProviderResults = { ...results };
 
   for (const platform of post.platforms as SchedulerPlatform[]) {
-    if (!BUFFER_PLATFORMS.includes(platform)) continue;
     const entry = results[platform];
     if (!entry?.postId) continue;
 
-    const state = bufferPosts.get(entry.postId)?.state;
+    const state = providerPosts.get(entry.postId)?.state;
     if (!state) continue;
 
-    if (state.status === "error" && entry.ok !== false) {
-      next[platform] = { ok: false, postId: entry.postId, error: state.errorMessage ?? "Gagal dipublikasikan oleh Buffer." };
+    const providerName = BUFFER_PLATFORMS.includes(platform) ? "Buffer" : "Zernio";
+
+    if (DEAD_STATUSES.has(state.status) && entry.ok !== false) {
+      next[platform] = {
+        ok: false,
+        postId: entry.postId,
+        error: state.errorMessage ?? `${providerName} menandai post ini "${state.status}" -- tidak terbit.`,
+      };
       changed = true;
-    } else if (state.status === "sent" && entry.ok !== true) {
-      // The reverse case: a platform we recorded as failed that Buffer
+    } else if (PUBLISHED_STATUSES.has(state.status) && entry.ok !== true) {
+      // The reverse case: a platform we recorded as failed that the provider
       // actually published (e.g. a retry that errored on our side after the
       // provider had already accepted it). Correcting this prevents a retry
       // from posting it a second time.
@@ -147,17 +171,22 @@ async function syncAccount(account: SchedulerAccount, since: Date, capturedOn: s
   // Both providers are hit once for the whole account rather than once per
   // post -- Buffer's `posts` query and Zernio's /analytics listing each
   // return every recent post in one (paginated) response.
-  const [bufferPosts, zernioMetrics, zernioPublished] = await Promise.all([
+  const [bufferPosts, zernioPosts, zernioMetrics, zernioPublished] = await Promise.all([
     fetchBufferPosts(account, since).catch((): ProviderPostsById => new Map()),
+    fetchZernioPosts(account, since).catch((): ProviderPostsById => new Map()),
     fetchZernioMetrics(account, since).catch((): MetricsByPostId => new Map()),
     fetchZernioPublishedPosts(account, since).catch(() => []),
   ]);
+
+  // Provider post ids are globally unique per provider and never collide
+  // across the two, so one lookup table serves both.
+  const providerPosts: ProviderPostsById = new Map([...bufferPosts, ...zernioPosts]);
 
   // Correct the recorded outcomes BEFORE collecting metrics, so a post that
   // turns out to have failed doesn't also get a metrics row written for it.
   let reconciled = 0;
   for (const post of posts) {
-    const next = reconcileResults(post, bufferPosts);
+    const next = reconcileResults(post, providerPosts);
     if (!next) continue;
 
     const outcomes = Object.values(next);
@@ -188,7 +217,7 @@ async function syncAccount(account: SchedulerAccount, since: Date, capturedOn: s
       // so a miss there means the post genuinely has no metrics yet (its
       // once-daily ingestion hasn't run), not that we failed to match it.
       if (!snapshot && ZERNIO_PLATFORMS.includes(platform)) {
-        snapshot = matchByTime(zernioPublished, platform, post.postedAt);
+        snapshot = matchByTime(zernioPublished, platform, post.scheduledFor);
       }
       if (!snapshot) continue;
 

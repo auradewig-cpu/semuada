@@ -1,6 +1,6 @@
 import type { SchedulerAccount, VideoContent } from "@shared/schema";
 import { ACCOUNT_ID_FIELD } from "../platforms";
-import type { SchedulerPlatform, ProviderResults, MetricsSnapshot, MetricsByPostId } from "../types";
+import type { SchedulerPlatform, ProviderResults, MetricsSnapshot, MetricsByPostId, ProviderPostsById } from "../types";
 
 // Zernio, unlike Buffer, does NOT accept an arbitrary external URL in a post
 // request -- confirmed via https://docs.zernio.com/guides/media-uploads:
@@ -218,6 +218,73 @@ export async function postToZernio(account: SchedulerAccount, video: VideoConten
       }
     }),
   );
+
+  return results;
+}
+
+// Reads back what Zernio actually did with the posts we handed it, so the
+// metrics sync can correct provider_results the same way it already does for
+// Buffer. Without this, Zernio was write-only from our side: we recorded the
+// hand-off and never looked again, which is precisely how Threads and Facebook
+// Page sat at 116 ok / 0 failed in our database while ~100 of those posts had
+// silently been saved as drafts and never published.
+//
+// Confirmed live (read-only, 2026-08-23):
+//   GET /v1/posts?limit=100&page=N
+//   -> { posts: [{ _id, status, scheduledFor, publishedAt, timezone,
+//                  platforms: [{ platform, status, error }] }],
+//        pagination: { totalPages, ... } }
+//
+// Note this endpoint returns drafts too, which /analytics does not -- that is
+// the whole point. Filtering to published posts would hide exactly the
+// failures this exists to catch.
+//
+// `since` filters client-side on scheduledFor: the endpoint has no date
+// parameter, and the volume here (tens of posts per account) does not justify
+// guessing at one.
+export async function fetchZernioPosts(account: SchedulerAccount, since: Date): Promise<ProviderPostsById> {
+  const results: ProviderPostsById = new Map();
+  if (!account.zernioApiKey) return results;
+
+  // Bounded like fetchBufferPosts' page loop -- a pagination bug on either
+  // side must not spin forever.
+  for (let page = 1; page <= 20; page++) {
+    const res = await fetch(`${ZERNIO_API_BASE}/posts?limit=100&page=${page}`, {
+      headers: { Authorization: `Bearer ${account.zernioApiKey}` },
+    });
+    if (!res.ok) break;
+    const json = await res.json().catch(() => null);
+    const posts: unknown[] = json?.posts ?? [];
+    if (posts.length === 0) break;
+
+    for (const entry of posts) {
+      const post = entry as Record<string, any>;
+      const id = zernioPostId(post);
+      if (!id) continue;
+      const scheduledFor = typeof post.scheduledFor === "string" ? new Date(post.scheduledFor) : null;
+      if (scheduledFor && !isNaN(scheduledFor.getTime()) && scheduledFor < since) continue;
+
+      // One Zernio post carries exactly one platform in our usage (see the
+      // "One POST /posts call PER target" note above), so its per-platform
+      // entry is more specific than the post-level rollup and wins.
+      const platform = post.platforms?.[0];
+      const status: string = typeof platform?.status === "string" && platform.status !== "pending"
+        ? platform.status
+        : String(post.status ?? "");
+
+      results.set(id, {
+        metrics: null, // numbers come from /analytics, not from here
+        state: {
+          status,
+          errorMessage: platform?.error ?? post.error ?? undefined,
+          sentAt: typeof post.publishedAt === "string" ? new Date(post.publishedAt) : undefined,
+        },
+      });
+    }
+
+    const totalPages = json?.pagination?.totalPages;
+    if (typeof totalPages === "number" && page >= totalPages) break;
+  }
 
   return results;
 }
