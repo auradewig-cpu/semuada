@@ -193,18 +193,14 @@ $('btn-start').addEventListener('click', async () => {
   }
 });
 
+// Derived from the server's status, never tracked locally: the run can now
+// pause itself (Shopee's verification gate), and a local flag would leave the
+// button reading "Pause" while the run is already parked -- so clearing the
+// captcha would take two clicks, the first one doing nothing.
 let paused = false;
 $('btn-pause').addEventListener('click', async () => {
   try {
-    if (!paused) {
-      await api('/api/pause', { method: 'POST' });
-      $('btn-pause').textContent = 'Resume';
-      paused = true;
-    } else {
-      await api('/api/resume', { method: 'POST' });
-      $('btn-pause').textContent = 'Pause';
-      paused = false;
-    }
+    await api(paused ? '/api/resume' : '/api/pause', { method: 'POST' });
   } catch (e) {
     logLine('Error: ' + e.message, 'err');
   }
@@ -228,10 +224,18 @@ async function pollStatus() {
     const s = await res.json();
     setStatusBadge(s.status);
 
+    paused = (s.status === 'paused' || s.status === 'waiting_verification');
+    $('btn-pause').textContent = paused ? 'Lanjutkan' : 'Pause';
+    if (s.status === 'waiting_verification') {
+      $('btn-pause').disabled = false;
+    }
+
     if (s.total > 0) {
       const pct = Math.round((s.current / s.total) * 100);
       $('progress-bar-inner').style.width = pct + '%';
-      $('progress-text').textContent = `${s.current} / ${s.total} produk -- sukses: ${s.success}, gagal: ${s.failed}`;
+      $('progress-text').textContent =
+        `${s.current} / ${s.total} produk -- sukses: ${s.success}, gagal: ${s.failed}` +
+        `, diblokir: ${s.blocked ?? 0}, stok habis: ${s.out_of_stock ?? 0}`;
     }
 
     if (s.log.length > lastLogLength) {

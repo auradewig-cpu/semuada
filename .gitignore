@@ -25,6 +25,7 @@ scraper/output/
 scraper/debug/
 scraper/chrome_profile/
 scraper/*.csv
+scraper/logs/
 scraper/__pycache__/
 
 # Old compiled scraper (source lost, superseded by scrape.py) -- 73MB binary, don't bloat the repo

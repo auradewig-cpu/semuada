@@ -47,3 +47,29 @@ SHIP_FROM_LABEL_TEXT = "Dikirim Dari"
 # variant selection -- reliable even though the buy buttons' own disabled
 # state is ambiguous (they're also disabled before a variant is picked).
 OUT_OF_STOCK_TEXT_PATTERN = r"STOK\s+HABIS"
+
+# --- Shopee's blocking responses -------------------------------------------
+#
+# Shopee does not answer a throttled request with one page, it answers with
+# four different ones. Every pattern below is the literal visible text of a
+# real saved page in scraper/debug/, not a guess:
+#
+#   "Verifikasi untuk melanjutkan"            26 Jul
+#   "Halaman Tidak Tersedia ... ID: 3500..."  20 Jul, 17 Aug
+#   "Terjadi Kesalahan ... Coba Lagi"         20 Jul
+#   (header+footer render, no product body)   10, 20, 22 Aug
+#
+# Until now all four looked identical to the scraper -- an empty breadcrumb,
+# blamed on a stale selector. The selectors were never the problem: on a page
+# that DID work, Tc_yqt / P39yUt / PcnXj1 are all present.
+#
+# !! These must only ever be matched against document.body.innerText, NEVER
+# against page_source. Shopee ships its i18n dictionary in the JS bundle of
+# every page, so the raw HTML of a perfectly healthy product page contains
+# "verifikasi" 24 times and "captcha" 11 times. Matching HTML would classify
+# every single page as blocked.
+VERIFICATION_TEXT_PATTERN = r"Verifikasi untuk melanjutkan"
+PAGE_UNAVAILABLE_TEXT_PATTERN = r"Halaman Tidak Tersedia"
+# Both halves required: "Coba Lagi" alone is a common button label, and
+# "Terjadi Kesalahan" alone risks matching an unrelated inline error.
+TRANSIENT_ERROR_TEXT_PATTERN = r"Terjadi Kesalahan[\s\S]{0,200}?Coba Lagi"
