@@ -21,6 +21,14 @@ BLOCK_VERIFICATION = "verifikasi"
 BLOCK_UNAVAILABLE = "halaman_tidak_tersedia"
 BLOCK_TRANSIENT = "error_sementara"
 BLOCK_SHELL = "halaman_cangkang"
+# The fifth face, and the only one classify_block() cannot see: Shopee simply
+# never answers, so the page load times out and there is no text to inspect.
+# Measured on a real run 2026-08-22 -- the row consumed exactly the 30s page
+# load budget, while the successful products either side of it took 5, 19, 22
+# and 7 seconds to reach DOMContentLoaded on an "eager" strategy that should
+# need a couple. A stall is a withheld response, not a broken browser, so it
+# is treated like the other blocks: cool down and try again later.
+BLOCK_STALLED = "muat_mandek"
 
 # First cool-down per kind, in seconds. Doubled on each consecutive block and
 # capped by COOLDOWN_MAX_SECONDS.
@@ -35,6 +43,7 @@ BLOCK_SHELL = "halaman_cangkang"
 BASE_COOLDOWN_SECONDS = {
     BLOCK_UNAVAILABLE: 10 * 60,
     BLOCK_SHELL: 3 * 60,
+    BLOCK_STALLED: 3 * 60,
     BLOCK_TRANSIENT: 45,
 }
 COOLDOWN_MAX_SECONDS = 30 * 60
