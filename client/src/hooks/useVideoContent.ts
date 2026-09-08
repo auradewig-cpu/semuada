@@ -19,6 +19,10 @@ export interface VideoContent {
   // FK to the Content Generator output that produced this video (null for
   // manual uploads). Drives the Phase 5 learning pipeline.
   content_generation_id: string | null;
+  // Which scheduler account this video is reserved for. Null = the shared
+  // per-category pool any account may draw from. A reserved video is claimable
+  // ONLY by its own account -- see lib/scheduler/videoPool.ts.
+  scheduler_account_id: string | null;
   created_at: string;
 }
 
@@ -40,6 +44,13 @@ export interface VideoContentStats {
   total: number;
   trashedTotal: number;
   byCategory: { category: string; available: number; trashed: number }[];
+  // Per-lane stock: how many videos each active account has reserved and still
+  // unposted. Every active account appears, including ones with an empty lane
+  // -- an empty lane is precisely what needs to be seen before the account
+  // quietly stops posting.
+  lanes: { scheduler_account_id: string; label: string; category: string; available: number }[];
+  // Videos reserved for nobody, per category -- what any account may still draw.
+  sharedPool: { category: string; available: number }[];
 }
 
 export function useVideoContentStats() {
@@ -70,12 +81,54 @@ export function useDeleteVideoContent() {
 export function useUpdateVideoContent() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...payload }: { id: string; caption?: string; hashtags?: string[] }) => {
+    mutationFn: async ({ id, ...payload }: { id: string; caption?: string; hashtags?: string[]; scheduler_account_id?: string | null }) => {
       const res = await apiRequest('PATCH', `/api/video-content/${id}`, payload);
       return res.json() as Promise<VideoContent>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['video-content'] });
+      // Reassigning a lane moves stock between accounts, so the per-lane
+      // counts on screen are stale until this refetches.
+      queryClient.invalidateQueries({ queryKey: ['video-content-stats'] });
+    },
+  });
+}
+
+// Bulk lane assignment. `scheduler_account_id: null` returns the videos to the
+// shared pool. One request rather than N -- see app/api/video-content/assign.
+export function useAssignVideoLane() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { ids: string[]; scheduler_account_id: string | null }) => {
+      const res = await apiRequest('POST', '/api/video-content/assign', payload);
+      return res.json() as Promise<{ ok: boolean; assigned: number }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-content'] });
+      queryClient.invalidateQueries({ queryKey: ['video-content-stats'] });
+    },
+  });
+}
+
+// Which accounts already hold videos of this product in their lane. Drives the
+// contamination warning -- putting one product's videos on two accounts is the
+// exact cross-account similarity lanes exist to prevent.
+export interface ProductFocusEntry {
+  scheduler_account_id: string;
+  label: string;
+  count: number;
+}
+
+export function useProductFocus(productId?: string | null) {
+  return useQuery<{ items: ProductFocusEntry[] }>({
+    queryKey: ['video-product-focus', productId],
+    enabled: !!productId,
+    queryFn: async () => {
+      const res = await fetch(`/api/video-content/product-focus?product_id=${encodeURIComponent(productId!)}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
     },
   });
 }
@@ -94,6 +147,9 @@ export function useCreateVideoContent() {
       cloudinary_public_id: string;
       storage_account_id?: string;
       content_generation_id?: string | null;
+      // Reserve this upload for one account's lane; omit or null for the
+      // shared per-category pool (the default).
+      scheduler_account_id?: string | null;
     }) => {
       const res = await apiRequest('POST', '/api/video-content', payload);
       return res.json() as Promise<VideoContent>;

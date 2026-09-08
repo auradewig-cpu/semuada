@@ -86,7 +86,8 @@ export async function buildScheduleForAccount(account: SchedulerAccount, todayIS
   // across all base times, so slicing after is otherwise identical.
   const allowed = activeSlotCount(account, new Date());
   const slotTimes = computeSlotTimes(account.baseTimes, account.capTime, `${account.id}:${todayISO}`).slice(0, allowed);
-  const claimedVideos = await claimNextVideos(account.category, slotTimes.length);
+  // Lane first, shared pool second -- see claimNextVideos().
+  const claimedVideos = await claimNextVideos(account.id, account.category, slotTimes.length);
 
   let built = 0;
   for (let i = 0; i < slotTimes.length; i++) {

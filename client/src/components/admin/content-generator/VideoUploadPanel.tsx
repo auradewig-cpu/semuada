@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useCreateVideoContent, uploadVideoToCloudinary } from "@/hooks/useVideoContent";
+import { VideoLanePicker } from "./VideoLanePicker";
 
 interface VideoUploadPanelProps {
   productId: string;
@@ -31,6 +32,9 @@ export function VideoUploadPanel({ productId, category, subcategory, caption, ha
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [lastUploadedUrl, setLastUploadedUrl] = useState<string | null>(null);
+  // Which account's lane this upload goes into. Null = shared pool, the
+  // long-standing default, so the workflow is unchanged unless you choose.
+  const [laneAccountId, setLaneAccountId] = useState<string | null>(null);
 
   const isUploading = progress !== null;
 
@@ -61,6 +65,7 @@ export function VideoUploadPanel({ productId, category, subcategory, caption, ha
         cloudinary_public_id: result.public_id,
         storage_account_id: result.storage_account_id,
         content_generation_id: contentGenerationId,
+        scheduler_account_id: laneAccountId,
       });
       setLastUploadedUrl(result.secure_url);
       setSelectedFile(null);
@@ -88,6 +93,15 @@ export function VideoUploadPanel({ productId, category, subcategory, caption, ha
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* Chosen before upload: which account may publish this video. */}
+        <VideoLanePicker
+          category={category}
+          value={laneAccountId}
+          onChange={setLaneAccountId}
+          productId={productId}
+          disabled={isUploading}
+        />
+
         <input
           ref={fileInputRef}
           type="file"

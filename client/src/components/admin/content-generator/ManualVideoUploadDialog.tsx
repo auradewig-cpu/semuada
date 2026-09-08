@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { VideoLanePicker } from './VideoLanePicker';
 import { Upload } from 'lucide-react';
 import {
   Dialog,
@@ -39,6 +40,8 @@ export function ManualVideoUploadDialog({ isOpen, onOpenChange }: ManualVideoUpl
   const [hashtagsText, setHashtagsText] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  // Null = shared pool. See VideoLanePicker.
+  const [laneAccountId, setLaneAccountId] = useState<string | null>(null);
 
   const subcategories = category ? Array.from(hierarchy.get(category) || []).sort() : [];
   const isUploading = progress !== null;
@@ -50,6 +53,7 @@ export function ManualVideoUploadDialog({ isOpen, onOpenChange }: ManualVideoUpl
     setHashtagsText('');
     setSelectedFile(null);
     setProgress(null);
+    setLaneAccountId(null);
   };
 
   const handleFileSelected = (files: FileList | null) => {
@@ -84,6 +88,7 @@ export function ManualVideoUploadDialog({ isOpen, onOpenChange }: ManualVideoUpl
         video_url: result.secure_url,
         cloudinary_public_id: result.public_id,
         storage_account_id: result.storage_account_id,
+        scheduler_account_id: laneAccountId,
       });
       toast({ title: 'Berhasil', description: 'Video tersimpan ke Video Library.' });
       resetForm();
@@ -115,7 +120,14 @@ export function ManualVideoUploadDialog({ isOpen, onOpenChange }: ManualVideoUpl
               <Label>Kategori</Label>
               <Select
                 value={category ?? ''}
-                onValueChange={(v) => { setCategory(v); setSubcategory(undefined); }}
+                onValueChange={(v) => {
+                  setCategory(v);
+                  setSubcategory(undefined);
+                  // Clearing the lane is required, not tidiness: an account
+                  // from the previous category would be rejected by the API,
+                  // and the picker no longer lists it.
+                  setLaneAccountId(null);
+                }}
                 disabled={isUploading}
               >
                 <SelectTrigger>
@@ -148,6 +160,17 @@ export function ManualVideoUploadDialog({ isOpen, onOpenChange }: ManualVideoUpl
               </Select>
             </div>
           </div>
+
+          {/* Only meaningful once a category is chosen -- lanes belong to
+              accounts, and accounts belong to one category. */}
+          {category && (
+            <VideoLanePicker
+              category={category}
+              value={laneAccountId}
+              onChange={setLaneAccountId}
+              disabled={isUploading}
+            />
+          )}
 
           <div className="space-y-1.5">
             <Label>Caption</Label>

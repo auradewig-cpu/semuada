@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2, Film, Pencil, Upload, Database, Archive } from 'lucide-react';
+import { Trash2, Film, Pencil, Upload, Database, Archive, FolderInput } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useVideoContents, useVideoContentStats, useDeleteVideoContent, useUpdateVideoContent, type VideoContent } from "@/hooks/useVideoContent";
+import { useVideoContents, useVideoContentStats, useDeleteVideoContent, useUpdateVideoContent, useAssignVideoLane, type VideoContent } from "@/hooks/useVideoContent";
+import { useSchedulerAccounts } from "@/hooks/useScheduler";
+import { SHARED_POOL } from "@/components/admin/content-generator/VideoLanePicker";
 import { useCategoryContext } from "@/context/CategoryContext";
 import { ManualVideoUploadDialog } from "@/components/admin/content-generator/ManualVideoUploadDialog";
 import { StorageAccountsDialog } from "@/components/admin/content-generator/StorageAccountsDialog";
@@ -66,6 +68,16 @@ export function VideoLibraryTab() {
   const [editHashtags, setEditHashtags] = useState('');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isStorageDialogOpen, setIsStorageDialogOpen] = useState(false);
+  // Lane filter: undefined = show all, a string = that account's lane,
+  // SHARED_POOL = only videos reserved for nobody.
+  const [laneFilter, setLaneFilter] = useState<string | undefined>(undefined);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<string | null>(null);
+  const assignLane = useAssignVideoLane();
+  const { data: accountsData } = useSchedulerAccounts();
+  const accounts = accountsData?.items ?? [];
+  const accountLabel = (id: string | null) => accounts.find((a) => a.id === id)?.label ?? null;
 
   // Display preference only, no server round-trip needed -- read once on
   // mount (client-only, this tab never renders on the server) and persist
@@ -83,7 +95,18 @@ export function VideoLibraryTab() {
   };
 
   const allVideos = data?.items ?? [];
-  const videos = allVideos.filter((v) => (showTrashOnly ? v.trashed_at !== null : v.trashed_at === null));
+  const videos = allVideos
+    .filter((v) => (showTrashOnly ? v.trashed_at !== null : v.trashed_at === null))
+    .filter((v) => {
+      if (laneFilter === undefined) return true;
+      if (laneFilter === SHARED_POOL) return v.scheduler_account_id === null;
+      return v.scheduler_account_id === laneFilter;
+    });
+
+  // Selection is scoped to what is on screen: switching category or lane
+  // filter must not leave invisible videos selected and then reassign them.
+  const visibleIds = new Set(videos.map((v) => v.id));
+  const selectedVisible = selectedIds.filter((id) => visibleIds.has(id));
   // Every count on this card describes the set currently on screen: the stock
   // view counts what is left in the pool, the trash view counts what is in the
   // trash. Anything else puts two numbers that contradict each other on the
@@ -91,6 +114,35 @@ export function VideoLibraryTab() {
   // indicator did against the grid below it.
   const headlineCount = showTrashOnly ? stats?.trashedTotal : stats?.total;
   const categoryCount = (c: { available: number; trashed: number }) => (showTrashOnly ? c.trashed : c.available);
+
+  // Lanes shown for the category in view (or all, when no category is picked),
+  // plus what is still unreserved. This is the number that says "produce more
+  // for Caca" BEFORE she runs dry -- the scheduler's own warning only fires on
+  // the day an account has already failed to fill a slot.
+  const lanes = (stats?.lanes ?? []).filter((l) => !category || l.category === category);
+  const sharedAvailable = (stats?.sharedPool ?? [])
+    .filter((s) => !category || s.category === category)
+    .reduce((sum, s) => sum + s.available, 0);
+
+  const handleAssign = () => {
+    if (selectedVisible.length === 0) return;
+    assignLane.mutate(
+      { ids: selectedVisible, scheduler_account_id: assignTarget },
+      {
+        onSuccess: (res) => {
+          toast({
+            title: 'Wadah diperbarui',
+            description: assignTarget
+              ? `${res.assigned} video ditugaskan ke "${accountLabel(assignTarget)}".`
+              : `${res.assigned} video dikembalikan ke kolam bersama.`,
+          });
+          setSelectedIds([]);
+          setIsAssignOpen(false);
+        },
+        onError: (error) => toast({ variant: 'destructive', title: 'Gagal menugaskan', description: error.message }),
+      }
+    );
+  };
 
   const confirmDelete = () => {
     if (!deleteTarget) return;
@@ -207,6 +259,67 @@ export function VideoLibraryTab() {
               ))}
             </div>
           )}
+
+          {/* Per-lane stock. Doubles as the lane filter, so verifying what is
+              actually reserved for one account is one click rather than a
+              manual scan. Hidden in the trash view, where "reserved stock"
+              means nothing. */}
+          {!showTrashOnly && lanes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[11px] text-muted-foreground mr-0.5">Wadah:</span>
+              {lanes.map((lane) => (
+                <Button
+                  key={lane.scheduler_account_id}
+                  type="button"
+                  size="sm"
+                  variant={laneFilter === lane.scheduler_account_id ? 'secondary' : 'ghost'}
+                  className={`h-7 text-xs ${lane.available === 0 ? 'text-destructive' : ''}`}
+                  onClick={() =>
+                    setLaneFilter(laneFilter === lane.scheduler_account_id ? undefined : lane.scheduler_account_id)
+                  }
+                  title={
+                    lane.available === 0
+                      ? `${lane.label} tidak punya video khusus -- akan mengambil dari kolam bersama`
+                      : `${lane.available} video khusus untuk ${lane.label}`
+                  }
+                >
+                  {lane.label} ({lane.available})
+                </Button>
+              ))}
+              <Button
+                type="button"
+                size="sm"
+                variant={laneFilter === SHARED_POOL ? 'secondary' : 'ghost'}
+                className="h-7 text-xs"
+                onClick={() => setLaneFilter(laneFilter === SHARED_POOL ? undefined : SHARED_POOL)}
+                title="Video yang belum ditugaskan -- bisa diambil akun mana saja di kategorinya"
+              >
+                Kolam bersama ({sharedAvailable})
+              </Button>
+            </div>
+          )}
+
+          {!showTrashOnly && videos.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => setSelectedIds(selectedVisible.length === videos.length ? [] : videos.map((v) => v.id))}
+              >
+                {selectedVisible.length === videos.length ? 'Batal pilih semua' : `Pilih semua (${videos.length})`}
+              </Button>
+              {selectedVisible.length > 0 && (
+                <>
+                  <span className="text-xs text-muted-foreground">{selectedVisible.length} dipilih</span>
+                  <Button type="button" size="sm" className="h-7 text-xs" onClick={() => { setAssignTarget(null); setIsAssignOpen(true); }}>
+                    <FolderInput className="h-3.5 w-3.5 mr-1" /> Tugaskan ke akun
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -218,9 +331,28 @@ export function VideoLibraryTab() {
           ) : (
             <div className={`grid ${GRID_CLASSES[size]} gap-4`}>
               {videos.map((video) => (
-                <Card key={video.id} className="overflow-hidden">
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video src={video.video_url} controls className="w-full aspect-[9/16] bg-black object-contain" />
+                <Card
+                  key={video.id}
+                  className={`overflow-hidden ${selectedVisible.includes(video.id) ? 'ring-2 ring-primary' : ''}`}
+                >
+                  <div className="relative">
+                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                    <video src={video.video_url} controls className="w-full aspect-[9/16] bg-black object-contain" />
+                    {!showTrashOnly && (
+                      <label className="absolute top-2 left-2 bg-background/90 rounded p-1 cursor-pointer flex items-center">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer"
+                          checked={selectedVisible.includes(video.id)}
+                          onChange={(e) =>
+                            setSelectedIds((prev) =>
+                              e.target.checked ? [...prev, video.id] : prev.filter((id) => id !== video.id)
+                            )
+                          }
+                        />
+                      </label>
+                    )}
+                  </div>
                   <CardContent className="p-3 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-medium bg-muted rounded px-2 py-0.5 truncate">
@@ -240,6 +372,20 @@ export function VideoLibraryTab() {
                         </Button>
                       </div>
                     </div>
+                    {/* Which account may publish this video. Worth showing on
+                        every card: a video in the wrong lane is invisible
+                        otherwise, and stays unpublished without any error. */}
+                    <span
+                      className={`inline-block text-[10px] rounded px-1.5 py-0.5 ${
+                        video.scheduler_account_id
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {video.scheduler_account_id
+                        ? `Wadah: ${accountLabel(video.scheduler_account_id) ?? 'akun terhapus'}`
+                        : 'Kolam bersama'}
+                    </span>
                     {video.caption && <p className="text-xs line-clamp-3">{video.caption}</p>}
                     {video.hashtags && video.hashtags.length > 0 && (
                       <p className="text-xs text-primary truncate">
@@ -264,6 +410,47 @@ export function VideoLibraryTab() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={isAssignOpen} onOpenChange={(open) => !assignLane.isPending && setIsAssignOpen(open)}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Tugaskan {selectedVisible.length} video ke akun</DialogTitle>
+            <DialogDescription>
+              Video yang ditugaskan hanya bisa diambil akun itu -- akun lain di kategori yang sama tidak akan pernah
+              mengambilnya. Pilih &quot;Kolam bersama&quot; untuk melepaskannya kembali.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Select
+            value={assignTarget ?? SHARED_POOL}
+            onValueChange={(v) => setAssignTarget(v === SHARED_POOL ? null : v)}
+            disabled={assignLane.isPending}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SHARED_POOL}>Kolam bersama (lepas penugasan)</SelectItem>
+              {/* Only accounts whose category matches every selected video --
+                  the API rejects a mismatch, so offering it would just produce
+                  an error the admin can't act on. */}
+              {accounts
+                .filter((a) => a.is_active)
+                .filter((a) => videos.filter((v) => selectedVisible.includes(v.id)).every((v) => v.category === a.category))
+                .map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{a.label} · {a.category}</SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsAssignOpen(false)} disabled={assignLane.isPending}>
+              Batal
+            </Button>
+            <Button type="button" onClick={handleAssign} disabled={assignLane.isPending}>
+              {assignLane.isPending ? 'Menyimpan...' : 'Tugaskan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ManualVideoUploadDialog isOpen={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen} />
       <StorageAccountsDialog isOpen={isStorageDialogOpen} onOpenChange={setIsStorageDialogOpen} />

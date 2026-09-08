@@ -5,6 +5,7 @@ import { db } from "@root/lib/db";
 import { videoContents } from "@shared/schema";
 import { toApiVideoContent } from "@root/lib/mappers";
 import { requireAuth } from "@root/lib/apiAuth";
+import { laneUpdate, validateLaneAssignment } from "@root/lib/scheduler/videoLane";
 
 // Admin-only video library -- not customer-facing, so both read and write
 // are gated (unlike /api/products, which has a public GET).
@@ -45,6 +46,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "cloudinary_public_id wajib diisi." }, { status: 400 });
   }
 
+  // Optional: absent or null means the shared per-category pool, which is the
+  // default and what every upload did before lanes existed.
+  const laneId = laneUpdate(body.scheduler_account_id);
+  if (laneId) {
+    const invalid = await validateLaneAssignment(laneId, body.category);
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
+  }
+
   const [row] = await db
     .insert(videoContents)
     .values({
@@ -65,6 +74,8 @@ export async function POST(request: NextRequest) {
         typeof body.content_generation_id === "string" && body.content_generation_id
           ? body.content_generation_id
           : undefined,
+      // Which account this video is reserved for; null = shared pool.
+      schedulerAccountId: laneId ?? null,
     })
     .returning();
 

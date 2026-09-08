@@ -101,6 +101,8 @@ export function toApiVideoContent(row: DbVideoContent) {
     status: row.status,
     trashed_at: row.trashedAt,
     content_generation_id: row.contentGenerationId,
+    // Which account's lane this video is reserved for; null = shared pool.
+    scheduler_account_id: row.schedulerAccountId,
     created_at: row.createdAt,
   };
 }
