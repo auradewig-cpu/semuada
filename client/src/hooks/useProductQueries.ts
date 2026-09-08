@@ -85,8 +85,17 @@ export function useProducts(filters?: FilterState) {
 
       return processedData;
     },
-    staleTime: 0,
-    gcTime: 0,
+    // This pulls the ENTIRE catalogue (~1.55 MB of JSON for 1,679 products,
+    // 440 kB of which is image_urls) and both callers -- the admin Products
+    // tab and the Content Generator's ProductPicker -- mount it repeatedly.
+    // With staleTime/gcTime at 0 every mount, including simply switching tabs
+    // and switching back, re-downloaded all of it.
+    //
+    // Safe to cache: useAddProduct/useUpdateProduct/useDeleteProduct all
+    // invalidate ['products'], so an edit still refreshes the list at once.
+    // This only removes the redundant re-fetches.
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
