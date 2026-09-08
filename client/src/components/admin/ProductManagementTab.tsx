@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import * as z from "zod";
 import { Plus, Upload, Trash2, Star, Edit, Download, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -87,35 +87,59 @@ export function ProductManagementTab() {
 
   const { data: allProducts = [], isLoading: isLoadingProducts } = useProducts();
 
-  // Implement pagination
-  const totalPages = Math.ceil(allProducts.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const products = allProducts.slice(startIndex, endIndex);
-
   const addProduct = useAddProduct();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
 
-  const filteredProducts = products.filter(product => {
+  // Search runs over the WHOLE catalogue, then the result is paginated.
+  //
+  // It used to be the other way round -- allProducts.slice() first, .filter()
+  // second -- so the search only ever looked at the 50 rows of the page you
+  // happened to be on. A product on page 20 simply could not be found from
+  // page 1; you had to page across until you landed on it by chance. The
+  // counters lied for the same reason: totalPages and "of 1679" came from the
+  // unfiltered list, so pagination still claimed 34 pages after a search that
+  // matched three products.
+  //
+  // Same shape as ProductPicker's filter (see content-generator/ProductPicker.tsx):
+  // memoised over the full list, no pre-slicing.
+  const filteredProducts = useMemo(() => {
     const idQuery = searchById.toLowerCase().trim();
     const nameQuery = searchByName.toLowerCase().trim();
-
-    const productName = product.product_name?.toLowerCase() || '';
-    const productId = product.product_id?.toLowerCase() || '';
 
     // Split search queries into individual terms for better matching
     const idTerms = idQuery ? idQuery.split(/\s+/).filter(term => term.length > 0) : [];
     const nameTerms = nameQuery ? nameQuery.split(/\s+/).filter(term => term.length > 0) : [];
+    if (idTerms.length === 0 && nameTerms.length === 0) return allProducts;
 
-    // Check if product matches ID search terms (all terms must be present)
-    const matchesId = idTerms.length === 0 || idTerms.every(term => productId.includes(term));
+    return allProducts.filter(product => {
+      const productName = product.product_name?.toLowerCase() || '';
+      const productId = product.product_id?.toLowerCase() || '';
 
-    // Check if product matches name search terms (all terms must be present)
-    const matchesName = nameTerms.length === 0 || nameTerms.every(term => productName.includes(term));
+      // All terms must be present, in either field independently.
+      const matchesId = idTerms.length === 0 || idTerms.every(term => productId.includes(term));
+      const matchesName = nameTerms.length === 0 || nameTerms.every(term => productName.includes(term));
 
-    return matchesId && matchesName;
-  });
+      return matchesId && matchesName;
+    });
+  }, [allProducts, searchById, searchByName]);
+
+  // Pagination is derived from the FILTERED list, so the controls and the
+  // "Showing x-y of z" line describe what is actually on screen.
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / itemsPerPage));
+  // Clamped rather than stored: typing a search while sitting on page 20 would
+  // otherwise leave currentPage past the end of a much shorter result set and
+  // render an empty screen even though there are matches.
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const products = filteredProducts.slice(startIndex, endIndex);
+
+  // Back to page 1 whenever the query changes -- staying on page 12 of a fresh
+  // search is never what the user meant.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchById, searchByName]);
 
 
   const handleAddClick = () => {
@@ -404,16 +428,20 @@ export function ProductManagementTab() {
       { label: "original_price", key: "original_price" },
       { label: "dikirim_dari", key: "dikirim_dari" },
       { label: "toko", key: "toko" },
-      { label: "komisi", key: "commission" },
+      // Key must match the property name written below, not the DB column --
+      // react-csv reads row[key], so "commission" here against a row that
+      // writes `komisi` exported a blank column for every product.
+      { label: "komisi", key: "komisi" },
       { label: "is_featured", key: "is_featured" },
       { label: "featured_order", key: "featured_order" },
       { label: "rating", key: "rating" },
       { label: "stock_available", key: "stock_available" },
     ];
 
-    // Create a copy of all products data to export everything
-    // Map database fields to CSV headers, using 'komisi' for commission
-    const exportData = allProducts.map(product => ({
+    // Exports what is currently on screen: with a search active you get those
+    // matches, with the search cleared you get the whole catalogue. Previously
+    // this always read allProducts, so a filtered export was impossible.
+    const exportData = filteredProducts.map(product => ({
       product_id: product.product_id,
       product_name: product.product_name,
       category: product.category,
@@ -432,17 +460,25 @@ export function ProductManagementTab() {
       image_url_4: product.image_urls?.[2] || '',
       image_url_5: product.image_urls?.[3] || '',
       video_url: (product as any).video_url || '', // Include video_url field
-      // Note: is_featured, featured_order, rating, stock_available not in current database
+      // These four are declared in the headers above but were never mapped, so
+      // they exported as empty columns. The old comment claimed they were "not
+      // in current database" -- they are, and toApiProduct returns all of them
+      // (see lib/mappers.ts).
+      is_featured: product.is_featured ?? '',
+      featured_order: product.featured_order ?? '',
+      rating: product.rating ?? '',
+      stock_available: (product as any).stock_available ?? '',
     }));
 
     setCsvExportData(exportData);
 
-    // Clear the data after a delay to prevent memory leaks
+    // Click first, THEN clear. The old order emptied csvExportData before
+    // triggering the download, so the link could fire against a cleared
+    // dataset. The nested timeout gives React a tick to render the new rows
+    // into the CSVLink before the click.
     setTimeout(() => {
-      setCsvExportData([]);
-      if (csvLinkRef.current?.link) {
-        csvLinkRef.current.link.click();
-      }
+      csvLinkRef.current?.link?.click();
+      setTimeout(() => setCsvExportData([]), 500);
     }, 100);
   };
 
@@ -632,7 +668,7 @@ export function ProductManagementTab() {
           ) : (
             <>
               <ProductDataTable
-                products={filteredProducts}
+                products={products}
                 selectedProductIds={selectedProductIds}
                 onSelectionChange={setSelectedProductIds}
                 onEdit={handleEditProduct}
@@ -644,25 +680,26 @@ export function ProductManagementTab() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-6">
                   <div className="text-sm text-muted-foreground">
-                    Showing {startIndex + 1}-{Math.min(endIndex, allProducts.length)} of {allProducts.length} products
+                    Showing {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} of {filteredProducts.length} products
+                    {filteredProducts.length !== allProducts.length && ` (difilter dari ${allProducts.length})`}
                   </div>
                   <div className="flex items-center space-x-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+                      disabled={safePage === 1}
                     >
                       Previous
                     </Button>
                     <span className="text-sm">
-                      Page {currentPage} of {totalPages}
+                      Page {safePage} of {totalPages}
                     </span>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+                      disabled={safePage === totalPages}
                     >
                       Next
                     </Button>

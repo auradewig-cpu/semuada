@@ -132,8 +132,20 @@ export function ProductDataTable({
                 </TableCell>
                 <TableCell>
                   {product.image_url ? (
+                    // Lazy + explicit dimensions: a page holds 50 rows, so
+                    // eager loading fired 50 remote image requests at once on
+                    // every page change. width/height reserve the box so rows
+                    // don't shift as thumbnails arrive.
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={product.image_url} alt={product.product_name} className="w-10 h-10 object-cover rounded" />
+                    <img
+                      src={product.image_url}
+                      alt={product.product_name}
+                      className="w-10 h-10 object-cover rounded"
+                      width={40}
+                      height={40}
+                      loading="lazy"
+                      decoding="async"
+                    />
                   ) : (
                     <div className="w-10 h-10 bg-muted rounded flex items-center justify-center">
                       <ImageOff className="h-4 w-4 text-muted-foreground" />
