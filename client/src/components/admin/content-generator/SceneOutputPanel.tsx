@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
   useRegenerateScene,
+  useRegenerateCaption,
   useHookVariants,
   type GenerationResult,
   type SceneOutput,
@@ -83,7 +84,40 @@ async function downloadAs(url: string, filename: string) {
 export function SceneOutputPanel({ result, onResultChange, warnings, onWarningsChange, context, scenePlan, affiliateUrl, productCategory, productSubcategory, contentGenerationId }: SceneOutputPanelProps) {
   const { toast } = useToast();
   const regenerateScene = useRegenerateScene();
+  const regenerateCaption = useRegenerateCaption();
   const hookVariants = useHookVariants();
+
+  // Replaces only the caption + hashtags; every scene stays exactly as it is.
+  // The route guarantees the new pair differs from what is on screen AND from
+  // this product's recent history, so repeated clicks can't cycle A -> B -> A.
+  const handleRegenerateCaption = () => {
+    regenerateCaption.mutate(
+      {
+        productId: context.productId,
+        contentGoal: context.contentGoal,
+        languageTone: context.languageTone,
+        includePrice: context.includePrice,
+        currentCaption: result.caption,
+        currentHashtags: result.hashtags,
+        contentGenerationId,
+      },
+      {
+        onSuccess: (data) => {
+          onResultChange({ ...result, caption: data.caption, hashtags: data.hashtags });
+          onWarningsChange(data.warnings);
+          toast({
+            variant: data.stillSimilar ? 'destructive' : 'default',
+            title: data.stillSimilar ? 'Masih mirip versi sebelumnya' : 'Caption diperbarui',
+            description: data.stillSimilar
+              ? 'AI belum berhasil bikin yang benar-benar berbeda. Klik Regenerate lagi kalau perlu.'
+              : 'Caption dan kombinasi hashtag sudah diganti.',
+          });
+        },
+        onError: (error) =>
+          toast({ variant: 'destructive', title: 'Gagal regenerate caption', description: error.message }),
+      }
+    );
+  };
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
   const [variants, setVariants] = useState<SceneOutput[] | null>(null);
 
@@ -312,6 +346,17 @@ export function SceneOutputPanel({ result, onResultChange, warnings, onWarningsC
         <CardHeader>
           <CardTitle className="text-base flex items-center justify-between">
             <span>Caption &amp; Hashtag</span>
+            <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRegenerateCaption}
+              disabled={regenerateCaption.isPending}
+              title="Buat caption & kombinasi hashtag baru yang wajib berbeda dari sebelumnya"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${regenerateCaption.isPending ? 'animate-spin' : ''}`} />
+              {regenerateCaption.isPending ? 'Membuat...' : 'Regenerate'}
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -328,6 +373,7 @@ export function SceneOutputPanel({ result, onResultChange, warnings, onWarningsC
             >
               <Copy className="h-3.5 w-3.5 mr-1" /> Copy
             </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">

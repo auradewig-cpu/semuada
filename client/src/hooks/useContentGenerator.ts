@@ -259,6 +259,31 @@ export function useRegenerateScene() {
   });
 }
 
+export interface RegenerateCaptionInput {
+  productId: string;
+  contentGoal: ContentGoal;
+  languageTone: LanguageTone;
+  includePrice: boolean;
+  /** What is on screen now -- the new version must differ from it. */
+  currentCaption: string;
+  currentHashtags: string[];
+  /** Kept in step so the DB never stores a caption that was replaced. */
+  contentGenerationId: string | null;
+}
+
+// Regenerates ONLY the caption + hashtag block, leaving the scenes intact.
+// `stillSimilar` is true when every attempt came back too close to a previous
+// version: the caption is returned anyway (the quota is already spent) and the
+// UI warns instead of silently accepting a near-duplicate.
+export function useRegenerateCaption() {
+  return useMutation({
+    mutationFn: async (input: RegenerateCaptionInput) => {
+      const res = await apiRequest('POST', '/api/content-generator/regenerate-caption', input);
+      return res.json() as Promise<{ caption: string; hashtags: string[]; warnings: string[]; stillSimilar: boolean }>;
+    },
+  });
+}
+
 export interface HookVariantsInput {
   productId: string;
   characterId: string | null;
