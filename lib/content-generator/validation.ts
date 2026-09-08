@@ -156,6 +156,22 @@ export const hookVariantsRequestSchema = z.object({
   narratorVoice: narratorVoiceSchema.default("wanita"),
 });
 
+// Regenerating just the caption + hashtag block, leaving the scenes alone.
+// Carries what is currently on screen so the route can require the new version
+// to differ from it -- see isTooSimilar() in captionRegen.ts.
+export const regenerateCaptionRequestSchema = z.object({
+  productId: z.string().min(1),
+  contentGoal: contentGoalSchema.default("conversion"),
+  languageTone: languageToneSchema.default("gaul_kekinian"),
+  includePrice: z.boolean().default(true),
+  currentCaption: z.string().default(""),
+  currentHashtags: z.array(z.string()).default([]),
+  // The content_generations row that produced the caption on screen. Optional
+  // (a result can be in memory before it is persisted), but when present the
+  // route rewrites that row so the DB never keeps a caption that was replaced.
+  contentGenerationId: z.string().uuid().nullable().default(null),
+});
+
 export function formatZodError(error: z.ZodError): string {
   return error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; ");
 }
