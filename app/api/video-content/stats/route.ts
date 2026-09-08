@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@root/lib/db";
-import { videoContents } from "@shared/schema";
+import { schedulerAccounts, videoContents } from "@shared/schema";
 import { requireAuth } from "@root/lib/apiAuth";
 
 export async function GET() {
@@ -41,9 +41,49 @@ export async function GET() {
   const total = rows.reduce((sum, r) => sum + r.available, 0);
   const trashedTotal = rows.reduce((sum, r) => sum + r.trashed, 0);
 
+  // Per-lane stock. Without this the lane feature is unusable in practice: a
+  // lane running dry is invisible until the account simply stops posting, and
+  // the "video kurang" warning in SchedulerTab only fires on the day it has
+  // already happened. This is the number that tells you to produce more.
+  //
+  // Every active account appears, including ones with an empty lane (a LEFT
+  // JOIN from accounts, not a GROUP BY over videos) -- an account with zero
+  // reserved videos is exactly the one worth seeing.
+  const lanes = await db
+    .select({
+      scheduler_account_id: schedulerAccounts.id,
+      label: schedulerAccounts.label,
+      category: schedulerAccounts.category,
+      available: sql<number>`count(${videoContents.id}) filter (where ${videoContents.trashedAt} is null and ${videoContents.purgedAt} is null and ${videoContents.status} = 'uploaded')::int`,
+    })
+    .from(schedulerAccounts)
+    .leftJoin(videoContents, eq(videoContents.schedulerAccountId, schedulerAccounts.id))
+    .where(eq(schedulerAccounts.isActive, true))
+    .groupBy(schedulerAccounts.id, schedulerAccounts.label, schedulerAccounts.category)
+    .orderBy(schedulerAccounts.category, schedulerAccounts.label);
+
+  // What is still up for grabs by any account in the category.
+  const sharedPool = await db
+    .select({
+      category: videoContents.category,
+      available: sql<number>`count(*)::int`,
+    })
+    .from(videoContents)
+    .where(
+      and(
+        isNull(videoContents.schedulerAccountId),
+        isNull(videoContents.trashedAt),
+        isNull(videoContents.purgedAt),
+        eq(videoContents.status, "uploaded")
+      )
+    )
+    .groupBy(videoContents.category);
+
   return NextResponse.json({
     total,
     trashedTotal,
+    lanes,
+    sharedPool,
     // Ordered by available stock, never re-sorted for the trash view, so chip
     // positions stay put when that view is toggled. The name tie-break keeps
     // equal counts (soon common, since empty categories now show 0) from

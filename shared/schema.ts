@@ -175,6 +175,22 @@ export const videoContents = pgTable("video_contents", {
   // content_generations.product_id is text while video_contents.product_id is
   // uuid -- both store products.id, so joins must cast one side with ::text.
   contentGenerationId: uuid("content_generation_id").references(() => contentGenerations.id, { onDelete: "set null" }),
+  // Which scheduler account this video is RESERVED for. NULL = the shared
+  // per-category pool any account may draw from (the original and still the
+  // default behaviour).
+  //
+  // Exists so one account can own a run of near-identical videos -- e.g. 30
+  // angles of the same folding table -- without a sibling account in the same
+  // category picking one up. Near-duplicate content surfacing on two related
+  // accounts is what gets them flagged, and it had already happened: 12
+  // products went out on two accounts each, one of them on the very same day.
+  // claimNextVideos() therefore treats a reserved video as untouchable by
+  // anyone else; see lib/scheduler/videoPool.ts for the two-stage claim.
+  //
+  // ON DELETE SET NULL, unlike scheduled_posts' deliberate NO ACTION: this is
+  // a routing hint, not history, so deleting an account must return its videos
+  // to the shared pool rather than strand them.
+  schedulerAccountId: uuid("scheduler_account_id").references(() => schedulerAccounts.id, { onDelete: "set null" }),
   // Lifecycle: "uploaded" (available in the scheduler's video pool) ->
   // "scheduled" (claimed by one scheduled_posts row, prevents double-claim
   // across accounts sharing a category) -> "posted" (successfully posted,
