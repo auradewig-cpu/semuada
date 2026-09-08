@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import * as z from "zod";
-import { Plus, Upload, Trash2, Star, Edit, Download, Search } from 'lucide-react';
+import { Plus, Upload, Trash2, Star, Edit, Download, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -21,7 +21,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
-import { useProducts } from '@/hooks/useProductQueries';
+import { useProducts, useItemOptionsByCategory } from '@/hooks/useProductQueries';
+import { useCategoryContext } from '@/context/CategoryContext';
+import { getCommission } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   useAddProduct,
   useUpdateProduct,
@@ -72,6 +75,17 @@ export function ProductManagementTab() {
   const [csvExportData, setCsvExportData] = useState<any[]>([]);
   const [searchById, setSearchById] = useState('');
   const [searchByName, setSearchByName] = useState('');
+  // Attribute filters, mirroring ProductPicker's set so the two admin screens
+  // behave the same way. Commission is an absolute rupiah amount, not a
+  // percentage -- see getCommission() in lib/utils.
+  const [showFilters, setShowFilters] = useState(false);
+  const [category, setCategory] = useState<string | undefined>(undefined);
+  const [subcategory, setSubcategory] = useState<string | undefined>(undefined);
+  const [item, setItem] = useState<string | undefined>(undefined);
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const [commissionMin, setCommissionMin] = useState('');
+  const [commissionMax, setCommissionMax] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50); // Show 50 products per page for better performance
   const csvLinkRef = useRef<any>(null);
@@ -86,6 +100,9 @@ export function ProductManagementTab() {
   }, []);
 
   const { data: allProducts = [], isLoading: isLoadingProducts } = useProducts();
+  const { hierarchy, isLoading: isCategoryLoading } = useCategoryContext();
+  const { data: itemOptions } = useItemOptionsByCategory(category, subcategory);
+  const subcategories = category ? Array.from(hierarchy.get(category) || []).sort() : [];
 
   const addProduct = useAddProduct();
   const updateProduct = useUpdateProduct();
@@ -110,19 +127,46 @@ export function ProductManagementTab() {
     // Split search queries into individual terms for better matching
     const idTerms = idQuery ? idQuery.split(/\s+/).filter(term => term.length > 0) : [];
     const nameTerms = nameQuery ? nameQuery.split(/\s+/).filter(term => term.length > 0) : [];
-    if (idTerms.length === 0 && nameTerms.length === 0) return allProducts;
 
-    return allProducts.filter(product => {
-      const productName = product.product_name?.toLowerCase() || '';
-      const productId = product.product_id?.toLowerCase() || '';
+    let result = allProducts;
 
-      // All terms must be present, in either field independently.
-      const matchesId = idTerms.length === 0 || idTerms.every(term => productId.includes(term));
-      const matchesName = nameTerms.length === 0 || nameTerms.every(term => productName.includes(term));
+    if (idTerms.length > 0 || nameTerms.length > 0) {
+      result = result.filter(product => {
+        const productName = product.product_name?.toLowerCase() || '';
+        const productId = product.product_id?.toLowerCase() || '';
 
-      return matchesId && matchesName;
-    });
-  }, [allProducts, searchById, searchByName]);
+        // All terms must be present, in either field independently.
+        const matchesId = idTerms.length === 0 || idTerms.every(term => productId.includes(term));
+        const matchesName = nameTerms.length === 0 || nameTerms.every(term => productName.includes(term));
+
+        return matchesId && matchesName;
+      });
+    }
+
+    if (category) result = result.filter(p => p.category === category);
+    if (subcategory) result = result.filter(p => p.subcategory === subcategory);
+    if (item) result = result.filter(p => (p as any).item === item);
+    if (priceMin) result = result.filter(p => Number(p.price) >= Number(priceMin));
+    if (priceMax) result = result.filter(p => Number(p.price) <= Number(priceMax));
+    if (commissionMin) result = result.filter(p => getCommission(p) >= Number(commissionMin));
+    if (commissionMax) result = result.filter(p => getCommission(p) <= Number(commissionMax));
+
+    return result;
+  }, [allProducts, searchById, searchByName, category, subcategory, item, priceMin, priceMax, commissionMin, commissionMax]);
+
+  const activeFilterCount =
+    (category ? 1 : 0) + (subcategory ? 1 : 0) + (item ? 1 : 0) +
+    (priceMin ? 1 : 0) + (priceMax ? 1 : 0) + (commissionMin ? 1 : 0) + (commissionMax ? 1 : 0);
+
+  const resetFilters = () => {
+    setCategory(undefined);
+    setSubcategory(undefined);
+    setItem(undefined);
+    setPriceMin('');
+    setPriceMax('');
+    setCommissionMin('');
+    setCommissionMax('');
+  };
 
   // Pagination is derived from the FILTERED list, so the controls and the
   // "Showing x-y of z" line describe what is actually on screen.
@@ -135,11 +179,11 @@ export function ProductManagementTab() {
   const endIndex = startIndex + itemsPerPage;
   const products = filteredProducts.slice(startIndex, endIndex);
 
-  // Back to page 1 whenever the query changes -- staying on page 12 of a fresh
-  // search is never what the user meant.
+  // Back to page 1 whenever the query or any filter changes -- staying on page
+  // 12 of a fresh result set is never what the user meant.
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchById, searchByName]);
+  }, [searchById, searchByName, category, subcategory, item, priceMin, priceMax, commissionMin, commissionMax]);
 
 
   const handleAddClick = () => {
@@ -639,6 +683,11 @@ export function ProductManagementTab() {
                 />
               </div>
 
+              <Button type="button" variant="outline" onClick={() => setShowFilters(v => !v)}>
+                <SlidersHorizontal className="h-4 w-4 mr-1" />
+                Filter{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+              </Button>
+
               {selectedProductIds.length > 0 ? (
                 <>
                   <Button variant="destructive" onClick={handleBulkDeleteClick}>
@@ -661,10 +710,101 @@ export function ProductManagementTab() {
               <Button variant="outline" onClick={handleExport}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
             </div>
           </CardTitle>
+
+          {showFilters && (
+            <div className="border rounded-lg p-3 space-y-3 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Select
+                  value={category ?? 'all'}
+                  onValueChange={(v) => {
+                    setCategory(v === 'all' ? undefined : v);
+                    // Clearing the narrower levels is required, not cosmetic:
+                    // a subcategory left over from another category matches
+                    // nothing and silently empties the table.
+                    setSubcategory(undefined);
+                    setItem(undefined);
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Kategori" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Kategori</SelectItem>
+                    {!isCategoryLoading &&
+                      Array.from(hierarchy.keys()).sort().map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={subcategory ?? 'all'}
+                  onValueChange={(v) => {
+                    setSubcategory(v === 'all' ? undefined : v);
+                    setItem(undefined);
+                  }}
+                  disabled={!category}
+                >
+                  <SelectTrigger><SelectValue placeholder="Subkategori" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Subkategori</SelectItem>
+                    {subcategories.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={item ?? 'all'}
+                  onValueChange={(v) => setItem(v === 'all' ? undefined : v)}
+                  disabled={!itemOptions || itemOptions.length === 0}
+                >
+                  <SelectTrigger><SelectValue placeholder="Item" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Item</SelectItem>
+                    {itemOptions?.map(({ value }) => (
+                      <SelectItem key={value} value={value}>{value}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Komisi is an absolute rupiah amount here, not a percentage --
+                  same as ProductPicker, so both screens read the same way. */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Input type="number" placeholder="Harga min" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} />
+                <Input type="number" placeholder="Harga max" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} />
+                <Input type="number" placeholder="Komisi min (Rp)" value={commissionMin} onChange={(e) => setCommissionMin(e.target.value)} />
+                <Input type="number" placeholder="Komisi max (Rp)" value={commissionMax} onChange={(e) => setCommissionMax(e.target.value)} />
+              </div>
+
+              <Button type="button" variant="ghost" size="sm" onClick={resetFilters} disabled={activeFilterCount === 0}>
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reset Filter
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoadingProducts ? (
             <p>Loading products...</p>
+          ) : filteredProducts.length === 0 ? (
+            // ProductDataTable renders bare column headers for an empty list,
+            // which reads as a broken screen rather than "nothing matched".
+            <div className="py-10 text-center space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {allProducts.length === 0
+                  ? 'Belum ada produk.'
+                  : `Tidak ada produk yang cocok dengan pencarian/filter ini (dari ${allProducts.length} produk).`}
+              </p>
+              {(activeFilterCount > 0 || searchById || searchByName) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { resetFilters(); setSearchById(''); setSearchByName(''); }}
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" /> Bersihkan pencarian &amp; filter
+                </Button>
+              )}
+            </div>
           ) : (
             <>
               <ProductDataTable

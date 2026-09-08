@@ -6,16 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProducts, useItemOptionsByCategory } from "@/hooks/useProductQueries";
 import { useCategoryContext } from "@/context/CategoryContext";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, getCommission } from "@/lib/utils";
 import type { Product } from "@/types";
 
 interface ProductPickerProps {
   selectedProduct: Product | null;
   onSelect: (product: Product) => void;
-}
-
-function getCommission(product: Product): number {
-  return Number(product.commission ?? product.komisi ?? 0);
 }
 
 export function ProductPicker({ selectedProduct, onSelect }: ProductPickerProps) {
