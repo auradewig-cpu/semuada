@@ -18,6 +18,18 @@ export function formatPrice(price: number | string): string {
   }).format(numericPrice);
 }
 
+// Commission arrives under either name: `commission` from toApiProduct, but
+// `komisi` survives on rows that came through the CSV import path, which uses
+// the Indonesian header. Reading only one of them silently returns 0 for the
+// other half of the catalogue. Shared by ProductPicker and the admin Products
+// tab so the two screens can't drift apart on which field they trust.
+//
+// Note this is an absolute rupiah amount, not a percentage.
+export function getCommission(product: { commission?: unknown; komisi?: unknown }): number {
+  const value = Number(product.commission ?? product.komisi ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
 export function calculateDiscount(price: number, originalPrice: number): number {
   if (originalPrice <= 0 || price >= originalPrice) {
     return 0;
