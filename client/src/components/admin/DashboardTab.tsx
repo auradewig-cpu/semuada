@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { CreativePerformanceCard } from "@/components/admin/CreativePerformanceCard";
+import { PostingHourAnalysis } from "@/components/admin/PostingHourAnalysis";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -254,7 +255,7 @@ export function DashboardTab() {
           {thinHistory ? <AlertCircle className="h-4 w-4 mt-0.5 text-yellow shrink-0" /> : <Info className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />}
           <p className="text-muted-foreground">
             {coverage.distinct_days === 0 ? (
-              <>Belum ada snapshot metrik sama sekali. Cron <code className="text-xs">sync-metrics</code> mengambil data sekali sehari.</>
+              <>Belum ada snapshot metrik sama sekali. Cron <code className="text-xs">sync-metrics</code> mengambil data beberapa kali sehari.</>
             ) : (
               <>
                 Riwayat metrik: <strong className="text-foreground">{coverage.distinct_days} hari</strong>
@@ -382,6 +383,8 @@ export function DashboardTab() {
               )}
             </CardContent>
           </Card>
+
+          <PostingHourAnalysis rows={rows} />
 
           <Card>
             <CardHeader>

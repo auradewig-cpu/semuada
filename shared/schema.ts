@@ -238,24 +238,33 @@ export const schedulerAccounts = pgTable("scheduler_accounts", {
   youtubeAccountId: text("youtube_account_id"),
   threadsAccountId: text("threads_account_id"),
   facebookPageAccountId: text("facebook_page_account_id"),
-  // Rotation pattern -- see lib/scheduler/rotation.ts's computeSlotTimes().
-  // "HH:mm" strings, editable by the user.
-  //
-  // Ordered by PRIORITY, not by clock: the ramp below enables slots from the
-  // front, so baseTimes[0] must be the most valuable slot of the day (the
-  // evening peak for an Indonesian audience), not the earliest. This is why
-  // computeSlotTimes() derives its drift window from the LATEST entry rather
-  // than the last one -- after the ramp slices this array, the last element
-  // is usually not the latest time.
-  baseTimes: text("base_times").array().notNull(),
-  // When this account started posting, i.e. when its frequency ramp began.
-  // Frequency steps up one slot per RAMP_PHASE_DAYS: 1/day for the first 30
-  // days, then 2/day, then 3/day, capped by however many baseTimes exist.
+  // DEPRECATED -- no longer read by anything. Posting times used to be typed
+  // in by hand per account ("HH:mm", priority-ordered) and nudged by a small
+  // daily jitter; nothing stopped two accounts sharing a time, and since each
+  // account always posted at the same hours, the metrics could not tell a
+  // good hour from a good account. Times are now allocated automatically for
+  // the whole fleet -- see postsPerDay/slotLane below and
+  // lib/scheduler/rotation.ts. Nullable and no longer written, but existing
+  // values are kept as history.
+  baseTimes: text("base_times").array(),
+  // How many posts a day this account is set to (1..MAX_POSTS_PER_DAY = 5,
+  // also a CHECK constraint). The warm-up below can hold a young account
+  // under this; see postsAllowedToday().
+  postsPerDay: integer("posts_per_day").notNull().default(5),
+  // This account's permanent position in the daily time allocation, 0..35,
+  // unique across all accounts (UNIQUE + CHECK in the database). Uniqueness
+  // is the whole collision guarantee: on any given day distinct lanes map to
+  // distinct offsets, so no two accounts ever post within 5 minutes of each
+  // other. Assigned once, at insert, to the lowest free lane -- never changed
+  // afterwards, or that account's cycle would restart mid-way.
+  slotLane: integer("slot_lane").notNull().unique(),
+  // When this account started posting, i.e. when its warm-up began: 1/day for
+  // the first RAMP_PHASE_DAYS, 2/day for the next, then postsPerDay.
   // Brand-new accounts posting several times a day is a spam signal, and a
   // ban here costs a real social account -- so the ramp is keyed to each
   // account's OWN start date, letting an account added months from now warm
   // up from scratch instead of inheriting the others' cadence.
-  // Null = no ramp, use every baseTime (backwards-compatible default).
+  // Null = no warm-up, post at postsPerDay from day one.
   rampStartedAt: timestamp("ramp_started_at", { withTimezone: true }),
   // DEPRECATED -- no longer read by anything. The rotation used to walk the
   // pattern forward by this many minutes per day; it now picks the day's
@@ -264,12 +273,9 @@ export const schedulerAccounts = pgTable("scheduler_accounts", {
   // walk produced. See lib/scheduler/rotation.ts. Kept as a column so no
   // history is destroyed, but it is not written on save any more.
   incrementMinutes: integer("increment_minutes").notNull().default(5),
-  // The ceiling the LATEST baseTimes entry can drift to -- also "HH:mm".
-  // Latest by clock, not last in the array: baseTimes is priority-ordered, so
-  // its final element is usually an earlier time of day (see computeSlotTimes).
-  // capTime minus that latest entry IS the drift window, and validation
-  // enforces a minimum of MIN_DRIFT_WINDOW_MINUTES so the jitter has room.
-  capTime: text("cap_time").notNull(),
+  // DEPRECATED along with baseTimes: it was the ceiling the latest base time
+  // could drift to. Nullable, no longer written or read; values kept.
+  capTime: text("cap_time"),
   // Advances by 1 each time the daily build-schedule cron successfully runs
   // for this account. Purely a counter now -- slot times are derived from the
   // calendar date, so a missed run shifts nothing either way.

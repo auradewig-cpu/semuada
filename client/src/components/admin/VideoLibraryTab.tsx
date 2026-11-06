@@ -114,6 +114,10 @@ export function VideoLibraryTab() {
   // indicator did against the grid below it.
   const headlineCount = showTrashOnly ? stats?.trashedTotal : stats?.total;
   const categoryCount = (c: { available: number; trashed: number }) => (showTrashOnly ? c.trashed : c.available);
+  // " · ±8 hari" after a stock count -- how long it lasts at today's posting
+  // rate (see days_left in the stats route). Not shown in the trash view.
+  const daysNote = (days: number | null, stock: number) =>
+    showTrashOnly || days === null || stock === 0 ? '' : days === 0 ? ' · <1 hari' : ` · ±${days} hari`;
 
   // Lanes shown for the category in view (or all, when no category is picked),
   // plus what is still unreserved. This is the number that says "produce more
@@ -254,7 +258,7 @@ export function VideoLibraryTab() {
                   className="h-7 text-xs"
                   onClick={() => setCategory(category === entry.category ? undefined : entry.category)}
                 >
-                  {entry.category} ({categoryCount(entry)})
+                  {entry.category} ({categoryCount(entry)}{daysNote(entry.days_left, entry.available)})
                 </Button>
               ))}
             </div>
@@ -280,10 +284,10 @@ export function VideoLibraryTab() {
                   title={
                     lane.available === 0
                       ? `${lane.label} tidak punya video khusus -- akan mengambil dari kolam bersama`
-                      : `${lane.available} video khusus untuk ${lane.label}`
+                      : `${lane.available} video khusus untuk ${lane.label} (${lane.posts_today}x/hari) -- setelah habis, mengambil dari kolam bersama`
                   }
                 >
-                  {lane.label} ({lane.available})
+                  {lane.label} ({lane.available}{daysNote(lane.days_left, lane.available)})
                 </Button>
               ))}
               <Button

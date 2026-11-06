@@ -12,14 +12,21 @@ export interface SchedulerAccount {
   youtube_account_id: string | null;
   threads_account_id: string | null;
   facebook_page_account_id: string | null;
-  base_times: string[];
+  /** @deprecated Posting times are allocated automatically -- see lib/scheduler/rotation.ts. */
+  base_times: string[] | null;
   /** @deprecated No longer drives the rotation -- see lib/scheduler/rotation.ts. */
   increment_minutes: number;
-  cap_time: string;
+  /** @deprecated See base_times. */
+  cap_time: string | null;
+  // How many posts a day the account is set to (1..5). The warm-up can hold
+  // a young account below this -- see postsAllowedToday().
+  posts_per_day: number;
+  // Permanent position in the daily time allocation (0..35, unique).
+  slot_lane: number;
   rotation_day_index: number;
   last_built_date: string | null;
-  // When this account's frequency ramp began; null means no ramp (all
-  // baseTimes are live). See activeSlotCount() in lib/scheduler/rotation.ts.
+  // When this account's warm-up began; null means no warm-up. See
+  // postsAllowedToday() in lib/scheduler/rotation.ts.
   ramp_started_at: string | null;
   is_active: boolean;
   updated_at: string | null;
@@ -36,8 +43,7 @@ export interface SchedulerAccountInput {
   youtube_account_id?: string | null;
   threads_account_id?: string | null;
   facebook_page_account_id?: string | null;
-  base_times: string[];
-  cap_time: string;
+  posts_per_day: number;
   is_active: boolean;
 }
 
@@ -107,18 +113,21 @@ export type BuildScheduleResult =
   // The account has no channel ID on any platform, so nothing was built and
   // no video was claimed -- see buildScheduleForAccount().
   | { status: 'no_platforms' }
-  | { status: 'built'; slotsBuilt: number; slotsSkipped: number };
+  // slotsPast: slots skipped because their time had already gone by.
+  | { status: 'built'; slotsBuilt: number; slotsSkipped: number; slotsAllowed: number; slotsPast: number };
 
 export interface BuildAndDispatchResponse {
   ok: boolean;
   date: string;
   buildResult: BuildScheduleResult;
-  dispatch: { attempted: number; posted: number; failed: number; errors: string[] };
+  // `scheduled` = handed to Buffer/Zernio for the slot's own time.
+  dispatch: { attempted: number; scheduled: number; failed: number; errors: string[] };
 }
 
-// One click: builds today's queue (no-op if already built today) AND
-// immediately posts everything still queued for this account to Buffer/
-// Zernio -- not a preview. See app/api/scheduler-accounts/[id]/build-now/route.ts.
+// One click: builds what is left of today's queue (no-op if already built
+// today) and hands every remaining slot to Buffer/Zernio for its own time --
+// real, but not immediate. Slots already past are skipped. See
+// app/api/scheduler-accounts/[id]/build-now/route.ts.
 export function useBuildScheduleNow() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { CheckCircle2, XCircle, Plus, X, Pencil, Trash2 } from 'lucide-react';
-import { MAX_SLOTS_PER_DAY, MIN_DRIFT_WINDOW_MINUTES } from "@root/lib/scheduler/rotation";
+import { CheckCircle2, XCircle, Pencil, Trash2 } from 'lucide-react';
+import { BLOCK_STARTS, DEFAULT_POSTS_PER_DAY, MAX_POSTS_PER_DAY, RAMP_PHASE_DAYS } from "@root/lib/scheduler/rotation";
 import {
   Dialog,
   DialogContent,
@@ -32,12 +32,7 @@ interface SchedulerAccountsDialogProps {
   onOpenChange: (isOpen: boolean) => void;
 }
 
-// Ordered by PRIORITY, not by clock. A new account ramps up from one post a
-// day, and slots are enabled from the front of this list -- so the first
-// entry is the evening peak (strongest window for an Indonesian audience),
-// then lunch, then mid-afternoon. Listing them chronologically would make a
-// once-a-day account post at 06:00, its weakest hour, for its first month.
-const DEFAULT_BASE_TIMES = ['19:00', '12:00', '16:00'];
+const POSTS_PER_DAY_OPTIONS = Array.from({ length: MAX_POSTS_PER_DAY }, (_, i) => i + 1);
 
 // Platform-to-provider is fixed by which free-tier connections the user
 // actually has (Buffer: TikTok/Instagram/YouTube, Zernio: Threads/Facebook
@@ -60,8 +55,7 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
   const [youtubeId, setYoutubeId] = useState('');
   const [threadsId, setThreadsId] = useState('');
   const [facebookPageId, setFacebookPageId] = useState('');
-  const [baseTimes, setBaseTimes] = useState<string[]>(DEFAULT_BASE_TIMES);
-  const [capTime, setCapTime] = useState('22:00');
+  const [postsPerDay, setPostsPerDay] = useState(DEFAULT_POSTS_PER_DAY);
   const [isActive, setIsActive] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<SchedulerAccount | null>(null);
 
@@ -78,19 +72,9 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
     setYoutubeId('');
     setThreadsId('');
     setFacebookPageId('');
-    setBaseTimes(DEFAULT_BASE_TIMES);
-    setCapTime('22:00');
+    setPostsPerDay(DEFAULT_POSTS_PER_DAY);
     setIsActive(true);
   };
-
-  // Mirrors the server-side rule in lib/scheduler/validation.ts. Shown live
-  // next to the field, because the failure mode it prevents is invisible until
-  // the 01:00 build silently doesn't happen.
-  const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
-  const latestBaseTime = baseTimes.length > 0
-    ? baseTimes.reduce((a, b) => (toMinutes(a) >= toMinutes(b) ? a : b))
-    : null;
-  const driftWindow = latestBaseTime && capTime ? toMinutes(capTime) - toMinutes(latestBaseTime) : null;
 
   const loadForEdit = (a: SchedulerAccount) => {
     setEditingId(a.id);
@@ -106,30 +90,13 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
     setYoutubeId(a.youtube_account_id ?? '');
     setThreadsId(a.threads_account_id ?? '');
     setFacebookPageId(a.facebook_page_account_id ?? '');
-    setBaseTimes(a.base_times.length > 0 ? a.base_times : DEFAULT_BASE_TIMES);
-    setCapTime(a.cap_time);
+    setPostsPerDay(a.posts_per_day);
     setIsActive(a.is_active);
   };
 
-  const updateBaseTime = (index: number, value: string) => {
-    setBaseTimes((prev) => prev.map((t, i) => (i === index ? value : t)));
-  };
-  // Capped at MAX_SLOTS_PER_DAY to match the server-side validation, so the
-  // limit is visible in the UI rather than surfacing as a save error.
-  const addBaseTime = () => setBaseTimes((prev) => (prev.length >= MAX_SLOTS_PER_DAY ? prev : [...prev, '12:00']));
-  const removeBaseTime = (index: number) => setBaseTimes((prev) => prev.filter((_, i) => i !== index));
-
   const handleSave = () => {
-    if (!label.trim() || !category || baseTimes.length === 0 || !capTime) {
-      toast({ variant: 'destructive', title: 'Lengkapi semua field', description: 'Label, kategori, minimal 1 jam dasar, dan jam batas wajib diisi.' });
-      return;
-    }
-    if (driftWindow === null || driftWindow < MIN_DRIFT_WINDOW_MINUTES) {
-      toast({
-        variant: 'destructive',
-        title: 'Jam batas tidak valid',
-        description: `Jam batas harus minimal ${MIN_DRIFT_WINDOW_MINUTES} menit setelah jam dasar paling akhir (${latestBaseTime}).`,
-      });
+    if (!label.trim() || !category) {
+      toast({ variant: 'destructive', title: 'Lengkapi semua field', description: 'Label dan kategori wajib diisi.' });
       return;
     }
     saveAccount.mutate(
@@ -147,8 +114,7 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
         youtube_account_id: youtubeId.trim() || null,
         threads_account_id: threadsId.trim() || null,
         facebook_page_account_id: facebookPageId.trim() || null,
-        base_times: baseTimes,
-        cap_time: capTime,
+        posts_per_day: postsPerDay,
         is_active: isActive,
       },
       {
@@ -200,7 +166,7 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
                   <div key={a.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
                     <div className="min-w-0">
                       <div className="font-medium truncate">{a.label} {!a.is_active && <span className="text-xs text-muted-foreground">(nonaktif)</span>}</div>
-                      <div className="text-xs text-muted-foreground truncate">{a.category} &middot; {a.base_times.join(' | ')} &middot; s/d {a.cap_time}</div>
+                      <div className="text-xs text-muted-foreground truncate">{a.category} &middot; {a.posts_per_day}&times;/hari</div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <span title="Kredensial Buffer">
@@ -285,44 +251,29 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
                 </div>
               </div>
 
+              {/* Only the COUNT is configurable. The times themselves are
+                  allocated for the whole fleet at once (lib/scheduler/rotation.ts)
+                  -- that is what guarantees no two accounts ever collide. */}
               <div className="space-y-1.5">
-                <Label>Jam Dasar &mdash; urut prioritas, bukan urut jam</Label>
+                <Label>Posting per hari</Label>
+                <Select value={String(postsPerDay)} onValueChange={(v) => setPostsPerDay(Number(v))} disabled={saveAccount.isPending}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {POSTS_PER_DAY_OPTIONS.map((n) => (
+                      <SelectItem key={n} value={String(n)}>{n}&times;/hari</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground">
-                  Akun baru mulai 1x/hari dan naik tiap 30 hari, maksimal {MAX_SLOTS_PER_DAY}x/hari. Slot diaktifkan dari atas,
-                  jadi <strong>letakkan jam terbaik di urutan pertama</strong> (malam paling kuat untuk audiens Indonesia).
+                  Jam posting diatur otomatis: {MAX_POSTS_PER_DAY} blok ({BLOCK_STARTS.join(', ')}) yang bergeser 0&ndash;175 menit
+                  tiap hari dengan urutan acak, jadi semua jam 07:00&ndash;21:55 teruji merata. Jarak antar post akun ini selalu
+                  3 jam, dan minimal 5 menit dari akun lain.
                 </p>
-                <div className="space-y-1.5">
-                  {baseTimes.map((t, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Input type="time" value={t} onChange={(e) => updateBaseTime(i, e.target.value)} disabled={saveAccount.isPending} className="w-32" />
-                      {baseTimes.length > 1 && (
-                        <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeBaseTime(i)}>
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                  {baseTimes.length < MAX_SLOTS_PER_DAY && (
-                    <Button type="button" size="sm" variant="outline" onClick={addBaseTime}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Tambah jam
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Jam Batas (batas atas pergeseran jam tayang)</Label>
-                <Input type="time" value={capTime} onChange={(e) => setCapTime(e.target.value)} disabled={saveAccount.isPending} />
-                {/* The window is the whole point of capTime, so show it rather
-                    than making the admin subtract two times in their head --
-                    this is also the field that used to be saveable in a state
-                    that crashed the nightly build. */}
-                <p className={`text-xs ${driftWindow !== null && driftWindow < MIN_DRIFT_WINDOW_MINUTES ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {driftWindow === null
-                    ? 'Isi jam dasar dan jam batas.'
-                    : driftWindow < MIN_DRIFT_WINDOW_MINUTES
-                      ? `Jam batas harus minimal ${MIN_DRIFT_WINDOW_MINUTES} menit setelah jam dasar paling akhir (${latestBaseTime}). Sekarang ${driftWindow} menit.`
-                      : `Jam tayang bergeser acak dalam rentang ${driftWindow} menit tiap hari, dari jam dasar masing-masing.`}
+                <p className="text-xs text-muted-foreground">
+                  Akun baru: 1&times;/hari selama {RAMP_PHASE_DAYS} hari pertama, 2&times;/hari {RAMP_PHASE_DAYS} hari berikutnya,
+                  lalu sesuai setelan ini.
                 </p>
               </div>
 

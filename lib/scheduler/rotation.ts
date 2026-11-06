@@ -1,39 +1,59 @@
-// Rotating posting-time pattern: each account's base times are nudged forward
-// by an offset picked deterministically from (account, calendar day), landing
-// somewhere in the window between the LATEST base time and the account's cap
-// time.
+// Daily posting times, allocated automatically for every account at once.
 //
-// The drift exists so an account doesn't publish at exactly the same minute
-// every single day, which reads as automation. Windows are deliberately
-// narrow (~10 minutes) because nine accounts now share the same peak hours:
-// a wider drift would buy more variation at the cost of accounts colliding
-// with each other, which is the more telling pattern of the two.
+// THE GOAL is measurement as much as camouflage: find out which hour of the
+// day actually performs, from this fleet's own numbers. The previous design
+// could never answer that. Each account owned a hand-typed set of base times
+// and only drifted ~10 minutes around them, so "hour 20" in the metrics was
+// really "the three accounts that happen to post at 20:xx" -- TikTok at
+// 12/16/20 read as dead hours when every one of those posts was Caca Anindya,
+// whose TikTok sits at a median of 0 whatever the hour. And 07:00-10:59 had
+// never been tried at all.
 //
-// This used to walk the pattern forward by a fixed increment per day
-// (offset = dayIndex * incrementMinutes % window), which measured badly
-// against its own goal. With a 10-minute window the per-account increments --
-// all primes: 7, 11, 13, 17, 19, 23, 29, 31, 37 -- collapsed mod 10 to just
-// {1, 3, 7, 9}, so:
-//   - four accounts marched in a perfectly straight line, one minute per day
-//     (20:02, 20:03, 20:04, ...), which is a MORE mechanical signature than
-//     simply posting at a fixed minute;
-//   - accounts sharing an effective step stayed a constant distance apart
-//     forever (Akun 1 and Naya Ardelia: exactly 20 minutes, every day);
-//   - and because offset is 0 whenever dayIndex is a multiple of the window,
-//     all nine accounts reset to their exact base times on the SAME day, every
-//     10 days -- 36 times a year the whole fleet landed on a tidy :00/:20/:40
-//     grid.
-// A hash of (accountId, date) removes all three at once, costs nothing, and
-// stays fully reproducible for tests. Seeded determinism is an existing
-// pattern here -- see seededRandom() in lib/content-generator/rotation.ts.
+// How a day is laid out:
+//   - Five fixed blocks, BLOCK_STARTS, each BLOCK_MINUTES (3h) long, covering
+//     07:00-21:55.
+//   - Each account gets ONE offset per day, 0..175 minutes in 5-minute steps
+//     (OFFSET_POSITIONS = 36). All of its posts that day sit at
+//     blockStart + offset, so its own posts are always exactly 3 hours apart.
+//   - Over each 36-day cycle every account uses all 36 offsets exactly once,
+//     so every 5-minute position of every block gets sampled evenly.
 //
-// Keying on the DATE rather than a running counter also means a missed build
-// no longer shifts anything: each calendar day owns its offset whether or not
-// the cron ran the day before.
+// The offsets are visited in SHUFFLED order, not +5 minutes per day. Walking
+// forward one step a day would tie the time of day to the calendar: the
+// 07:00 slot would only reach 09:55 in week five, and an account that grew
+// over those weeks would make 09:xx look good for reasons that have nothing
+// to do with the hour. It is also the pattern this file already moved away
+// from once -- the old fixed-increment rotation marched four accounts in a
+// perfectly straight line, one minute per day, and resynchronised the whole
+// fleet onto the same grid every 10 days.
+//
+// No two accounts ever post within 5 minutes of each other. Each account owns
+// a permanent, unique slotLane (0..35). Each 36-day cycle gets a seeded random
+// Latin square, square[dayInCycle][lane] = offset index: every ROW is a
+// permutation, so on any day distinct lanes get distinct offsets, and every
+// COLUMN is one too, so each lane uses every offset once per cycle. Since
+// every post time is blockStart + offset with blocks exactly 180 minutes
+// apart, two accounts can only coincide by sharing an offset -- which a row
+// of a Latin square rules out. Hence MAX_SLOT_LANES = 36 accounts.
+//
+// A random square, deliberately, not the cheap structured one
+// (values[(rows[day] + lane) mod 36]). That formula satisfies both properties
+// too, but it makes every day a rotation of the day before: whatever minutes
+// Akun 1 posted at yesterday, Mila Aurel posts at today, Akun 2's go to
+// Alya, Akun 3's to Keisha -- the whole fleet shifted by the same five
+// lanes. Each account's own timing looks random, but anyone comparing the
+// accounts sees them passing one schedule along between them, which is a
+// coordination signature on accounts that are already linked.
+//
+// Everything is derived from the calendar DATE, not from a running counter,
+// so a missed build shifts nothing and a re-run for the same day can never
+// move an already-queued post.
+//
+// This module is imported by the admin UI, so it must stay free of server-only
+// imports (no db client, no node:crypto).
 
-// FNV-1a, 32-bit. Deliberately hand-rolled rather than imported from
-// node:crypto -- this module is imported by the admin UI (see activeSlotCount
-// below), so pulling in a server-only module would break the browser bundle.
+// FNV-1a, 32-bit. Hand-rolled rather than imported from node:crypto -- see the
+// note above about the browser bundle.
 function hashSeed(seed: string): number {
   let hash = 0x811c9dc5;
   for (let i = 0; i < seed.length; i++) {
@@ -43,60 +63,76 @@ function hashSeed(seed: string): number {
   return hash >>> 0;
 }
 
-// Days at each posting frequency before stepping up: 1/day for the first 30
-// days, 2/day for the next 30, then 3/day from day 60 on.
+// mulberry32: tiny, fast, and good enough to drive a shuffle. Seeded so every
+// result here is reproducible for tests and for repeated builds.
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Fisher-Yates over 0..n-1.
+function seededPermutation(n: number, seed: string): number[] {
+  const out = Array.from({ length: n }, (_, i) => i);
+  const rand = seededRandom(hashSeed(seed));
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+export const BLOCK_STARTS = ["07:00", "10:00", "13:00", "16:00", "19:00"] as const;
+export const BLOCK_MINUTES = 180;
+export const OFFSET_STEP_MINUTES = 5;
+export const OFFSET_POSITIONS = BLOCK_MINUTES / OFFSET_STEP_MINUTES; // 36
+
+// One post per block at most, which is what keeps an account's own posts
+// 3 hours apart. Enforced here, in lib/scheduler/validation.ts and by a CHECK
+// constraint on scheduler_accounts.posts_per_day.
+// Typed as plain numbers: BLOCK_STARTS is `as const`, so its length would
+// otherwise leak out as the literal type 5 and reject any other count.
+export const MAX_POSTS_PER_DAY: number = BLOCK_STARTS.length; // 5
+export const DEFAULT_POSTS_PER_DAY: number = MAX_POSTS_PER_DAY;
+
+// One lane per offset position -- see the collision argument above. Also a
+// CHECK constraint (0..35) plus a UNIQUE index on scheduler_accounts.slot_lane.
+export const MAX_SLOT_LANES = OFFSET_POSITIONS; // 36
+
+// Warm-up for NEW accounts: 1/day for the first RAMP_PHASE_DAYS, 2/day for the
+// next RAMP_PHASE_DAYS, then whatever the account is set to. Brand-new
+// accounts posting several times a day is a spam signal, and the three
+// YouTube channels banned in August 2026 were all two days old.
 export const RAMP_PHASE_DAYS = 30;
+export const RAMP_PHASES = 2;
 
-// Hard ceiling on posts per day, whatever an account's baseTimes say. The
-// ramp's own cap used to be the number of baseTimes, which made "max 3"
-// merely a consequence of every account happening to have three -- add a
-// fourth time through the admin form and the account would quietly reach
-// 4/day, but only on day 90, long after anyone would connect the two.
-// Enforced here as well as in the form's validation: this guarantees the
-// behaviour, the validation explains it to whoever is typing.
-export const MAX_SLOTS_PER_DAY = 3;
-
-// The drift window is capTime minus the LATEST base time (see
-// computeSlotTimes). It has to be wide enough for the day's offset to have
-// somewhere to go -- a 1-minute window would put every day on the same minute,
-// which is exactly what the rotation exists to avoid. Enforced in
-// lib/scheduler/validation.ts and mirrored in the admin form; lives here
-// alongside MAX_SLOTS_PER_DAY so the browser bundle can read it without
-// pulling in zod.
-export const MIN_DRIFT_WINDOW_MINUTES = 5;
-
-// How many of an account's baseTimes are live today. Slots are enabled from
-// the FRONT of baseTimes, which is why that array is ordered by priority
-// rather than by clock -- a once-a-day account should be posting in its best
-// hour, not merely its earliest.
+// How many posts this account may publish today: its own posts_per_day
+// setting, held back by the warm-up while the account is young.
 //
-// An account with no rampStartedAt skips the warm-up and uses every slot it
-// has, so hand-edited accounts and anything predating the ramp keep working
-// unchanged -- but still never above MAX_SLOTS_PER_DAY, since that ceiling
-// is about the posting cadence itself, not about the ramp.
-//
-// Lives here, alongside the other pure scheduling math, rather than in
-// buildSchedule.ts -- that module imports the database client, so the admin
-// UI could not import from it without pulling server-only code into the
-// browser bundle. The UI needs this to show how many slots an account is
-// actually expected to fill today.
-//
-// rampStartedAt accepts a string as well as a Date because it arrives as
-// JSON from the API on the client and as a Date from Drizzle on the server.
-export function activeSlotCount(
-  account: { baseTimes: string[]; rampStartedAt: Date | string | null },
+// No rampStartedAt (hand-made rows, anything predating the ramp) means no
+// warm-up. rampStartedAt accepts a string as well as a Date because it
+// arrives as JSON on the client and as a Date from Drizzle on the server.
+export function postsAllowedToday(
+  account: { postsPerDay: number; rampStartedAt: Date | string | null },
   now: Date
 ): number {
-  const uncapped = account.baseTimes.length;
-  if (!account.rampStartedAt) return Math.min(uncapped, MAX_SLOTS_PER_DAY);
+  const raw = Number.isFinite(account.postsPerDay) ? Math.floor(account.postsPerDay) : DEFAULT_POSTS_PER_DAY;
+  const target = Math.min(Math.max(1, raw), MAX_POSTS_PER_DAY);
+  if (!account.rampStartedAt) return target;
   const startedAt = account.rampStartedAt instanceof Date ? account.rampStartedAt : new Date(account.rampStartedAt);
-  if (isNaN(startedAt.getTime())) return Math.min(uncapped, MAX_SLOTS_PER_DAY);
+  if (isNaN(startedAt.getTime())) return target;
 
   const daysLive = Math.floor((now.getTime() - startedAt.getTime()) / (24 * 60 * 60 * 1000));
+  if (daysLive >= RAMP_PHASE_DAYS * RAMP_PHASES) return target;
   // Clamped at 1 so a rampStartedAt in the future (a scheduled launch, or
   // clock skew) still posts once a day rather than going silent.
   const phase = Math.max(1, Math.floor(daysLive / RAMP_PHASE_DAYS) + 1);
-  return Math.min(phase, account.baseTimes.length, MAX_SLOTS_PER_DAY);
+  return Math.min(phase, target);
 }
 
 function toMinutes(hhmm: string): number {
@@ -111,39 +147,102 @@ function toHHMM(totalMinutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-// `seed` identifies the account and the calendar day, e.g.
-// `${account.id}:2026-08-24`. Same seed always yields the same slot times, so
-// this stays trivially testable and a re-run of the build for the same day
-// can never shift an already-queued post.
+// Whole days since 1970-01-01 for a "YYYY-MM-DD" calendar date.
+function dayNumber(dateISO: string): number {
+  const [year, month, day] = dateISO.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / (24 * 60 * 60 * 1000));
+}
+
+// The random Latin square for one cycle: square[dayInCycle][lane] is the
+// offset index that lane uses that day.
 //
-// Pass ALL of an account's baseTimes, not just the ones its ramp phase has
-// enabled -- slice the RESULT instead. The window is derived from the latest
-// entry, so slicing the input would make the window depend on the ramp phase.
-// See buildScheduleForAccount() for the full reasoning.
-export function computeSlotTimes(baseTimes: string[], capTime: string, seed: string): string[] {
-  if (baseTimes.length === 0) return [];
-  // The LATEST time, not the last array entry. baseTimes is ordered by
-  // priority (see the schema comment) so the frequency ramp can enable slots
-  // from the front, which means the final element is usually an earlier time
-  // of day. Using it here would compute a window spanning most of the day and
-  // send the whole pattern drifting hours out of place.
-  const latestBaseMinutes = Math.max(...baseTimes.map(toMinutes));
-  const capMinutes = toMinutes(capTime);
-  const window = capMinutes - latestBaseMinutes;
-  if (window <= 0) {
-    throw new Error(`capTime (${capTime}) harus setelah base time paling akhir dalam sehari.`);
+// Built one day (row) at a time as a random perfect matching between lanes
+// and the offsets each lane has not used yet this cycle (Kuhn's augmenting
+// paths, candidates visited in seeded random order). It can never get stuck:
+// before day d every lane has 36 - d unused offsets and every offset is
+// unused by 36 - d lanes, a regular bipartite graph, which always has a
+// perfect matching (Konig/Hall). Pure and seeded by the cycle number, so the
+// server and the browser derive the identical square.
+const cycleSquares = new Map<number, number[][]>();
+function cycleSquare(cycle: number): number[][] {
+  const cached = cycleSquares.get(cycle);
+  if (cached) return cached;
+
+  const n = OFFSET_POSITIONS;
+  const rand = seededRandom(hashSeed(`slot-cycle:${cycle}`));
+  const shuffled = (values: number[]) => {
+    const out = [...values];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  };
+  const all = Array.from({ length: n }, (_, i) => i);
+  const usedByLane = Array.from({ length: n }, () => new Set<number>());
+  const square: number[][] = [];
+
+  for (let day = 0; day < n; day++) {
+    const candidates = all.map((lane) => shuffled(all.filter((o) => !usedByLane[lane].has(o))));
+    const ownerOf = new Array<number>(n).fill(-1);
+    const offsetOf = new Array<number>(n).fill(-1);
+    const assign = (lane: number, visited: boolean[]): boolean => {
+      for (const o of candidates[lane]) {
+        if (visited[o]) continue;
+        visited[o] = true;
+        if (ownerOf[o] === -1 || assign(ownerOf[o], visited)) {
+          ownerOf[o] = lane;
+          offsetOf[lane] = o;
+          return true;
+        }
+      }
+      return false;
+    };
+    for (const lane of shuffled(all)) {
+      if (!assign(lane, new Array<boolean>(n).fill(false))) {
+        throw new Error(`Gagal menyusun jadwal siklus ${cycle} hari ${day} -- seharusnya mustahil.`);
+      }
+    }
+    offsetOf.forEach((o, lane) => usedByLane[lane].add(o));
+    square.push(offsetOf);
   }
-  // Every base time shares the day's offset, so the shape of the pattern is
-  // preserved and only its position moves. That is also what makes slicing
-  // the result equivalent to slicing the input.
-  const offset = hashSeed(seed) % window;
-  return baseTimes.map((t) => toHHMM(toMinutes(t) + offset));
+
+  // A cycle lasts 36 days; keeping a handful covers any realistic caller
+  // (the build, the admin UI, a year-long verification run) without growing.
+  if (cycleSquares.size >= 16) cycleSquares.clear();
+  cycleSquares.set(cycle, square);
+  return square;
+}
+
+// The account's offset for `dateISO`, in minutes (0..175, multiple of 5).
+export function dailyOffsetMinutes(slotLane: number, dateISO: string): number {
+  if (!Number.isInteger(slotLane) || slotLane < 0 || slotLane >= MAX_SLOT_LANES) {
+    throw new Error(`slotLane harus bilangan bulat 0..${MAX_SLOT_LANES - 1}, bukan ${slotLane}.`);
+  }
+  const day = dayNumber(dateISO);
+  const cycle = Math.floor(day / OFFSET_POSITIONS);
+  return cycleSquare(cycle)[day - cycle * OFFSET_POSITIONS][slotLane] * OFFSET_STEP_MINUTES;
+}
+
+// The account's "HH:mm" posting times for `dateISO`, in clock order.
+//
+// With fewer than MAX_POSTS_PER_DAY posts the account uses a different subset
+// of blocks each day (seeded by account + date), so a 3-a-day account still
+// samples every block over time instead of being stuck in the same three.
+// The collision guarantee is untouched: it rests on the offset alone.
+export function computeDailySlots(account: { id: string; slotLane: number }, count: number, dateISO: string): string[] {
+  const n = Math.min(Math.max(0, Math.floor(count)), MAX_POSTS_PER_DAY);
+  if (n === 0) return [];
+  const offset = dailyOffsetMinutes(account.slotLane, dateISO);
+  const blocks = seededPermutation(BLOCK_STARTS.length, `slot-blocks:${account.id}:${dateISO}`)
+    .slice(0, n)
+    .sort((a, b) => a - b);
+  return blocks.map((b) => toHHMM(toMinutes(BLOCK_STARTS[b]) + offset));
 }
 
 // Combines a "HH:mm" slot time with a calendar date to get the actual
-// scheduledFor instant, in the given IANA timezone. Kept separate from
-// computeSlotTimes() so the pure rotation math stays trivially testable
-// without pulling in timezone conversion.
+// scheduledFor instant, in the given IANA timezone. Kept separate from the
+// slot math so that stays trivially testable without timezone conversion.
 export function slotTimeToDate(dateISO: string, hhmm: string, timeZone: string): Date {
   const [year, month, day] = dateISO.split("-").map(Number);
   const [hour, minute] = hhmm.split(":").map(Number);

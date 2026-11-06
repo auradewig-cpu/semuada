@@ -1,7 +1,7 @@
 import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { schedulerAccounts, scheduledPosts, type SchedulerAccount } from "@shared/schema";
-import { activeSlotCount, computeSlotTimes, slotTimeToDate } from "./rotation";
+import { computeDailySlots, postsAllowedToday, slotTimeToDate } from "./rotation";
 import { claimNextVideos } from "./videoPool";
 import { resolveConfiguredPlatforms } from "./platforms";
 
@@ -16,18 +16,27 @@ export function todayISOInTimezone(timeZone: string): string {
 export type BuildResult =
   | { status: "already_built" }
   | { status: "no_platforms" }
-  | { status: "built"; slotsBuilt: number; slotsSkipped: number; slotsAllowed: number };
+  // slotsPast: slots dropped because their time had already gone by (only
+  // when built with `notBefore`, i.e. from the admin button mid-day).
+  | { status: "built"; slotsBuilt: number; slotsSkipped: number; slotsAllowed: number; slotsPast: number };
 
-// activeSlotCount / RAMP_PHASE_DAYS live in ./rotation, which has no server
-// imports, so the admin UI can share the exact same rule instead of
+// postsAllowedToday / computeDailySlots live in ./rotation, which has no
+// server imports, so the admin UI can share the exact same rule instead of
 // reimplementing it (it needs to know how many slots an account should be
 // filling today, or it reports false "video kurang" warnings).
 
-// Builds today's queue for ONE account: rotated slot times -> claim that many
+// Builds today's queue for ONE account: today's slot times -> claim that many
 // videos from the pool -> insert queued scheduled_posts rows -> advance
 // rotationDayIndex. Called from both the daily cron and the manual
-// "Jadwalkan Sekarang" button, so this is the single place the same-day
+// "Jadwalkan Sisa Hari Ini" button, so this is the single place the same-day
 // guard lives.
+//
+// `notBefore` drops every slot earlier than that instant WITHOUT claiming a
+// video for it. The 01:00 cron never needs it -- every slot is later that
+// day. The admin button does: built at 15:00, the 07:xx/10:xx/13:xx slots
+// would otherwise be handed to Buffer/Zernio as already overdue and all
+// publish within the same minute, five near-identical posts in a burst --
+// exactly the pattern the whole allocation exists to avoid.
 //
 // The guard exists because of a real incident: a test loop called the old
 // (unguarded) build endpoint twice in a row and double-claimed 18 videos,
@@ -44,7 +53,11 @@ export type BuildResult =
 // cheaper than duplicate posts on nine real social accounts), and since the
 // cron now isolates each account the failure shows up in the run summary
 // instead of vanishing.
-export async function buildScheduleForAccount(account: SchedulerAccount, todayISO: string): Promise<BuildResult> {
+export async function buildScheduleForAccount(
+  account: SchedulerAccount,
+  todayISO: string,
+  options?: { notBefore?: Date }
+): Promise<BuildResult> {
   // An account with no channel ID on ANY platform can't post anywhere, so
   // building it a queue only destroys videos: the row would be inserted with
   // platforms=[], dispatch would find zero outcomes and mark it "posted"
@@ -61,7 +74,7 @@ export async function buildScheduleForAccount(account: SchedulerAccount, todayIS
   // Claim the day. No row back means another caller got here first, so this
   // one must not claim videos. rotationDayIndex rides along purely as a
   // "successful builds so far" counter now -- the slot times are derived from
-  // the calendar date, not from it (see computeSlotTimes).
+  // the calendar date, not from it (see computeDailySlots).
   const [claimedDay] = await db
     .update(schedulerAccounts)
     .set({ rotationDayIndex: account.rotationDayIndex + 1, lastBuiltDate: todayISO })
@@ -76,32 +89,34 @@ export async function buildScheduleForAccount(account: SchedulerAccount, todayIS
     return { status: "already_built" };
   }
 
-  // Rotate first, ramp second. The drift window is derived from the latest of
-  // ALL baseTimes, so slicing the RESULT keeps the window identical across
-  // every ramp phase regardless of how the admin ordered the array. (Slicing
-  // the INPUT instead -- which this used to do -- made the window depend on
-  // whichever times happened to be live today: reordering base_times so the
-  // latest one isn't first turned a 10-minute window into a 460-minute one
-  // during phase 1, then snapped it back on day 30.) The offset is uniform
-  // across all base times, so slicing after is otherwise identical.
-  const allowed = activeSlotCount(account, new Date());
-  const slotTimes = computeSlotTimes(account.baseTimes, account.capTime, `${account.id}:${todayISO}`).slice(0, allowed);
+  // Slots come back in clock order and claimNextVideos() returns oldest
+  // first, so a lane's upload order is still its publish order.
+  const allowed = postsAllowedToday(account, new Date());
+  const allSlots = computeDailySlots(account, allowed, todayISO).map((hhmm) => slotTimeToDate(todayISO, hhmm, TIMEZONE));
+  const notBefore = options?.notBefore;
+  const slots = notBefore ? allSlots.filter((at) => at.getTime() >= notBefore.getTime()) : allSlots;
   // Lane first, shared pool second -- see claimNextVideos().
-  const claimedVideos = await claimNextVideos(account.id, account.category, slotTimes.length);
+  const claimedVideos = await claimNextVideos(account.id, account.category, slots.length);
 
   let built = 0;
-  for (let i = 0; i < slotTimes.length; i++) {
+  for (let i = 0; i < slots.length; i++) {
     const video = claimedVideos[i];
     if (!video) continue;
     await db.insert(scheduledPosts).values({
       schedulerAccountId: account.id,
       videoContentId: video.id,
-      scheduledFor: slotTimeToDate(todayISO, slotTimes[i], TIMEZONE),
+      scheduledFor: slots[i],
       platforms,
       status: "queued",
     });
     built++;
   }
 
-  return { status: "built", slotsBuilt: built, slotsSkipped: slotTimes.length - built, slotsAllowed: allowed };
+  return {
+    status: "built",
+    slotsBuilt: built,
+    slotsSkipped: slots.length - built,
+    slotsAllowed: allowed,
+    slotsPast: allSlots.length - slots.length,
+  };
 }

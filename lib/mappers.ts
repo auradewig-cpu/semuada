@@ -136,15 +136,19 @@ export function toApiSchedulerAccount(row: DbSchedulerAccount) {
     youtube_account_id: row.youtubeAccountId,
     threads_account_id: row.threadsAccountId,
     facebook_page_account_id: row.facebookPageAccountId,
+    // Deprecated, kept readable as history -- posting times are allocated
+    // automatically now (lib/scheduler/rotation.ts).
     base_times: row.baseTimes,
     increment_minutes: row.incrementMinutes,
     cap_time: row.capTime,
+    posts_per_day: row.postsPerDay,
+    slot_lane: row.slotLane,
     rotation_day_index: row.rotationDayIndex,
     last_built_date: row.lastBuiltDate,
-    // Exposed so the admin UI can apply the same frequency-ramp rule the
-    // build cron does -- without it the scheduler tab assumes every account
-    // fills all of its baseTimes daily and warns about a video shortage that
-    // isn't real.
+    // Exposed so the admin UI can apply the same warm-up rule the build cron
+    // does (postsAllowedToday) -- without it the scheduler tab would expect a
+    // young account to fill its full posts_per_day and warn about a video
+    // shortage that isn't real.
     ramp_started_at: row.rampStartedAt,
     is_active: row.isActive,
     updated_at: row.updatedAt,

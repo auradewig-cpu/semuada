@@ -1,31 +1,46 @@
-// Scheduler rotation verification.
+// Scheduler posting-time verification.
 //
 //   node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/verify-scheduler-rotation.ts
 //
 // Read-only: loads the REAL account rows and simulates a year of builds
-// against the real computeSlotTimes(), asserting the properties the rotation
-// is supposed to have. Written when the linear-increment rotation was replaced
-// with hashed jitter (see lib/scheduler/rotation.ts) -- the old scheme passed
-// "no collisions" but failed every camouflage property below:
+// through the real computeDailySlots(), asserting the properties the
+// automatic allocation promises (see lib/scheduler/rotation.ts):
 //
-//   - four accounts walked a perfect arithmetic progression, +/-1 min per day
-//   - accounts sharing an effective step stayed a fixed distance apart forever
-//   - all nine reset to their exact base times on the same day every 10 days
+//   - no two accounts ever post within 5 minutes of each other -- with the
+//     live fleet AND with all 36 lanes taken;
+//   - an account's own posts are always 3 hours apart;
+//   - every slot falls in 07:00-21:55;
+//   - each account uses all 36 offsets exactly once per 36-day cycle, so every
+//     hour is sampled evenly -- the whole point, for the posting-hour analysis;
+//   - the daily order is shuffled, not a straight +5-minute walk, and no two
+//     accounts are locked at a constant distance;
+//   - the warm-up and the posts_per_day validation behave.
 //
-// It also pins the two config mistakes that used to take the nightly build
-// down for every account at once.
+// Ends with a 3-day preview of the real schedule. Works before the migration
+// too: without slot_lane it assigns lanes the way the migration will
+// (creation order).
 
 import { neon } from "@neondatabase/serverless";
-import { computeSlotTimes, MAX_SLOTS_PER_DAY, MIN_DRIFT_WINDOW_MINUTES } from "@root/lib/scheduler/rotation";
+import {
+  BLOCK_STARTS,
+  computeDailySlots,
+  dailyOffsetMinutes,
+  MAX_POSTS_PER_DAY,
+  MAX_SLOT_LANES,
+  OFFSET_POSITIONS,
+  OFFSET_STEP_MINUTES,
+  postsAllowedToday,
+  RAMP_PHASE_DAYS,
+  slotTimeToDate,
+} from "@root/lib/scheduler/rotation";
 import { schedulerAccountRequestSchema } from "@root/lib/scheduler/validation";
+import { todayISOInTimezone, TIMEZONE } from "@root/lib/scheduler/buildSchedule";
 
 const DAYS = 365;
-// Worst case with the live config: base times sit 20 minutes apart and the
-// window is 10 wide, so two neighbouring accounts can land 20 - 9 = 11 minutes
-// apart. The old scheme measured 12, but only because its linear walks never
-// happened to select the worst pairing -- that was luck, not a guarantee.
-const MIN_GAP_MINUTES = 11;
-const EARLIEST_ALLOWED = "03:00"; // build-schedule runs 01:00-02:00 WIB
+const MIN_GAP_MINUTES = OFFSET_STEP_MINUTES;
+const OWN_GAP_MINUTES = 180;
+const FIRST_ALLOWED = "07:00";
+const LAST_ALLOWED = "21:55";
 
 let failed = false;
 function check(name: string, cond: boolean, detail = "") {
@@ -34,130 +49,273 @@ function check(name: string, cond: boolean, detail = "") {
 }
 
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
-const dayISO = (d: number) => new Date(Date.UTC(2026, 7, 24) + d * 86400000).toISOString().slice(0, 10);
+const today = todayISOInTimezone(TIMEZONE);
+const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const dayNumber = (iso: string) => Math.floor(Date.parse(`${iso}T00:00:00Z`) / 86400000);
 
+type Acc = { id: string; label: string; slotLane: number; postsPerDay: number };
 const sql = neon(process.env.DATABASE_URL!);
-type Row = { id: string; label: string; base_times: string[]; cap_time: string };
-const accounts = (await sql`
-  select id, label, base_times, cap_time from scheduler_accounts
-  where is_active order by base_times[1]`) as Row[];
+let accounts: Acc[];
+try {
+  const rows = (await sql`select id, label, slot_lane, posts_per_day from scheduler_accounts where is_active order by slot_lane`) as {
+    id: string; label: string; slot_lane: number; posts_per_day: number;
+  }[];
+  accounts = rows.map((r) => ({ id: r.id, label: r.label, slotLane: r.slot_lane, postsPerDay: r.posts_per_day }));
+  console.log(`${accounts.length} akun aktif (slot_lane dari database).`);
+} catch {
+  const rows = (await sql`select id, label, is_active from scheduler_accounts order by created_at, id`) as {
+    id: string; label: string; is_active: boolean;
+  }[];
+  accounts = rows
+    .map((r, i) => ({ id: r.id, label: r.label, slotLane: i, postsPerDay: MAX_POSTS_PER_DAY, active: r.is_active }))
+    .filter((r) => r.active);
+  console.log(`${accounts.length} akun aktif (belum dimigrasi -- slot_lane disimulasikan urut created_at).`);
+}
+console.log(`Simulasi ${DAYS} hari mulai ${today}.\n`);
 
-console.log(`Simulasi ${DAYS} hari x ${MAX_SLOTS_PER_DAY} fase ramp, ${accounts.length} akun aktif.\n`);
+const days = Array.from({ length: DAYS }, (_, d) => addDays(today, d));
 
-// Slots for one account on one day at one ramp phase. Mirrors
-// buildScheduleForAccount(): compute from ALL base times, slice the RESULT.
-const slotsFor = (a: Row, d: number, phase: number) =>
-  computeSlotTimes(a.base_times, a.cap_time, `${a.id}:${dayISO(d)}`).slice(0, phase);
-
-// --- 1. No collisions, in any ramp phase -------------------------------------
-let worstGap = Infinity;
-let worstDetail = "";
-for (let phase = 1; phase <= MAX_SLOTS_PER_DAY; phase++) {
-  for (let d = 0; d < DAYS; d++) {
-    const all = accounts.flatMap((a) => slotsFor(a, d, phase).map((t) => ({ label: a.label, min: toMin(t) })));
+// --- 1. Cross-account spacing ------------------------------------------------
+function worstCrossGap(fleet: Acc[], count: (a: Acc) => number) {
+  let worst = Infinity;
+  let detail = "";
+  for (const day of days) {
+    const all = fleet.flatMap((a) => computeDailySlots(a, count(a), day).map((t) => ({ label: a.label, min: toMin(t) })));
     all.sort((x, y) => x.min - y.min);
     for (let i = 1; i < all.length; i++) {
+      if (all[i].label === all[i - 1].label) continue;
       const gap = all[i].min - all[i - 1].min;
-      if (gap < worstGap) {
-        worstGap = gap;
-        worstDetail = `fase ${phase}, ${dayISO(d)}: ${all[i - 1].label} -> ${all[i].label} (${gap} mnt)`;
+      if (gap < worst) {
+        worst = gap;
+        detail = `${day}: ${all[i - 1].label} -> ${all[i].label} (${gap} mnt)`;
       }
     }
   }
-}
-check(`Jarak antar-akun >= ${MIN_GAP_MINUTES} menit`, worstGap >= MIN_GAP_MINUTES, `terkecil ${worstGap} mnt -- ${worstDetail}`);
-console.log(`        (terkecil sepanjang tahun: ${worstGap} menit -- ${worstDetail})`);
-
-// --- 2. No arithmetic progression ------------------------------------------
-// The old scheme's signature failure: a constant delta between consecutive
-// days is a straighter line than posting at a fixed minute would be.
-for (const a of accounts) {
-  const seq = Array.from({ length: 30 }, (_, d) => toMin(slotsFor(a, d, 1)[0]));
-  const deltas = seq.slice(1).map((v, i) => v - seq[i]);
-  const constant = deltas.every((x) => x === deltas[0]);
-  check(`${a.label}: bukan deret aritmetika`, !constant, `delta konstan ${deltas[0]} mnt/hari`);
-}
-
-// --- 3. No two accounts locked at a constant distance ----------------------
-for (let i = 0; i < accounts.length; i++) {
-  for (let j = i + 1; j < accounts.length; j++) {
-    const gaps = Array.from({ length: 60 }, (_, d) => toMin(slotsFor(accounts[j], d, 1)[0]) - toMin(slotsFor(accounts[i], d, 1)[0]));
-    const locked = gaps.every((g) => g === gaps[0]);
-    check(
-      `${accounts[i].label} <-> ${accounts[j].label}: jarak tidak terkunci`,
-      !locked,
-      `selalu ${gaps[0]} menit terpisah, setiap hari`
-    );
-  }
-}
-
-// --- 4. No fleet-wide resynchronisation day --------------------------------
-// The old scheme put every account back on its exact base time whenever the
-// day index was a multiple of the window -- 36 tidy :00/:20/:40 days a year.
-let syncDays = 0;
-for (let d = 0; d < DAYS; d++) {
-  const offsets = accounts.map((a) => {
-    const latest = Math.max(...a.base_times.map(toMin));
-    return toMin(slotsFor(a, d, 1)[0]) - (a.base_times.map(toMin).indexOf(latest) === 0 ? latest : toMin(a.base_times[0]));
-  });
-  if (offsets.every((o) => o === offsets[0])) syncDays++;
-}
-check("Tidak ada hari di mana kesembilan akun bergeser serempak", syncDays === 0, `${syncDays} hari serempak dari ${DAYS}`);
-
-// --- 5. Slots stay inside the safe part of the day -------------------------
-let earliest = "23:59";
-let latest = "00:00";
-for (const a of accounts) {
-  for (let d = 0; d < DAYS; d++) {
-    for (const t of slotsFor(a, d, MAX_SLOTS_PER_DAY)) {
-      if (toMin(t) < toMin(earliest)) earliest = t;
-      if (toMin(t) > toMin(latest)) latest = t;
-      if (toMin(t) >= toMin(a.cap_time)) check(`${a.label}: slot < capTime`, false, `${t} >= ${a.cap_time}`);
-    }
-  }
-}
-check(`Tidak ada slot sebelum ${EARLIEST_ALLOWED} (build jalan 01:00-02:00)`, toMin(earliest) >= toMin(EARLIEST_ALLOWED), `paling awal ${earliest}`);
-console.log(`        (rentang slot sepanjang tahun: ${earliest} - ${latest})`);
-
-// --- 6. Window is identical across ramp phases, whatever the base order ----
-// This is what the slice-the-result change buys. With the old slice-the-input
-// version, reordering base_times so the latest one isn't first turned phase 1
-// into a 460-minute window and then snapped back on day 30.
-for (const a of accounts) {
-  const offsetAt = (phase: number) => {
-    const slots = computeSlotTimes(a.base_times.slice(0, phase), a.cap_time, `${a.id}:${dayISO(0)}`);
-    return toMin(slots[0]) - toMin(a.base_times[0]);
-  };
-  check(`${a.label}: offset sama di fase 1/2/3`, offsetAt(1) === offsetAt(2) && offsetAt(2) === offsetAt(3), `${offsetAt(1)} / ${offsetAt(2)} / ${offsetAt(3)}`);
+  return { worst, detail };
 }
 {
-  // Deliberately hostile ordering: priority slot in the middle of the array.
-  const shuffled = ["11:30", "19:00", "15:30"];
-  const seed = "uji:2026-08-24";
-  const full = computeSlotTimes(shuffled, "19:10", seed);
-  const offsets = [1, 2, 3].map((n) => toMin(full.slice(0, n)[0]) - toMin(shuffled[0]));
-  check(
-    "base_times acak: irisan hasil tidak mengubah offset",
-    offsets.every((o) => o === offsets[0]),
-    `offset per fase: ${offsets.join(" / ")}`
-  );
-  check("base_times acak: offset tetap di dalam jendela 10 menit", offsets[0] < 10, `offset ${offsets[0]} menit`);
+  const live = worstCrossGap(accounts, () => MAX_POSTS_PER_DAY);
+  check(`Akun asli, 5x/hari: jarak antar-akun >= ${MIN_GAP_MINUTES} menit`, live.worst >= MIN_GAP_MINUTES, live.detail);
+  console.log(`        (terkecil sepanjang tahun: ${live.worst} menit -- ${live.detail})`);
+
+  const full = Array.from({ length: MAX_SLOT_LANES }, (_, i) => ({ id: `uji-${i}`, label: `Lane ${i}`, slotLane: i, postsPerDay: 5 }));
+  const fullGap = worstCrossGap(full, () => MAX_POSTS_PER_DAY);
+  check(`${MAX_SLOT_LANES} lane penuh, 5x/hari: jarak antar-akun >= ${MIN_GAP_MINUTES} menit`, fullGap.worst >= MIN_GAP_MINUTES, fullGap.detail);
+
+  const mixed = worstCrossGap(full, (a) => 1 + (a.slotLane % MAX_POSTS_PER_DAY));
+  check(`${MAX_SLOT_LANES} lane, jumlah posting campur 1-5: tetap >= ${MIN_GAP_MINUTES} menit`, mixed.worst >= MIN_GAP_MINUTES, mixed.detail);
 }
 
-// --- 7. Validation pins the two build-killing configs ----------------------
-const base = { label: "Uji", category: "Elektronik", base_times: ["19:00", "12:00"], is_active: true };
-check("capTime sebelum base terakhir DITOLAK", !schedulerAccountRequestSchema.safeParse({ ...base, cap_time: "18:00" }).success);
-check("capTime sama dengan base terakhir DITOLAK", !schedulerAccountRequestSchema.safeParse({ ...base, cap_time: "19:00" }).success);
-check(`jendela < ${MIN_DRIFT_WINDOW_MINUTES} menit DITOLAK`, !schedulerAccountRequestSchema.safeParse({ ...base, cap_time: "19:03" }).success);
-check(`jendela = ${MIN_DRIFT_WINDOW_MINUTES} menit DITERIMA`, schedulerAccountRequestSchema.safeParse({ ...base, cap_time: "19:05" }).success);
+// --- 2. An account's own posts are 3 hours apart, at every count -------------
+{
+  let worst = Infinity;
+  let detail = "";
+  for (const a of accounts) {
+    for (let n = 2; n <= MAX_POSTS_PER_DAY; n++) {
+      for (const day of days) {
+        const slots = computeDailySlots(a, n, day).map(toMin);
+        for (let i = 1; i < slots.length; i++) {
+          const gap = slots[i] - slots[i - 1];
+          if (gap < worst) {
+            worst = gap;
+            detail = `${a.label} ${n}x ${day}: ${gap} mnt`;
+          }
+        }
+      }
+    }
+  }
+  check(`Jarak antar post satu akun >= ${OWN_GAP_MINUTES} menit`, worst >= OWN_GAP_MINUTES, detail);
+}
 
-// Every config that is live right now must still validate -- this is the
-// easiest place to introduce a regression that locks the admin out of saving.
+// --- 3. Every slot inside 07:00-21:55, right count, clock order --------------
+{
+  let earliest = "23:59";
+  let latest = "00:00";
+  let badCount = "";
+  let unordered = "";
+  for (const a of accounts) {
+    for (let n = 0; n <= MAX_POSTS_PER_DAY; n++) {
+      for (const day of days) {
+        const slots = computeDailySlots(a, n, day);
+        if (slots.length !== n) badCount = `${a.label} ${n}x ${day}: dapat ${slots.length}`;
+        if (slots.some((t, i) => i > 0 && toMin(t) <= toMin(slots[i - 1]))) unordered = `${a.label} ${day}: ${slots.join(",")}`;
+        for (const t of slots) {
+          if (toMin(t) < toMin(earliest)) earliest = t;
+          if (toMin(t) > toMin(latest)) latest = t;
+        }
+      }
+    }
+  }
+  check(`Semua slot di ${FIRST_ALLOWED}-${LAST_ALLOWED}`, toMin(earliest) >= toMin(FIRST_ALLOWED) && toMin(latest) <= toMin(LAST_ALLOWED), `${earliest} - ${latest}`);
+  console.log(`        (rentang sepanjang tahun: ${earliest} - ${latest})`);
+  check("Jumlah slot sesuai permintaan (0..5)", badCount === "", badCount);
+  check("Slot urut jam", unordered === "", unordered);
+  check(`Jumlah posting di atas ${MAX_POSTS_PER_DAY} dipotong ke ${MAX_POSTS_PER_DAY}`, computeDailySlots(accounts[0], 9, today).length === MAX_POSTS_PER_DAY);
+}
+
+// --- 4. Each lane uses all 36 offsets exactly once per cycle -----------------
+{
+  const firstCycleStart = Math.ceil(dayNumber(today) / OFFSET_POSITIONS) * OFFSET_POSITIONS;
+  let bad = "";
+  for (let c = 0; c < 10 && !bad; c++) {
+    for (let lane = 0; lane < MAX_SLOT_LANES && !bad; lane++) {
+      const seen = new Set<number>();
+      for (let p = 0; p < OFFSET_POSITIONS; p++) {
+        const iso = new Date((firstCycleStart + c * OFFSET_POSITIONS + p) * 86400000).toISOString().slice(0, 10);
+        seen.add(dailyOffsetMinutes(lane, iso));
+      }
+      if (seen.size !== OFFSET_POSITIONS) bad = `siklus ${c}, lane ${lane}: hanya ${seen.size} offset berbeda`;
+    }
+  }
+  check(`Tiap lane memakai ${OFFSET_POSITIONS} offset tepat sekali per siklus (10 siklus x ${MAX_SLOT_LANES} lane)`, bad === "", bad);
+
+  // Which translates into every hour being sampled equally at 5x/day.
+  const start = new Date(firstCycleStart * 86400000).toISOString().slice(0, 10);
+  let uneven = "";
+  for (const a of accounts) {
+    const perHour = new Map<number, number>();
+    for (let p = 0; p < OFFSET_POSITIONS; p++) {
+      for (const t of computeDailySlots(a, MAX_POSTS_PER_DAY, addDays(start, p))) {
+        const h = Math.floor(toMin(t) / 60);
+        perHour.set(h, (perHour.get(h) ?? 0) + 1);
+      }
+    }
+    const counts = [...perHour.values()];
+    if (perHour.size !== 15 || counts.some((n) => n !== counts[0])) {
+      uneven = `${a.label}: ${[...perHour.entries()].map(([h, n]) => `${h}h=${n}`).join(" ")}`;
+      break;
+    }
+  }
+  check("5x/hari: tiap jam 07-21 kebagian sama rata dalam satu siklus", uneven === "", uneven);
+}
+
+// --- 5. Shuffled, not a +5 walk; no two accounts locked together -------------
 for (const a of accounts) {
-  const parsed = schedulerAccountRequestSchema.safeParse({
-    label: a.label, category: "Elektronik", base_times: a.base_times, cap_time: a.cap_time, is_active: true,
-  });
-  check(`konfigurasi hidup "${a.label}" tetap lolos validasi`, parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues));
+  const seq = days.slice(0, OFFSET_POSITIONS).map((d) => dailyOffsetMinutes(a.slotLane, d));
+  const deltas = new Set(seq.slice(1).map((v, i) => v - seq[i]));
+  check(`${a.label}: urutan geser acak, bukan langkah tetap`, deltas.size >= 10, `hanya ${deltas.size} selisih berbeda`);
+}
+{
+  let locked = "";
+  for (let i = 0; i < accounts.length && !locked; i++) {
+    for (let j = i + 1; j < accounts.length && !locked; j++) {
+      const gaps = days.slice(0, 60).map((d) => dailyOffsetMinutes(accounts[j].slotLane, d) - dailyOffsetMinutes(accounts[i].slotLane, d));
+      if (gaps.every((g) => g === gaps[0])) locked = `${accounts[i].label} <-> ${accounts[j].label}: selalu ${gaps[0]} mnt`;
+    }
+  }
+  check("Tidak ada dua akun dengan jarak terkunci", locked === "", locked);
+}
+{
+  // Today's schedule must not be yesterday's passed along between accounts.
+  // The structured construction (values[(rows[day] + lane) mod 36]) failed
+  // exactly this: every day was the previous one rotated by a fixed number of
+  // lanes, so the minutes one account used yesterday reappeared on another
+  // account today, the same shift for the whole fleet. Measured with all 36
+  // lanes so every day has plenty of overlaps to compare.
+  let structured = 0;
+  let considered = 0;
+  for (let d = 1; d < DAYS; d++) {
+    const yesterday = new Map<number, number>();
+    for (let lane = 0; lane < MAX_SLOT_LANES; lane++) yesterday.set(dailyOffsetMinutes(lane, days[d - 1]), lane);
+    const shifts: number[] = [];
+    for (let lane = 0; lane < MAX_SLOT_LANES; lane++) {
+      const from = yesterday.get(dailyOffsetMinutes(lane, days[d]));
+      if (from !== undefined && from !== lane) shifts.push((((from - lane) % MAX_SLOT_LANES) + MAX_SLOT_LANES) % MAX_SLOT_LANES);
+    }
+    if (shifts.length >= 3) {
+      considered++;
+      const mostCommon = Math.max(...[...new Set(shifts)].map((s) => shifts.filter((x) => x === s).length));
+      if (mostCommon / shifts.length > 0.5) structured++;
+    }
+  }
+  check(
+    "Jadwal hari ini bukan rotasi jadwal kemarin antar-akun",
+    considered > 0 && structured === 0,
+    `${structured} dari ${considered} hari punya pergeseran seragam antar-akun`
+  );
+}
+
+// --- 6. Fewer than 5 posts: the blocks rotate too ------------------------------
+for (const n of [1, 3]) {
+  const a = accounts[0];
+  const used = new Map<number, number>();
+  const subsets = new Set<string>();
+  for (const day of days.slice(0, 60)) {
+    const slots = computeDailySlots(a, n, day);
+    const blocks = slots.map((t) => BLOCK_STARTS.findIndex((b, k) => toMin(t) >= toMin(b) && (k === BLOCK_STARTS.length - 1 || toMin(t) < toMin(BLOCK_STARTS[k + 1]))));
+    subsets.add(blocks.join(","));
+    for (const b of blocks) used.set(b, (used.get(b) ?? 0) + 1);
+  }
+  check(`${n}x/hari: semua ${BLOCK_STARTS.length} blok terpakai dalam 60 hari`, used.size === BLOCK_STARTS.length, `hanya blok ${[...used.keys()].join(",")}`);
+  check(`${n}x/hari: kombinasi blok berganti-ganti`, subsets.size >= Math.min(5, n === 1 ? 5 : 10), `${subsets.size} kombinasi`);
+}
+
+// --- 7. Deterministic --------------------------------------------------------
+{
+  const a = accounts[0];
+  const same = days.slice(0, 30).every((d) => computeDailySlots(a, 5, d).join() === computeDailySlots(a, 5, d).join());
+  check("Deterministik: input sama -> jam sama", same);
+  let threw = false;
+  try { dailyOffsetMinutes(MAX_SLOT_LANES, today); } catch { threw = true; }
+  check(`slot_lane di luar 0..${MAX_SLOT_LANES - 1} ditolak`, threw);
+}
+
+// --- 8. Warm-up ----------------------------------------------------------------
+{
+  const now = new Date("2026-11-08T00:00:00Z");
+  const ago = (d: number) => new Date(now.getTime() - d * 86400000);
+  const cases: [string, number | string | null, number, number][] = [
+    ["hari 0", 0, 5, 1],
+    ["hari 29", 29, 5, 1],
+    ["hari 30", 30, 5, 2],
+    ["hari 59", 59, 5, 2],
+    ["hari 60", 60, 5, 5],
+    ["hari 88", 88, 5, 5],
+    ["hari 60, setelan 3", 60, 3, 3],
+    ["hari 35, setelan 1", 35, 1, 1],
+    ["tanpa ramp", null, 5, 5],
+    ["tanggal masa depan", -10, 5, 1],
+    ["string ISO", "string", 5, 5],
+    ["setelan 9 dipotong", null, 9, 5],
+    ["setelan 0 dinaikkan", null, 0, 1],
+  ];
+  for (const [name, d, target, expected] of cases) {
+    const rampStartedAt = d === null ? null : d === "string" ? ago(70).toISOString() : ago(d as number);
+    const got = postsAllowedToday({ postsPerDay: target, rampStartedAt }, now);
+    check(`Pemanasan: ${name} -> ${expected}x`, got === expected, `dapat ${got}`);
+  }
+  check(`RAMP_PHASE_DAYS = 30`, RAMP_PHASE_DAYS === 30);
+}
+
+// --- 9. Validation -----------------------------------------------------------
+{
+  const base = { label: "Uji", category: "Elektronik", is_active: true };
+  const ok = (v: unknown) => schedulerAccountRequestSchema.safeParse({ ...base, posts_per_day: v }).success;
+  check("posts_per_day 1 dan 5 DITERIMA", ok(1) && ok(5));
+  check("posts_per_day 0 dan 6 DITOLAK", !ok(0) && !ok(6));
+  check("posts_per_day 2.5 DITOLAK", !ok(2.5));
+  const absent = schedulerAccountRequestSchema.safeParse(base);
+  check(
+    "posts_per_day absen = tidak diubah (tanpa default di zod)",
+    absent.success && absent.data.posts_per_day === undefined,
+    JSON.stringify(absent.success ? absent.data : absent.error.issues)
+  );
+  const legacy = schedulerAccountRequestSchema.safeParse({ ...base, base_times: ["19:00"], cap_time: "19:10" });
+  check("Klien lama yang masih kirim base_times/cap_time tetap lolos", legacy.success);
+}
+
+// --- 10. Timezone conversion ---------------------------------------------------
+check("slotTimeToDate: 07:35 WIB = 00:35 UTC", slotTimeToDate("2026-11-08", "07:35", TIMEZONE).toISOString() === "2026-11-08T00:35:00.000Z");
+
+// --- Preview -------------------------------------------------------------------
+console.log("\nPratinjau 3 hari ke depan (5x/hari, sebelum pemanasan/stok):");
+for (let d = 1; d <= 3; d++) {
+  const day = addDays(today, d);
+  console.log(`\n  ${day}`);
+  for (const a of accounts) {
+    const slots = computeDailySlots(a, Math.min(a.postsPerDay, MAX_POSTS_PER_DAY), day);
+    console.log(`    ${a.label.padEnd(18)} +${String(dailyOffsetMinutes(a.slotLane, day)).padStart(3)} mnt  ${slots.join("  ")}`);
+  }
 }
 
 console.log(failed ? "\nADA YANG GAGAL" : "\nSEMUA LULUS");
