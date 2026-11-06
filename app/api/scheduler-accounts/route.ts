@@ -6,6 +6,7 @@ import { schedulerAccounts } from "@shared/schema";
 import { toApiSchedulerAccount } from "@root/lib/mappers";
 import { requireAuth } from "@root/lib/apiAuth";
 import { schedulerAccountRequestSchema, formatZodError } from "@root/lib/scheduler/validation";
+import { MAX_SLOT_LANES } from "@root/lib/scheduler/rotation";
 
 export async function GET() {
   const unauthorized = await requireAuth();
@@ -39,8 +40,7 @@ export async function POST(request: NextRequest) {
     youtube_account_id,
     threads_account_id,
     facebook_page_account_id,
-    base_times,
-    cap_time,
+    posts_per_day,
     is_active,
   } = parsed.data;
 
@@ -74,11 +74,10 @@ export async function POST(request: NextRequest) {
     youtubeAccountId: keyUpdate(youtube_account_id),
     threadsAccountId: keyUpdate(threads_account_id),
     facebookPageAccountId: keyUpdate(facebook_page_account_id),
-    baseTimes: base_times,
-    // incrementMinutes is deliberately not written: the rotation no longer
-    // uses it (see lib/scheduler/rotation.ts). The column keeps its existing
-    // values so nothing is lost, it just stops driving anything.
-    capTime: cap_time,
+    // baseTimes / capTime / incrementMinutes are deliberately not written:
+    // posting times are allocated automatically now (lib/scheduler/rotation.ts).
+    // The columns keep their existing values as history.
+    postsPerDay: posts_per_day,
     isActive: is_active,
     updatedAt: new Date(),
   };
@@ -100,9 +99,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(toApiSchedulerAccount(row));
   }
 
-  // A new account starts its own frequency ramp from now: one post a day,
-  // stepping up every RAMP_PHASE_DAYS. Without this the column defaults to
-  // null, activeSlotCount() falls back to "use every baseTime", and a
+  // The new account's permanent lane in the daily time allocation: the lowest
+  // one nobody holds. Lanes are what keep two accounts from ever posting
+  // within 5 minutes of each other (see lib/scheduler/rotation.ts), so there
+  // are exactly MAX_SLOT_LANES of them. The UNIQUE constraint backs this up
+  // if two inserts ever race -- the loser gets an error rather than a shared
+  // lane.
+  const taken = new Set(
+    (await db.select({ slotLane: schedulerAccounts.slotLane }).from(schedulerAccounts)).map((r) => r.slotLane)
+  );
+  const slotLane = Array.from({ length: MAX_SLOT_LANES }, (_, i) => i).find((lane) => !taken.has(lane));
+  if (slotLane === undefined) {
+    return NextResponse.json(
+      { error: `Sudah ada ${MAX_SLOT_LANES} akun -- batas maksimal agar jam posting antar-akun tidak bertabrakan.` },
+      { status: 400 }
+    );
+  }
+
+  // A new account starts its own warm-up from now: one post a day, stepping
+  // up every RAMP_PHASE_DAYS until it reaches posts_per_day. Without this the
+  // column defaults to null, postsAllowedToday() skips the warm-up, and a
   // brand-new account would begin at full cadence -- exactly the pattern the
   // ramp exists to avoid, and the case that matters most since a fresh
   // account is the one most likely to be flagged.
@@ -112,6 +128,7 @@ export async function POST(request: NextRequest) {
     .insert(schedulerAccounts)
     .values({
       ...values,
+      slotLane,
       tiktokAccountId: values.tiktokAccountId ?? null,
       instagramAccountId: values.instagramAccountId ?? null,
       youtubeAccountId: values.youtubeAccountId ?? null,

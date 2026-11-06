@@ -18,6 +18,9 @@ export interface SocialMetricRow {
   category: string;
   post_id: string;
   posted_at: string | null;
+  /** When the post went live (provider publish time, else its slot). Use this,
+   *  not posted_at, for anything about time of day. */
+  published_at: string | null;
   video_id: string;
   video_caption: string | null;
   video_category: string;

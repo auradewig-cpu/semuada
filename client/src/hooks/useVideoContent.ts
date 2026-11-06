@@ -43,12 +43,21 @@ export interface VideoContentStats {
   // below, never folded in here. See app/api/video-content/stats/route.ts.
   total: number;
   trashedTotal: number;
-  byCategory: { category: string; available: number; trashed: number }[];
+  // days_left: postable stock (lanes + shared pool) over what the category's
+  // active accounts post per day; null when no active account uses it.
+  byCategory: { category: string; available: number; trashed: number; days_left: number | null }[];
   // Per-lane stock: how many videos each active account has reserved and still
   // unposted. Every active account appears, including ones with an empty lane
   // -- an empty lane is precisely what needs to be seen before the account
-  // quietly stops posting.
-  lanes: { scheduler_account_id: string; label: string; category: string; available: number }[];
+  // quietly stops posting. days_left = available / posts_today, rounded down.
+  lanes: {
+    scheduler_account_id: string;
+    label: string;
+    category: string;
+    available: number;
+    posts_today: number;
+    days_left: number;
+  }[];
   // Videos reserved for nobody, per category -- what any account may still draw.
   sharedPool: { category: string; available: number }[];
 }

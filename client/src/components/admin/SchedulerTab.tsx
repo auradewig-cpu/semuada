@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSchedulerAccounts, useScheduledPosts, useBuildScheduleNow, useSwapScheduledPostVideo, useRetryScheduledPost, type ScheduledPost } from "@/hooks/useScheduler";
-import { activeSlotCount } from "@root/lib/scheduler/rotation";
+import { postsAllowedToday } from "@root/lib/scheduler/rotation";
 import { SchedulerAccountsDialog } from "@/components/admin/content-generator/SchedulerAccountsDialog";
 import { VideoPickerDialog } from "@/components/admin/content-generator/VideoPickerDialog";
 
@@ -143,15 +143,15 @@ export function SchedulerTab() {
             ? 'Sudah dijadwalkan hari ini, tidak ada slot baru.'
             : data.buildResult.status === 'no_platforms'
               ? 'Akun ini belum punya satu pun Account ID platform, jadi tidak ada jadwal yang dibuat.'
-              : `${data.buildResult.slotsBuilt} slot baru dibuat${data.buildResult.slotsSkipped > 0 ? ` (${data.buildResult.slotsSkipped} kekurangan video)` : ''}.`;
-        const { attempted, posted, failed, errors } = data.dispatch;
+              : `${data.buildResult.slotsBuilt} slot baru dibuat${data.buildResult.slotsSkipped > 0 ? ` (${data.buildResult.slotsSkipped} kekurangan video)` : ''}${data.buildResult.slotsPast > 0 ? `, ${data.buildResult.slotsPast} slot dilewati karena jamnya sudah lewat` : ''}.`;
+        const { attempted, scheduled, failed, errors } = data.dispatch;
         const dispatchNote =
           attempted === 0
-            ? 'Tidak ada yang perlu diposting sekarang.'
-            : `${posted} berhasil diposting${failed > 0 ? `, ${failed} gagal (${errors[0] ?? 'lihat detail di kartu'})` : ''}.`;
+            ? 'Tidak ada slot tersisa yang perlu dijadwalkan.'
+            : `${scheduled} berhasil dijadwalkan${failed > 0 ? `, ${failed} gagal (${errors[0] ?? 'lihat detail di kartu'})` : ''}.`;
         toast({
           variant: failed > 0 ? 'destructive' : 'default',
-          title: failed > 0 ? 'Sebagian gagal posting' : 'Berhasil diposting',
+          title: failed > 0 ? 'Sebagian gagal dijadwalkan' : 'Berhasil dijadwalkan',
           description: `${buildNote} ${dispatchNote}`,
         });
       },
@@ -197,11 +197,10 @@ export function SchedulerTab() {
   // actually expected to fill today -- a shortfall means the pool ran dry when
   // build-schedule last ran for it.
   //
-  // Expected comes from activeSlotCount(), NOT base_times.length: accounts
-  // ramp up from one post a day to three over 60 days, so an account still in
-  // its first phase legitimately fills 1 of its 3 base_times. Counting all of
-  // them would flag every account as short of video every single day for the
-  // first two months.
+  // Expected comes from postsAllowedToday(), NOT posts_per_day: a young
+  // account warms up from one post a day, so in its first phase it
+  // legitimately fills 1 of its 5. Counting the full setting would flag every
+  // new account as short of video every single day for its first two months.
   const poolWarnings = useMemo(() => {
     const today = jakartaDayISO(new Date());
     const todaysCountByAccount = new Map<string, number>();
@@ -232,7 +231,7 @@ export function SchedulerTab() {
       .map((a) => ({
         account: a,
         todayCount: todaysCountByAccount.get(a.id) ?? 0,
-        expected: activeSlotCount({ baseTimes: a.base_times, rampStartedAt: a.ramp_started_at }, now),
+        expected: postsAllowedToday({ postsPerDay: a.posts_per_day, rampStartedAt: a.ramp_started_at }, now),
       }))
       .filter((w) => w.todayCount < w.expected);
   }, [accounts, posts, unconfiguredAccounts, selectedAccountId]);
@@ -270,7 +269,7 @@ export function SchedulerTab() {
               </Select>
               {selectedAccount && (
                 <Button type="button" size="sm" variant="outline" onClick={() => setConfirmBuildNow(true)} disabled={buildScheduleNow.isPending}>
-                  <Zap className="h-4 w-4 mr-1" /> {buildScheduleNow.isPending ? 'Memposting...' : 'Jadwalkan & Post Sekarang'}
+                  <Zap className="h-4 w-4 mr-1" /> {buildScheduleNow.isPending ? 'Menjadwalkan...' : 'Jadwalkan Sisa Hari Ini'}
                 </Button>
               )}
               <Button type="button" size="sm" variant="outline" onClick={() => setIsAccountsDialogOpen(true)}>
@@ -424,15 +423,15 @@ export function SchedulerTab() {
       <AlertDialog open={confirmBuildNow} onOpenChange={setConfirmBuildNow}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Jadwalkan & post sekarang untuk "{selectedAccount?.label}"?</AlertDialogTitle>
+            <AlertDialogTitle>Jadwalkan sisa hari ini untuk "{selectedAccount?.label}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              Ini akan langsung memposting video ke TikTok/Instagram/YouTube (via Buffer) dan Threads/FB Page (via Zernio) yang terhubung ke akun ini -- bukan sekadar antre, tapi benar-benar tayang sekarang juga.
+              Slot hari ini yang jamnya belum lewat akan dikirim ke Buffer (TikTok/Instagram/YouTube) dan Zernio (Threads/FB Page) dan tayang di jamnya masing-masing. Slot yang jamnya sudah lewat dilewati, videonya tetap di stok.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction onClick={() => { setConfirmBuildNow(false); handleBuildNow(); }}>
-              Ya, Post Sekarang
+              Ya, Jadwalkan
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

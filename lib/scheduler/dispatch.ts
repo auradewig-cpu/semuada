@@ -1,4 +1,4 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, gt, lte } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { schedulerAccounts, scheduledPosts, videoContents, type ScheduledPost } from "@shared/schema";
 import { postToBuffer } from "./providers/buffer";
@@ -45,11 +45,17 @@ export function claimDuePosts(now: Date) {
     .returning();
 }
 
-export function claimQueuedPostsForAccount(accountId: string) {
+// `dueAfter` limits the claim to posts whose slot is still ahead of that
+// instant -- the admin button uses it so it only ever hands posts over for
+// later, leaving anything already overdue to the dispatch-posts safety net
+// exactly as before rather than publishing a backlog in one burst.
+export function claimQueuedPostsForAccount(accountId: string, options?: { dueAfter?: Date }) {
+  const conditions = [eq(scheduledPosts.schedulerAccountId, accountId), eq(scheduledPosts.status, "queued")];
+  if (options?.dueAfter) conditions.push(gt(scheduledPosts.scheduledFor, options.dueAfter));
   return db
     .update(scheduledPosts)
     .set({ status: "dispatching" })
-    .where(and(eq(scheduledPosts.schedulerAccountId, accountId), eq(scheduledPosts.status, "queued")))
+    .where(and(...conditions))
     .returning();
 }
 

@@ -22,30 +22,20 @@ jobs:
             "${{ secrets.SCHEDULER_SITE_URL }}/api/cron/dispatch-posts" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
-      # Performance metrics don't need the 10-minute cadence the dispatcher
-      # above runs on -- Buffer re-ingests its numbers only once every 24h, so
-      # syncing that often can't surface fresher data. Restricted to three
-      # hours of the day instead.
+      # Called on EVERY run; the route itself decides whether a sync is due
+      # (it skips unless the newest snapshot is 3+ hours old). This used to be
+      # gated here on the run landing in UTC hour 00/08/16 -- but this
+      # "every 10 minutes" schedule really fires every 4-7 hours, so hitting
+      # one of those hours was luck, and from 2026-11-04 it stopped happening:
+      # no metrics for days, history that can never be backfilled. Keeping the
+      # cadence in the app makes it independent of GitHub's timing.
       #
-      # This workflow fires every 10 minutes, so each window still triggers a
-      # handful of syncs. That redundancy is deliberate and harmless: the sync
-      # upserts one row per (post, platform, day), so repeat runs rewrite the
-      # same row rather than duplicating it. Gating on the hour alone (no
-      # minute check) is what makes it drift-tolerant -- GitHub's scheduler
-      # has been observed slipping 25-40 minutes under load, which a narrow
-      # minute window would simply miss, costing a whole day of history that
-      # can never be backfilled.
+      # A manual workflow_dispatch passes force=1, so the job can be tested
+      # without waiting out the interval.
       - name: Call sync-metrics
         run: |
-          HOUR=$(date -u +%H)
-          # Three windows a day, at 00/08/16 UTC (07:00 / 15:00 / 23:00 WIB) --
-          # spread out so a total failure in one window is picked up by the
-          # next. A manual workflow_dispatch always syncs, so the job can be
-          # tested without waiting for a window.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$HOUR" = "00" ] || [ "$HOUR" = "08" ] || [ "$HOUR" = "16" ]; then
-            curl --fail --silent --show-error \
-              "${{ secrets.SCHEDULER_SITE_URL }}/api/cron/sync-metrics" \
-              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
-          else
-            echo "Not a metrics-sync window (UTC hour $HOUR) -- skipping."
-          fi
+          FORCE=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then FORCE="?force=1"; fi
+          curl --fail --silent --show-error \
+            "${{ secrets.SCHEDULER_SITE_URL }}/api/cron/sync-metrics$FORCE" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

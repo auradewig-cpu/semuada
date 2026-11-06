@@ -53,8 +53,8 @@ export async function GET(request: NextRequest) {
   // answered HTTP 500 with no summary at all -- so eight healthy accounts
   // were indistinguishable from a total outage, and any account still
   // mid-dispatch was cut off when the function returned. A bad cap_time was
-  // enough to trigger it (computeSlotTimes throws); validation now rejects
-  // that at save time, but the cron should survive whatever else comes.
+  // enough to trigger it back when times were hand-typed; they are allocated
+  // automatically now, but the cron should survive whatever else comes.
   const summary = await Promise.all(
     accounts.map(async (account) => {
       try {

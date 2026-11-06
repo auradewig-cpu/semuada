@@ -61,6 +61,11 @@ export async function GET(request: NextRequest) {
       sa.is_active     AS account_active,
       sp.id            AS post_id,
       COALESCE(sp.sent_at, sp.posted_at, sp.scheduled_for) AS posted_at,
+      -- The moment the post went LIVE, for time-of-day analysis: the
+      -- provider's own publish time, else the slot it was scheduled for.
+      -- Never posted_at -- that is the hand-off, ~18h before an evening slot,
+      -- which would file almost every post under the wrong hour.
+      COALESCE(sp.sent_at, sp.scheduled_for) AS published_at,
       vc.id            AS video_id,
       vc.caption       AS video_caption,
       vc.category      AS video_category,
@@ -93,6 +98,7 @@ export async function GET(request: NextRequest) {
     category: r.category as string,
     post_id: r.post_id as string,
     posted_at: isoDate(r.posted_at),
+    published_at: isoDate(r.published_at),
     video_id: r.video_id as string,
     video_caption: (r.video_caption as string | null) ?? null,
     video_category: r.video_category as string,
