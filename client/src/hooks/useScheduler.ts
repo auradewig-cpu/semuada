@@ -139,6 +139,9 @@ export function useBuildScheduleNow() {
       queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
       queryClient.invalidateQueries({ queryKey: ['scheduler-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['video-content'] });
+      // A build claims videos, so the stock counts (Video Library chips, and
+      // the scheduler's "video kurang" check that reads them) are now stale.
+      queryClient.invalidateQueries({ queryKey: ['video-content-stats'] });
     },
   });
 }

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSchedulerAccounts, useScheduledPosts, useBuildScheduleNow, useSwapScheduledPostVideo, useRetryScheduledPost, type ScheduledPost } from "@/hooks/useScheduler";
+import { useVideoContentStats } from "@/hooks/useVideoContent";
 import { postsAllowedToday } from "@root/lib/scheduler/rotation";
 import { SchedulerAccountsDialog } from "@/components/admin/content-generator/SchedulerAccountsDialog";
 import { VideoPickerDialog } from "@/components/admin/content-generator/VideoPickerDialog";
@@ -193,15 +194,32 @@ export function SchedulerTab() {
     [accounts]
   );
 
-  // Compares today's rows per account against how many slots that account is
-  // actually expected to fill today -- a shortfall means the pool ran dry when
-  // build-schedule last ran for it.
+  // "Video kurang": today came up short AND the stock this account can still
+  // draw on (its own lane plus its category's shared pool) can't cover one
+  // full day at its current rate.
   //
   // Expected comes from postsAllowedToday(), NOT posts_per_day: a young
   // account warms up from one post a day, so in its first phase it
   // legitimately fills 1 of its 5. Counting the full setting would flag every
   // new account as short of video every single day for its first two months.
+  //
+  // The stock condition is what keeps a shortfall from being misread as a
+  // stock problem. A gap between today's rows and today's rate has other
+  // causes: the rate changed after the 01:00 build (the day posts_per_day
+  // went 3 -> 5, six accounts with 18-40 videos each were told to upload
+  // more), or "Jadwalkan Sisa Hari Ini" skipped slots already past. In every
+  // such case the stock is there, so the warning stays quiet; when the build
+  // really ran dry, the stock is what it ran out of.
+  const { data: videoStats, isLoading: isVideoStatsLoading } = useVideoContentStats();
   const poolWarnings = useMemo(() => {
+    // Hold every warning until stock is known, rather than flashing them and
+    // retracting a moment later. If the stats request fails outright, fall
+    // back to the shortfall alone -- a spurious warning beats a missing one.
+    if (isVideoStatsLoading) return [];
+    const laneStock = new Map((videoStats?.lanes ?? []).map((l) => [l.scheduler_account_id, l.available]));
+    const poolStock = new Map((videoStats?.sharedPool ?? []).map((p) => [p.category, p.available]));
+    const stockFor = (a: (typeof accounts)[number]) =>
+      videoStats ? (laneStock.get(a.id) ?? 0) + (poolStock.get(a.category) ?? 0) : null;
     const today = jakartaDayISO(new Date());
     const todaysCountByAccount = new Map<string, number>();
     for (const p of posts) {
@@ -232,9 +250,10 @@ export function SchedulerTab() {
         account: a,
         todayCount: todaysCountByAccount.get(a.id) ?? 0,
         expected: postsAllowedToday({ postsPerDay: a.posts_per_day, rampStartedAt: a.ramp_started_at }, now),
+        stock: stockFor(a),
       }))
-      .filter((w) => w.todayCount < w.expected);
-  }, [accounts, posts, unconfiguredAccounts, selectedAccountId]);
+      .filter((w) => w.todayCount < w.expected && (w.stock === null || w.stock < w.expected));
+  }, [accounts, posts, unconfiguredAccounts, selectedAccountId, videoStats, isVideoStatsLoading]);
 
   return (
     <div className="space-y-6">
@@ -293,11 +312,11 @@ export function SchedulerTab() {
 
           {poolWarnings.length > 0 && (
             <div className="space-y-1 pt-1">
-              {poolWarnings.map(({ account, todayCount, expected }) => (
+              {poolWarnings.map(({ account, todayCount, expected, stock }) => (
                 <div key={account.id} className="flex items-center gap-1.5 text-xs text-amber-600">
                   <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
                   <span>
-                    <strong>{account.label}</strong>: video kurang hari ini ({todayCount}/{expected} slot terisi) -- tambah video di Video Library untuk kategori "{account.category}".
+                    <strong>{account.label}</strong>: video kurang hari ini ({todayCount}/{expected} slot terisi{stock !== null ? `, sisa stok ${stock}` : ''}) -- tambah video di Video Library untuk kategori "{account.category}".
                   </span>
                 </div>
               ))}
