@@ -29,11 +29,13 @@ import {
   MAX_SLOT_LANES,
   OFFSET_POSITIONS,
   OFFSET_STEP_MINUTES,
+  pickDailySubset,
   postsAllowedToday,
   RAMP_PHASE_DAYS,
   slotTimeToDate,
 } from "@root/lib/scheduler/rotation";
 import { schedulerAccountRequestSchema } from "@root/lib/scheduler/validation";
+import { PLATFORM_DAILY_CAP } from "@root/lib/scheduler/platforms";
 import { todayISOInTimezone, TIMEZONE } from "@root/lib/scheduler/buildSchedule";
 
 const DAYS = 365;
@@ -248,6 +250,31 @@ for (const n of [1, 3]) {
   }
   check(`${n}x/hari: semua ${BLOCK_STARTS.length} blok terpakai dalam 60 hari`, used.size === BLOCK_STARTS.length, `hanya blok ${[...used.keys()].join(",")}`);
   check(`${n}x/hari: kombinasi blok berganti-ganti`, subsets.size >= Math.min(5, n === 1 ? 5 : 10), `${subsets.size} kombinasi`);
+}
+
+// --- 6b. Daily-capped platforms (YouTube: 2/day) --------------------------------
+{
+  const cap = PLATFORM_DAILY_CAP.youtube ?? 0;
+  check(`YouTube dibatasi ${cap}/hari`, cap === 2, `cap = ${cap}`);
+  let badSize = "", unstable = "";
+  const perPosition = new Array(MAX_POSTS_PER_DAY).fill(0);
+  for (const a of accounts) {
+    for (const day of days) {
+      for (let total = 0; total <= MAX_POSTS_PER_DAY; total++) {
+        const picked = pickDailySubset(`${a.id}:${day}:youtube`, total, cap);
+        const ok = picked.length === Math.min(total, cap) && new Set(picked).size === picked.length &&
+          picked.every((i, k) => i >= 0 && i < total && (k === 0 || i > picked[k - 1]));
+        if (!ok && !badSize) badSize = `${a.label} ${day} total=${total}: ${picked.join(",")}`;
+        if (picked.join() !== pickDailySubset(`${a.id}:${day}:youtube`, total, cap).join() && !unstable) unstable = `${a.label} ${day}`;
+        if (total === MAX_POSTS_PER_DAY) for (const i of picked) perPosition[i]++;
+      }
+    }
+  }
+  check("YouTube: jumlah terpilih = min(posting, batas), urut, tanpa duplikat", badSize === "", badSize);
+  check("YouTube: pilihan tetap untuk akun+tanggal yang sama", unstable === "", unstable);
+  const expected = (accounts.length * days.length * cap) / MAX_POSTS_PER_DAY;
+  const spread = perPosition.every((n) => Math.abs(n - expected) / expected < 0.15);
+  check("YouTube: tersebar merata ke semua posisi slot (bukan selalu 2 yang pertama)", spread, `per posisi: ${perPosition.join(", ")} (harapan ~${Math.round(expected)})`);
 }
 
 // --- 7. Deterministic --------------------------------------------------------

@@ -240,6 +240,19 @@ export function computeDailySlots(account: { id: string; slotLane: number }, cou
   return blocks.map((b) => toHHMM(toMinutes(BLOCK_STARTS[b]) + offset));
 }
 
+// `size` of the indexes 0..total-1, picked by a seeded shuffle and returned in
+// ascending order. Used to choose which of a day's posts go to a platform with
+// a daily cap (see PLATFORM_DAILY_CAP): seeded per account + date + platform so
+// a rebuild picks the same posts, and random rather than "the first two" so the
+// capped platform still gets sampled across every hour of the day.
+export function pickDailySubset(seed: string, total: number, size: number): number[] {
+  const n = Math.max(0, Math.floor(total));
+  const k = Math.min(n, Math.max(0, Math.floor(size)));
+  return seededPermutation(n, seed)
+    .slice(0, k)
+    .sort((a, b) => a - b);
+}
+
 // Combines a "HH:mm" slot time with a calendar date to get the actual
 // scheduledFor instant, in the given IANA timezone. Kept separate from the
 // slot math so that stays trivially testable without timezone conversion.

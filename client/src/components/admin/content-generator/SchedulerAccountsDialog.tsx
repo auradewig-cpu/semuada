@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle2, XCircle, Pencil, Trash2 } from 'lucide-react';
 import { BLOCK_STARTS, DEFAULT_POSTS_PER_DAY, MAX_POSTS_PER_DAY, RAMP_PHASE_DAYS } from "@root/lib/scheduler/rotation";
+import { PLATFORM_DAILY_CAP } from "@root/lib/scheduler/platforms";
 import {
   Dialog,
   DialogContent,
@@ -270,6 +271,10 @@ export function SchedulerAccountsDialog({ isOpen, onOpenChange }: SchedulerAccou
                   Jam posting diatur otomatis: {MAX_POSTS_PER_DAY} blok ({BLOCK_STARTS.join(', ')}) yang bergeser 0&ndash;175 menit
                   tiap hari dengan urutan acak, jadi semua jam 07:00&ndash;21:55 teruji merata. Jarak antar post akun ini selalu
                   3 jam, dan minimal 5 menit dari akun lain.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  YouTube hanya menerima {PLATFORM_DAILY_CAP.youtube} posting per hari per channel, jadi hanya {PLATFORM_DAILY_CAP.youtube} posting
+                  per hari (dipilih acak) yang ikut dikirim ke YouTube. Platform lain menerima semua.
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Akun baru: 1&times;/hari selama {RAMP_PHASE_DAYS} hari pertama, 2&times;/hari {RAMP_PHASE_DAYS} hari berikutnya,

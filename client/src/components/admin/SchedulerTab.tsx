@@ -19,6 +19,7 @@ import { useVideoContentStats } from "@/hooks/useVideoContent";
 import { postsAllowedToday } from "@root/lib/scheduler/rotation";
 import { SchedulerAccountsDialog } from "@/components/admin/content-generator/SchedulerAccountsDialog";
 import { VideoPickerDialog } from "@/components/admin/content-generator/VideoPickerDialog";
+import { videoPosterUrl } from "@/lib/videoPoster";
 
 const PLATFORM_LABELS: Record<string, string> = {
   tiktok: 'TikTok',
@@ -347,7 +348,7 @@ export function SchedulerTab() {
                       </div>
                     ) : (
                       /* eslint-disable-next-line jsx-a11y/media-has-caption */
-                      <video src={post.video_url} controls className="w-full aspect-[9/16] bg-black object-contain" />
+                      <video src={post.video_url} controls preload="none" poster={videoPosterUrl(post.video_url)} className="w-full aspect-[9/16] bg-black object-contain" />
                     )}
                     <CardContent className="p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
