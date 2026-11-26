@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import * as z from "zod";
-import { Plus, Upload, Trash2, Star, Edit, Download, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
+import { Plus, Upload, Trash2, Star, Edit, Download, Search, SlidersHorizontal, RotateCcw, FileArchive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -34,8 +34,8 @@ import { ProductDataTable } from '@/components/ProductDataTable';
 import { ProductForm } from '@/components/ProductForm';
 import { BulkUpdateDialog } from './BulkUpdateDialog';
 import type { Product } from '@/types';
-import { CSVLink } from 'react-csv';
 import Papa from 'papaparse';
+import { buildExportZip, downloadBlob, downloadExportCsv, exportZipName } from '@/lib/productExport';
 import { Input } from '@/components/ui/input';
 
 const productFormSchema = z.object({
@@ -72,7 +72,8 @@ export function ProductManagementTab() {
   const [isBulkUpdateDialogOpen, setIsBulkUpdateDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-  const [csvExportData, setCsvExportData] = useState<any[]>([]);
+  // Non-null while "Export CSV + Gambar" is downloading images.
+  const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null);
   const [searchById, setSearchById] = useState('');
   const [searchByName, setSearchByName] = useState('');
   // Attribute filters, mirroring ProductPicker's set so the two admin screens
@@ -88,16 +89,7 @@ export function ProductManagementTab() {
   const [commissionMax, setCommissionMax] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50); // Show 50 products per page for better performance
-  const csvLinkRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Cleanup function to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      // Clear any large data structures when component unmounts
-      setCsvExportData([]);
-    };
-  }, []);
 
   const { data: allProducts = [], isLoading: isLoadingProducts } = useProducts();
   const { hierarchy, isLoading: isCategoryLoading } = useCategoryContext();
@@ -453,77 +445,43 @@ export function ProductManagementTab() {
     });
   };
 
+  // Both exports take what is currently on screen: with filters or a search
+  // active you get those matches, with everything cleared the whole catalogue.
+  // Column mapping and CSV format live in lib/productExport.ts so the plain
+  // CSV and the one inside the ZIP are the same file.
   const handleExport = () => {
-    const headers = [
-      { label: "product_id", key: "product_id" },
-      { label: "product_name", key: "product_name" },
-      { label: "price", key: "price" },
-      { label: "sales", key: "sales" },
-      { label: "category", key: "category" },
-      { label: "subcategory", key: "subcategory" },
-      { label: "item", key: "item" },
-      { label: "affiliate_url", key: "affiliate_url" },
-      { label: "image_url", key: "image_url" },
-      { label: "image_url_2", key: "image_url_2" },
-      { label: "image_url_3", key: "image_url_3" },
-      { label: "image_url_4", key: "image_url_4" },
-      { label: "image_url_5", key: "image_url_5" },
-      { label: "video_url", key: "video_url" },
-      { label: "original_price", key: "original_price" },
-      { label: "dikirim_dari", key: "dikirim_dari" },
-      { label: "toko", key: "toko" },
-      // Key must match the property name written below, not the DB column --
-      // react-csv reads row[key], so "commission" here against a row that
-      // writes `komisi` exported a blank column for every product.
-      { label: "komisi", key: "komisi" },
-      { label: "is_featured", key: "is_featured" },
-      { label: "featured_order", key: "featured_order" },
-      { label: "rating", key: "rating" },
-      { label: "stock_available", key: "stock_available" },
-    ];
+    downloadExportCsv(filteredProducts);
+  };
 
-    // Exports what is currently on screen: with a search active you get those
-    // matches, with the search cleared you get the whole catalogue. Previously
-    // this always read allProducts, so a filtered export was impossible.
-    const exportData = filteredProducts.map(product => ({
-      product_id: product.product_id,
-      product_name: product.product_name,
-      category: product.category,
-      subcategory: product.subcategory,
-      original_price: product.original_price,
-      price: product.price,
-      sales: product.sales,
-      item: (product as any).item || '', // Include item field
-      komisi: product.commission, // Use 'komisi' for CSV export to match database
-      dikirim_dari: product.dikirim_dari,
-      toko: product.toko,
-      affiliate_url: product.affiliate_url,
-      image_url: product.image_url,
-      image_url_2: product.image_urls?.[0] || '',
-      image_url_3: product.image_urls?.[1] || '',
-      image_url_4: product.image_urls?.[2] || '',
-      image_url_5: product.image_urls?.[3] || '',
-      video_url: (product as any).video_url || '', // Include video_url field
-      // These four are declared in the headers above but were never mapped, so
-      // they exported as empty columns. The old comment claimed they were "not
-      // in current database" -- they are, and toApiProduct returns all of them
-      // (see lib/mappers.ts).
-      is_featured: product.is_featured ?? '',
-      featured_order: product.featured_order ?? '',
-      rating: product.rating ?? '',
-      stock_available: (product as any).stock_available ?? '',
-    }));
-
-    setCsvExportData(exportData);
-
-    // Click first, THEN clear. The old order emptied csvExportData before
-    // triggering the download, so the link could fire against a cleared
-    // dataset. The nested timeout gives React a tick to render the new rows
-    // into the CSVLink before the click.
-    setTimeout(() => {
-      csvLinkRef.current?.link?.click();
-      setTimeout(() => setCsvExportData([]), 500);
-    }, 100);
+  // products-export.csv + each product's MAIN image (image_url only) named
+  // by its row: row 1 -> 1.webp, row 2 -> 2.webp. The list is snapshotted
+  // here, at the click, so a refetch while images download cannot shift the
+  // CSV against the files.
+  const handleExportWithImages = async () => {
+    const products = filteredProducts;
+    if (products.length === 0) {
+      toast({ variant: 'destructive', title: 'Tidak ada produk', description: 'Tidak ada produk yang cocok dengan filter saat ini.' });
+      return;
+    }
+    setZipProgress({ done: 0, total: products.length });
+    try {
+      const { blob, failed } = await buildExportZip(products, (done, total) => setZipProgress({ done, total }));
+      downloadBlob(blob, exportZipName(category, subcategory));
+      const saved = products.length - failed.length;
+      toast(
+        failed.length === 0
+          ? { title: 'Export selesai', description: `${products.length} produk: CSV + ${saved} gambar (1.webp sampai ${products.length}.webp).` }
+          : {
+              variant: 'destructive',
+              title: `${failed.length} gambar gagal diunduh`,
+              description: `${saved} dari ${products.length} gambar tersimpan. Nomor yang gagal (${failed.slice(0, 5).map((f) => f.row).join(', ')}${failed.length > 5 ? ', …' : ''}) tercatat di gagal.txt -- nomor lain tetap sesuai baris CSV.`,
+            }
+      );
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Export gagal', description: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setZipProgress(null);
+    }
   };
 
   const handleImport = () => {
@@ -708,6 +666,15 @@ export function ProductManagementTab() {
               )}
               <Button variant="outline" onClick={handleImport}><Upload className="h-4 w-4 mr-2" />Import CSV</Button>
               <Button variant="outline" onClick={handleExport}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
+              <Button
+                variant="outline"
+                onClick={handleExportWithImages}
+                disabled={zipProgress !== null}
+                title="ZIP berisi products-export.csv dan gambar utama tiap produk, dinamai sesuai nomor baris (1.webp, 2.webp, …)"
+              >
+                <FileArchive className="h-4 w-4 mr-2" />
+                {zipProgress ? `Mengunduh gambar ${zipProgress.done}/${zipProgress.total}…` : 'Export CSV + Gambar'}
+              </Button>
             </div>
           </CardTitle>
 
@@ -894,12 +861,6 @@ export function ProductManagementTab() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <CSVLink
-        data={csvExportData}
-        filename={"products-export.csv"}
-        ref={csvLinkRef}
-        className="hidden"
-      />
       <input
         type="file"
         ref={fileInputRef}
