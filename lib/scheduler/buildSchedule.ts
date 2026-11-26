@@ -1,9 +1,10 @@
 import { and, eq, isNull, ne, or } from "drizzle-orm";
 import { db } from "@root/lib/db";
 import { schedulerAccounts, scheduledPosts, type SchedulerAccount } from "@shared/schema";
-import { computeDailySlots, postsAllowedToday, slotTimeToDate } from "./rotation";
+import { computeDailySlots, pickDailySubset, postsAllowedToday, slotTimeToDate } from "./rotation";
 import { claimNextVideos } from "./videoPool";
-import { resolveConfiguredPlatforms } from "./platforms";
+import { PLATFORM_DAILY_CAP, resolveConfiguredPlatforms } from "./platforms";
+import type { SchedulerPlatform } from "./types";
 
 export const TIMEZONE = "Asia/Jakarta";
 
@@ -95,27 +96,41 @@ export async function buildScheduleForAccount(
   const allSlots = computeDailySlots(account, allowed, todayISO).map((hhmm) => slotTimeToDate(todayISO, hhmm, TIMEZONE));
   const notBefore = options?.notBefore;
   const slots = notBefore ? allSlots.filter((at) => at.getTime() >= notBefore.getTime()) : allSlots;
+  // An account whose every configured platform is daily-capped can never use
+  // more slots than the most generous of those caps; don't claim videos for
+  // posts that would go nowhere. (With any uncapped platform -- the normal
+  // case -- every slot is used.)
+  const uncapped = platforms.filter((p) => PLATFORM_DAILY_CAP[p] === undefined);
+  const usable =
+    uncapped.length > 0 ? slots : slots.slice(0, Math.max(0, ...platforms.map((p) => PLATFORM_DAILY_CAP[p] ?? 0)));
   // Lane first, shared pool second -- see claimNextVideos().
-  const claimedVideos = await claimNextVideos(account.id, account.category, slots.length);
+  const claimedVideos = await claimNextVideos(account.id, account.category, usable.length);
+  const posts = usable.flatMap((at, i) => (claimedVideos[i] ? [{ at, video: claimedVideos[i] }] : []));
 
-  let built = 0;
-  for (let i = 0; i < slots.length; i++) {
-    const video = claimedVideos[i];
-    if (!video) continue;
+  // For each daily-capped platform, which of today's posts carry it. Every
+  // other post is built without that platform rather than sent to be refused
+  // -- YouTube bounced 3 of every 5 posts a day before this existed.
+  const carriers = new Map<SchedulerPlatform, Set<number>>();
+  for (const platform of platforms) {
+    const cap = PLATFORM_DAILY_CAP[platform];
+    if (cap === undefined || posts.length <= cap) continue;
+    carriers.set(platform, new Set(pickDailySubset(`${account.id}:${todayISO}:${platform}`, posts.length, cap)));
+  }
+
+  for (let i = 0; i < posts.length; i++) {
     await db.insert(scheduledPosts).values({
       schedulerAccountId: account.id,
-      videoContentId: video.id,
-      scheduledFor: slots[i],
-      platforms,
+      videoContentId: posts[i].video.id,
+      scheduledFor: posts[i].at,
+      platforms: platforms.filter((p) => carriers.get(p)?.has(i) ?? true),
       status: "queued",
     });
-    built++;
   }
 
   return {
     status: "built",
-    slotsBuilt: built,
-    slotsSkipped: slots.length - built,
+    slotsBuilt: posts.length,
+    slotsSkipped: usable.length - posts.length,
     slotsAllowed: allowed,
     slotsPast: allSlots.length - slots.length,
   };

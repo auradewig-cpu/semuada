@@ -6,6 +6,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useVideoContents, type VideoContent } from "@/hooks/useVideoContent";
+import { videoPosterUrl } from "@/lib/videoPoster";
 
 interface VideoPickerDialogProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export function VideoPickerDialog({ isOpen, onOpenChange, category, excludeVideo
                 className="text-left rounded-lg border overflow-hidden hover:ring-2 hover:ring-primary transition"
               >
                 {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                <video src={video.video_url} className="w-full aspect-[9/16] bg-black object-contain" muted />
+                <video src={video.video_url} preload="none" poster={videoPosterUrl(video.video_url)} className="w-full aspect-[9/16] bg-black object-contain" muted />
                 <div className="p-2">
                   {video.caption && <p className="text-xs line-clamp-2">{video.caption}</p>}
                   <p className="text-[10px] text-muted-foreground mt-1">

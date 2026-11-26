@@ -31,6 +31,7 @@ import { SHARED_POOL } from "@/components/admin/content-generator/VideoLanePicke
 import { useCategoryContext } from "@/context/CategoryContext";
 import { ManualVideoUploadDialog } from "@/components/admin/content-generator/ManualVideoUploadDialog";
 import { StorageAccountsDialog } from "@/components/admin/content-generator/StorageAccountsDialog";
+import { videoPosterUrl } from "@/lib/videoPoster";
 
 type VideoSize = 'small' | 'medium' | 'large';
 
@@ -341,7 +342,7 @@ export function VideoLibraryTab() {
                 >
                   <div className="relative">
                     {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <video src={video.video_url} controls className="w-full aspect-[9/16] bg-black object-contain" />
+                    <video src={video.video_url} controls preload="none" poster={videoPosterUrl(video.video_url)} className="w-full aspect-[9/16] bg-black object-contain" />
                     {!showTrashOnly && (
                       <label className="absolute top-2 left-2 bg-background/90 rounded p-1 cursor-pointer flex items-center">
                         <input
