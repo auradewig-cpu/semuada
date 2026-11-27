@@ -343,7 +343,7 @@ export function SchedulerTab() {
                     {post.video_purged ? (
                       <div className="w-full aspect-[9/16] bg-muted flex items-center justify-center p-4 text-center">
                         <p className="text-xs text-muted-foreground">
-                          Video sudah dihapus permanen setelah 30 hari di sampah. Riwayat postingan ini tetap tersimpan.
+                          Video sudah dihapus permanen dari sampah. Riwayat postingan ini tetap tersimpan.
                         </p>
                       </div>
                     ) : (

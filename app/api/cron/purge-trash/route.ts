@@ -6,8 +6,9 @@ import { videoContents } from "@shared/schema";
 import { requireCronSecret } from "@root/lib/cronAuth";
 import { removeVideo } from "@root/lib/videoStorage";
 import { deleteMetricsForExpiredPosts } from "@root/lib/scheduler/metrics";
+import { METRICS_RETENTION_DAYS, TRASH_RETENTION_DAYS } from "@root/lib/retention";
 
-const TRASH_RETENTION_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Runs once/day (Vercel Cron). Frees the Cloudinary asset for videos that
 // have sat in trash (trashedAt set by dispatchScheduledPost on a successful
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
   const unauthorized = requireCronSecret(request);
   if (unauthorized) return unauthorized;
 
-  const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * DAY_MS);
   const expired = await db
     .select()
     .from(videoContents)
@@ -45,10 +46,12 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Performance metrics share this cron's 30-day threshold on purpose: they
-  // describe a post, so they expire with it, keeping the dashboard on a
-  // rolling 30-day window with a single retention rule in a single place.
-  const metricsDeleted = await deleteMetricsForExpiredPosts(cutoff);
+  // Metrics run on their OWN cutoff (lib/retention.ts). They used to reuse the
+  // trash cutoff above, which was harmless while both were 30 days -- but with
+  // trash at 3 days it would have deleted every snapshot older than 3 days and
+  // emptied the Dashboard and the posting-hour analysis.
+  const metricsCutoff = new Date(Date.now() - METRICS_RETENTION_DAYS * DAY_MS);
+  const metricsDeleted = await deleteMetricsForExpiredPosts(metricsCutoff);
 
   return NextResponse.json({ ok: true, purged, deleted, failed, metricsDeleted });
 }
