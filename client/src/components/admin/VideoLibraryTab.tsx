@@ -55,7 +55,8 @@ export function VideoLibraryTab() {
   // lib/scheduler/dispatch.ts) get trashedAt set and drop out of the normal
   // pool view by default, same as before this existed; toggling this shows
   // only that trashed set instead. The purge-trash cron removes them for
-  // real after 30 days, this is just for visibility before then.
+  // real after TRASH_RETENTION_DAYS (lib/retention.ts, 3 days); this is just
+  // for visibility before then.
   const [showTrashOnly, setShowTrashOnly] = useState(false);
   const { data, isLoading } = useVideoContents(category);
   const { data: stats } = useVideoContentStats();

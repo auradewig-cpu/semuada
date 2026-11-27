@@ -63,7 +63,7 @@ export interface ScheduledPost {
   error_message: string | null;
   created_at: string | null;
   video_url: string;
-  // True once the 30-day trash purge has destroyed the Cloudinary asset --
+  // True once the trash purge (lib/retention.ts) has destroyed the Cloudinary asset --
   // video_url is then a dead link, so render a placeholder instead.
   video_purged: boolean;
   caption: string | null;

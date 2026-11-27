@@ -13,7 +13,8 @@ export interface VideoContent {
   cloudinary_public_id: string;
   status: string | null;
   // Set once a scheduled post using this video succeeds (see
-  // lib/scheduler/dispatch.ts) -- starts the 30-day countdown before the
+  // lib/scheduler/dispatch.ts) -- starts the TRASH_RETENTION_DAYS countdown
+  // (lib/retention.ts, 3 days) before the
   // purge-trash cron permanently deletes it. Null = not in trash.
   trashed_at: string | null;
   // FK to the Content Generator output that produced this video (null for

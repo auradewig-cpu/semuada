@@ -308,8 +308,9 @@ export async function syncPostMetrics() {
 // rather than the row's own age so a post's history disappears all at once
 // instead of eroding from the oldest snapshot forward.
 //
-// Called from the purge-trash cron, which already runs daily on the same
-// 30-day threshold -- keeping one retention rule in one place.
+// Called daily from the purge-trash cron with METRICS_RETENTION_DAYS
+// (lib/retention.ts) -- deliberately NOT the trash retention, which is only
+// 3 days since 2026-11-27.
 export async function deleteMetricsForExpiredPosts(cutoff: Date): Promise<number> {
   const expired = await db
     .select({ id: scheduledPosts.id })
